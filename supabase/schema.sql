@@ -43,6 +43,22 @@ as $$
   );
 $$;
 
+create or replace function public.can_access_module(module_name text)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select public.is_admin(auth.uid())
+    or exists (
+      select 1
+      from public.user_module_access
+      where user_id = auth.uid()
+        and module_key = module_name
+    );
+$$;
+
 create table if not exists profiles (
   id uuid primary key references auth.users (id) on delete cascade,
   full_name text,
@@ -159,12 +175,6 @@ to authenticated
 using (auth.uid() = id);
 
 drop policy if exists "Users can update their own profile" on profiles;
-create policy "Users can update their own profile"
-on profiles
-for update
-to authenticated
-using (auth.uid() = id)
-with check (auth.uid() = id);
 
 drop policy if exists "Admins can manage profiles" on profiles;
 create policy "Admins can manage profiles"
@@ -190,32 +200,32 @@ using (public.is_admin(auth.uid()))
 with check (public.is_admin(auth.uid()));
 
 drop policy if exists "Authenticated users can read shared data" on territorios;
-create policy "Authenticated users can read shared data"
+create policy "Users with mapas can read territorios"
 on territorios
 for select
 to authenticated
-using (true);
+using (public.can_access_module('mapas'));
 
 drop policy if exists "Authenticated users can read drivers" on conductores;
-create policy "Authenticated users can read drivers"
+create policy "Users with conductores can read drivers"
 on conductores
 for select
 to authenticated
-using (true);
+using (public.can_access_module('conductores') or public.can_access_module('salidas'));
 
 drop policy if exists "Authenticated users can read groups" on grupos_servicio;
-create policy "Authenticated users can read groups"
+create policy "Users with grupos can read groups"
 on grupos_servicio
 for select
 to authenticated
-using (true);
+using (public.can_access_module('grupos') or public.can_access_module('salidas'));
 
 drop policy if exists "Authenticated users can read outings" on salidas;
-create policy "Authenticated users can read outings"
+create policy "Users with salidas can read outings"
 on salidas
 for select
 to authenticated
-using (true);
+using (public.can_access_module('salidas'));
 
 drop policy if exists "Admins manage territorios" on territorios;
 create policy "Admins manage territorios"
