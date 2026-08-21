@@ -22,6 +22,15 @@ export type PendingUserRequest = {
   email: string
 }
 
+export type ManagedUser = {
+  id: string
+  full_name: string | null
+  username: string | null
+  auth_email: string | null
+  role: ProfileRole
+  moduleAccess: ModuleKey[]
+}
+
 export type AuthContextValue = {
   isConfigured: boolean
   isLoading: boolean
@@ -30,7 +39,9 @@ export type AuthContextValue = {
   user: User | null
   profile: Profile | null
   moduleAccess: ModuleKey[]
+  isApproved: boolean
   pendingRequests: PendingUserRequest[]
+  managedUsers: ManagedUser[]
   signIn: (login: string, password: string) => Promise<{ error: string | null }>
   signUp: (
     fullName: string,
@@ -40,6 +51,13 @@ export type AuthContextValue = {
   ) => Promise<{ error: string | null }>
   signOut: () => Promise<void>
   approveUser: (userId: string) => Promise<{ error: string | null }>
+  loadManagedUsers: () => Promise<void>
+  updateUserAccess: (
+    userId: string,
+    role: ProfileRole,
+    modules: ModuleKey[],
+  ) => Promise<{ error: string | null }>
+  deactivateUser: (userId: string) => Promise<{ error: string | null }>
   canAccessModule: (moduleKey: ModuleKey) => boolean
 }
 

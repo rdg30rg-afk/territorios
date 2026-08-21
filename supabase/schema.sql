@@ -167,6 +167,12 @@ using (auth.uid() = id)
 with check (auth.uid() = id);
 
 drop policy if exists "Admins can manage profiles" on profiles;
+create policy "Admins can manage profiles"
+on profiles
+for all
+to authenticated
+using (public.is_admin(auth.uid()))
+with check (public.is_admin(auth.uid()));
 
 drop policy if exists "Users can read their module access" on user_module_access;
 create policy "Users can read their module access"

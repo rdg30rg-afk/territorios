@@ -1668,13 +1668,15 @@ button {
   border-color: var(--accent);
 }
 
-.mode-switch {
+.mode-switch,
+.auth-mode-tabs {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 0.6rem;
 }
 
 .mode-switch button,
+.auth-mode-tabs button,
 .primary-button,
 .ghost-button,
 .secondary-button,
@@ -1688,16 +1690,22 @@ button {
     opacity 160ms ease;
 }
 
-.mode-switch button {
+.mode-switch button,
+.auth-mode-tabs button {
   background: rgba(109, 76, 65, 0.1);
   color: var(--accent-dark);
   font-weight: 700;
 }
 
 .mode-switch button.active,
+.auth-mode-tabs button.active,
 .primary-button {
   background: linear-gradient(135deg, #bb3e03, #d97706);
   color: white;
+}
+
+.auth-mode-tabs {
+  padding: 1.25rem 1.75rem 0;
 }
 
 .primary-button:disabled,
@@ -1758,6 +1766,74 @@ button {
   margin-top: 1rem;
 }
 
+.admin-access-panel {
+  padding: 1rem 1.1rem 1.15rem;
+}
+
+.admin-user-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.admin-user-card {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 180px minmax(260px, 1.2fr) minmax(220px, auto);
+  gap: 0.85rem;
+  align-items: center;
+  padding: 1rem;
+  border-radius: 18px;
+  border: 1px solid rgba(109, 76, 65, 0.12);
+  background: rgba(255, 252, 247, 0.94);
+}
+
+.admin-user-main,
+.admin-user-card label,
+.admin-module-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.admin-user-main span {
+  color: var(--text-soft);
+}
+
+.admin-user-card select {
+  min-height: 38px;
+  border: 1px solid rgba(109, 76, 65, 0.2);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--text-main);
+  font: inherit;
+  padding: 0.45rem 0.65rem;
+}
+
+.admin-module-checks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.admin-module-checks label {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  font-weight: 600;
+}
+
+.admin-module-checks input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
+.admin-user-actions {
+  display: flex;
+  gap: 0.55rem;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
 @media (max-width: 1024px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -1804,6 +1880,14 @@ button {
 
   .outing-schedule-grid {
     min-width: 1480px;
+  }
+
+  .admin-user-card {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-user-actions {
+    justify-content: flex-start;
   }
 }
 

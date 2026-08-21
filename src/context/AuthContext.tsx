@@ -9,16 +9,15 @@ import { isSupabaseConfigured, supabase } from '../lib/supabase'
 import {
   AuthContext,
   type AuthContextValue,
+  type ManagedUser,
   type ModuleKey,
   type PendingUserRequest,
   type Profile,
+  type ProfileRole,
 } from './AuthTypes'
 
 const PRIMARY_LOGIN_ALIAS = 'Blade30$'
 const PRIMARY_LOGIN_EMAIL = 'blade30@territorios.app'
-
-// Solicitudes de alta de usuarios pendientes
-const PENDING_USERS_TABLE = 'pending_users'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
@@ -26,6 +25,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [moduleAccess, setModuleAccess] = useState<ModuleKey[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [pendingRequests, setPendingRequests] = useState<PendingUserRequest[]>([])
+  const [managedUsers, setManagedUsers] = useState<ManagedUser[]>([])
 
   useEffect(() => {
     if (!supabase) {
@@ -144,113 +144,159 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut()
   }
 
-  // Cargar solicitudes de alta pendientes (solo admin)
+  const isApproved = Boolean(
+    profile?.role === 'admin' || (profile && moduleAccess.length > 0),
+  )
+
+  const loadManagedUsers = useCallback(async () => {
+    if (!supabase || profile?.role !== 'admin') {
+      setManagedUsers([])
+      return
+    }
+
+    const [{ data: profileRows, error: profileError }, { data: accessRows, error: accessError }] =
+      await Promise.all([
+        supabase
+          .from('profiles')
+          .select('id, full_name, username, auth_email, role')
+          .order('created_at', { ascending: false }),
+        supabase.from('user_module_access').select('user_id, module_key'),
+      ])
+
+    if (profileError || accessError) {
+      console.error(profileError?.message ?? accessError?.message)
+      return
+    }
+
+    const users = ((profileRows ?? []) as Array<{
+      id: string
+      full_name: string | null
+      username: string | null
+      auth_email: string | null
+      role: ProfileRole
+    }>).map((user) => ({
+      ...user,
+      moduleAccess: ((accessRows ?? []) as Array<{
+        user_id: string
+        module_key: ModuleKey
+      }>)
+        .filter((access) => access.user_id === user.id)
+        .map((access) => access.module_key),
+    }))
+
+    setManagedUsers(users)
+    setPendingRequests(
+      users
+        .filter((user) => user.role !== 'admin' && user.moduleAccess.length === 0)
+        .map((user) => ({
+          id: user.id,
+          full_name: user.full_name ?? user.username ?? 'Usuario sin nombre',
+          email: user.auth_email ?? '',
+        })),
+    )
+  }, [profile?.role])
+
+  // Compatibilidad con la vista anterior: pendientes = usuarios sin modulos.
   const loadPendingRequests = useCallback(async () => {
     if (!supabase || profile?.role !== 'admin') {
+      setPendingRequests([])
       return
     }
 
-    const { data, error } = await supabase
-      .from(PENDING_USERS_TABLE)
-      .select('id, full_name, email')
-      .order('requested_at', { ascending: false })
-
-    if (error) {
-      console.error(error.message)
-      return
-    }
-
-    setPendingRequests(data ?? [])
-  }, [profile?.role])
+    await loadManagedUsers()
+  }, [loadManagedUsers, profile?.role])
 
   useEffect(() => {
     if (profile?.role === 'admin') {
+      void loadManagedUsers()
       void loadPendingRequests()
       return
     }
 
     setPendingRequests([])
-  }, [loadPendingRequests, profile?.role])
+    setManagedUsers([])
+  }, [loadManagedUsers, loadPendingRequests, profile?.role])
 
-  // Solicitar alta de usuario (nuevo usuario solicita acceso)
   const signUp = async (fullName: string, email: string, password: string, username?: string) => {
     if (!supabase) {
       return { error: 'Faltan las variables de entorno de Supabase.' }
     }
 
-    void password
-
-    // Insertar en tabla de solicitudes pendientes
-    const { error: insertError } = await supabase
-      .from(PENDING_USERS_TABLE)
-      .insert({
-        full_name: fullName.trim(),
-        email: email.trim(),
-        username: username?.trim(),
-      })
-
-    if (insertError) {
-      return { error: insertError.message }
-    }
-
-    return { error: null }
-  }
-
-  // Aprobar solicitud de alta (solo admin): crea usuario en auth.users y perfil en DB
-  const approveUser = async (userId: string) => {
-    if (!supabase || profile?.role !== 'admin') {
-      return { error: 'No tiene permisos de admin.' }
-    }
-
-    // 1. Obtener datos del solicitante de pending_users
-    const { data: pendingUser, error: fetchError } = await supabase
-      .from(PENDING_USERS_TABLE)
-      .select('full_name, email, username')
-      .eq('id', userId)
-      .single()
-
-    if (fetchError) {
-      return { error: fetchError.message }
-    }
-
-    if (!pendingUser) {
-      return { error: 'Solicitud no encontrada.' }
-    }
-
-    // 2. Crear usuario en auth.users
-    const { error: authError } = await supabase.auth.signUp({
-      email: pendingUser.email,
-      password: 'TempPass123!', // El usuario deberá cambiar esto al primer ingreso
+    const { error } = await supabase.auth.signUp({
+      email: email.trim(),
+      password,
       options: {
         data: {
-          full_name: pendingUser.full_name,
-          username: pendingUser.username || pendingUser.email.split('@')[0],
+          full_name: fullName.trim(),
+          username: username?.trim() || email.trim().split('@')[0],
         },
       },
     })
 
-    if (authError) {
-      return { error: authError.message }
+    if (error) {
+      return { error: error.message }
     }
 
-    // 3. El trigger handle_new_user en auth.users debería crear el perfil automáticamente
-    // Ya que insertamos full_name y username en los datos, el trigger los procesará
-
-    // 4. Eliminar de pending_users
-    const { error: deleteError } = await supabase
-      .from(PENDING_USERS_TABLE)
-      .delete()
-      .eq('id', userId)
-
-    if (deleteError) {
-      return { error: deleteError.message }
-    }
-
-    // Recargar solicitudes
-    await loadPendingRequests()
+    await supabase.auth.signOut()
 
     return { error: null }
   }
+
+  const approveUser = async (userId: string) => {
+    return updateUserAccess(userId, 'viewer', ['mapas'])
+  }
+
+  const updateUserAccess = async (
+    userId: string,
+    role: ProfileRole,
+    modules: ModuleKey[],
+  ) => {
+    if (!supabase || profile?.role !== 'admin') {
+      return { error: 'No tiene permisos de admin.' }
+    }
+
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .update({ role })
+      .eq('id', userId)
+
+    if (profileError) {
+      return { error: profileError.message }
+    }
+
+    const { error: deleteAccessError } = await supabase
+      .from('user_module_access')
+      .delete()
+      .eq('user_id', userId)
+
+    if (deleteAccessError) {
+      return { error: deleteAccessError.message }
+    }
+
+    const uniqueModules = Array.from(new Set(modules))
+
+    if (uniqueModules.length > 0) {
+      const { error: insertAccessError } = await supabase
+        .from('user_module_access')
+        .insert(
+          uniqueModules.map((moduleKey) => ({
+            user_id: userId,
+            module_key: moduleKey,
+          })),
+        )
+
+      if (insertAccessError) {
+        return { error: insertAccessError.message }
+      }
+    }
+
+    await loadManagedUsers()
+
+    return { error: null }
+  }
+
+  const deactivateUser = async (userId: string) =>
+    updateUserAccess(userId, 'viewer', [])
 
   const canAccessModule = (moduleKey: ModuleKey) => {
     if (profile?.role === 'admin') {
@@ -268,11 +314,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     user: session?.user ?? null,
     profile,
     moduleAccess,
+    isApproved,
     pendingRequests,
+    managedUsers,
     signIn,
     signUp,
     signOut,
     approveUser,
+    loadManagedUsers,
+    updateUserAccess,
+    deactivateUser,
     canAccessModule,
   }
 
