@@ -3,10 +3,19 @@ import { useAuth } from '../context/useAuth'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 
 type GroupAssignment = 'superintendente' | 'siervo' | 'auxiliar'
+type DriverStatus = 'activo' | 'pendiente' | 'inactivo'
+
+type DriverOption = {
+  id: string
+  full_name: string
+  status: DriverStatus
+}
 
 type GroupRecord = {
   id: string
   group_name: string
+  group_number: number | null
+  driver_id: string | null
   manager_name: string
   manager_role: GroupAssignment
   created_at: string
@@ -18,16 +27,31 @@ const assignmentLabels: Record<GroupAssignment, string> = {
   auxiliar: 'Auxiliar de grupo',
 }
 
+const assignmentOptions: Array<{ value: GroupAssignment; label: string }> = [
+  { value: 'superintendente', label: 'Superintendente' },
+  { value: 'siervo', label: 'Siervo de grupo' },
+  { value: 'auxiliar', label: 'Auxiliar de grupo' },
+]
+
+function getGroupDisplayName(group: GroupRecord) {
+  return group.group_number ? `Grupo ${group.group_number}` : group.group_name
+}
+
+function getGroupKey(group: GroupRecord) {
+  return group.group_number ? `number-${group.group_number}` : `legacy-${group.group_name}`
+}
+
 export function GruposPage() {
   const { profile } = useAuth()
   const client = supabase
   const [groups, setGroups] = useState<GroupRecord[]>([])
+  const [drivers, setDrivers] = useState<DriverOption[]>([])
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null)
-  const [groupName, setGroupName] = useState('')
-  const [managerName, setManagerName] = useState('')
-  const [managerRole, setManagerRole] = useState<GroupAssignment>('superintendente')
-  const [roleFilter, setRoleFilter] = useState<'todos' | GroupAssignment>('todos')
+  const [groupNumber, setGroupNumber] = useState('')
+  const [driverId, setDriverId] = useState('')
+  const [assignment, setAssignment] = useState<GroupAssignment>('siervo')
+  const [assignmentFilter, setAssignmentFilter] = useState<'todos' | GroupAssignment>('todos')
   const [searchTerm, setSearchTerm] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
@@ -35,6 +59,7 @@ export function GruposPage() {
   const [message, setMessage] = useState<string | null>(null)
 
   const canManageGroups = profile?.role === 'admin'
+  const uniqueGroupCount = new Set(groups.map(getGroupKey)).size
   const superintendentCount = groups.filter(
     (group) => group.manager_role === 'superintendente',
   ).length
@@ -46,6 +71,11 @@ export function GruposPage() {
     [groups, selectedGroupId],
   )
 
+  const activeDrivers = useMemo(
+    () => drivers.filter((driver) => driver.status === 'activo'),
+    [drivers],
+  )
+
   useEffect(() => {
     if (!client) {
       setIsLoading(false)
@@ -54,29 +84,44 @@ export function GruposPage() {
 
     let isMounted = true
 
-    const loadGroups = async () => {
+    const loadData = async () => {
       setIsLoading(true)
-      const { data, error: loadError } = await client
-        .from('grupos_servicio')
-        .select('id, group_name, manager_name, manager_role, created_at')
-        .order('group_name', { ascending: true })
+
+      const [
+        { data: groupsData, error: groupsError },
+        { data: driversData, error: driversError },
+      ] = await Promise.all([
+        client
+          .from('grupos_servicio')
+          .select('id, group_name, group_number, driver_id, manager_name, manager_role, created_at')
+          .order('group_number', { ascending: true, nullsFirst: false })
+          .order('group_name', { ascending: true }),
+        client
+          .from('conductores')
+          .select('id, full_name, status')
+          .order('full_name', { ascending: true }),
+      ])
 
       if (!isMounted) {
         return
       }
 
+      const loadError = groupsError?.message || driversError?.message
+
       if (loadError) {
-        setError(loadError.message)
+        setError(loadError)
         setGroups([])
+        setDrivers([])
       } else {
         setError(null)
-        setGroups((data as GroupRecord[]) ?? [])
+        setGroups((groupsData as GroupRecord[]) ?? [])
+        setDrivers((driversData as DriverOption[]) ?? [])
       }
 
       setIsLoading(false)
     }
 
-    void loadGroups()
+    void loadData()
 
     return () => {
       isMounted = false
@@ -87,9 +132,10 @@ export function GruposPage() {
     const normalizedSearch = searchTerm.trim().toLowerCase()
 
     return groups.filter((group) => {
-      const matchesRole = roleFilter === 'todos' ? true : group.manager_role === roleFilter
+      const matchesAssignment =
+        assignmentFilter === 'todos' ? true : group.manager_role === assignmentFilter
 
-      if (!matchesRole) {
+      if (!matchesAssignment) {
         return false
       }
 
@@ -98,7 +144,7 @@ export function GruposPage() {
       }
 
       const haystack = [
-        group.group_name,
+        getGroupDisplayName(group),
         group.manager_name,
         assignmentLabels[group.manager_role],
       ]
@@ -107,21 +153,34 @@ export function GruposPage() {
 
       return haystack.includes(normalizedSearch)
     })
-  }, [groups, roleFilter, searchTerm])
+  }, [assignmentFilter, groups, searchTerm])
+
+  const groupedAssignments = useMemo(() => {
+    const grouped = new Map<string, GroupRecord[]>()
+
+    filteredGroups.forEach((group) => {
+      const key = getGroupKey(group)
+      const current = grouped.get(key) ?? []
+      current.push(group)
+      grouped.set(key, current)
+    })
+
+    return Array.from(grouped.values())
+  }, [filteredGroups])
 
   const resetForm = () => {
     setEditingGroupId(null)
-    setGroupName('')
-    setManagerName('')
-    setManagerRole('superintendente')
+    setGroupNumber('')
+    setDriverId('')
+    setAssignment('siervo')
   }
 
   const startEditing = (group: GroupRecord) => {
     setSelectedGroupId(group.id)
     setEditingGroupId(group.id)
-    setGroupName(group.group_name)
-    setManagerName(group.manager_name)
-    setManagerRole(group.manager_role)
+    setGroupNumber(group.group_number ? String(group.group_number) : '')
+    setDriverId(group.driver_id ?? '')
+    setAssignment(group.manager_role)
     setError(null)
     setMessage(null)
   }
@@ -132,7 +191,7 @@ export function GruposPage() {
     }
 
     const confirmed = window.confirm(
-      `Se eliminara el grupo "${group.group_name}".`,
+      `Se eliminara la asignacion de "${group.manager_name}" en ${getGroupDisplayName(group)}.`,
     )
 
     if (!confirmed) {
@@ -159,7 +218,7 @@ export function GruposPage() {
     if (editingGroupId === group.id) {
       resetForm()
     }
-    setMessage('Grupo eliminado correctamente.')
+    setMessage('Asignacion eliminada correctamente.')
   }
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -177,17 +236,41 @@ export function GruposPage() {
       return
     }
 
-    if (!groupName.trim() || !managerName.trim()) {
-      setError('Completa el nombre del grupo y del encargado.')
+    const parsedGroupNumber = Number(groupNumber)
+
+    if (!Number.isInteger(parsedGroupNumber) || parsedGroupNumber <= 0) {
+      setError('Completa un numero de grupo valido.')
+      return
+    }
+
+    const selectedDriver = drivers.find((driver) => driver.id === driverId)
+
+    if (!selectedDriver) {
+      setError('Selecciona un conductor cargado.')
+      return
+    }
+
+    const existingMainAssignment = groups.find(
+      (group) =>
+        group.id !== editingGroupId &&
+        group.group_number === parsedGroupNumber &&
+        group.manager_role !== 'auxiliar' &&
+        assignment !== 'auxiliar',
+    )
+
+    if (existingMainAssignment) {
+      setError('Ese grupo ya tiene superintendente o siervo asignado.')
       return
     }
 
     setIsSaving(true)
 
     const payload = {
-      group_name: groupName.trim(),
-      manager_name: managerName.trim(),
-      manager_role: managerRole,
+      group_name: `Grupo ${parsedGroupNumber}`,
+      group_number: parsedGroupNumber,
+      driver_id: selectedDriver.id,
+      manager_name: selectedDriver.full_name,
+      manager_role: assignment,
     }
 
     const query = editingGroupId
@@ -195,7 +278,7 @@ export function GruposPage() {
       : client.from('grupos_servicio').insert(payload)
 
     const { data, error: saveError } = await query
-      .select('id, group_name, manager_name, manager_role, created_at')
+      .select('id, group_name, group_number, driver_id, manager_name, manager_role, created_at')
       .single()
 
     if (saveError) {
@@ -206,13 +289,22 @@ export function GruposPage() {
 
     setGroups((current) =>
       [...current.filter((item) => item.id !== (data as GroupRecord).id), data as GroupRecord]
-        .sort((left, right) => left.group_name.localeCompare(right.group_name, 'es')),
+        .sort((left, right) => {
+          const leftNumber = left.group_number ?? Number.MAX_SAFE_INTEGER
+          const rightNumber = right.group_number ?? Number.MAX_SAFE_INTEGER
+
+          if (leftNumber !== rightNumber) {
+            return leftNumber - rightNumber
+          }
+
+          return left.manager_name.localeCompare(right.manager_name, 'es')
+        }),
     )
     setSelectedGroupId((data as GroupRecord).id)
     setMessage(
       editingGroupId
-        ? 'Grupo actualizado correctamente.'
-        : 'Grupo guardado correctamente.',
+        ? 'Asignacion actualizada correctamente.'
+        : 'Asignacion guardada correctamente.',
     )
     resetForm()
     setIsSaving(false)
@@ -225,8 +317,8 @@ export function GruposPage() {
           <p className="eyebrow">Modulo 3</p>
           <h2>Grupos para el Servicio</h2>
           <p className="lead">
-            Consola para registrar grupos, separar responsables y dejar listas
-            las referencias que luego se usan en las salidas.
+            Consola para armar cada grupo con su numero, responsables y
+            auxiliares usando los conductores ya cargados.
           </p>
         </div>
       </section>
@@ -235,19 +327,19 @@ export function GruposPage() {
         <section className="module-hero">
           <div className="module-hero-copy">
             <p className="eyebrow">Coordinacion interna</p>
-            <h3>Ordena grupos y responsables desde una sola vista</h3>
+            <h3>Un grupo, sus hermanos asignados y sus funciones</h3>
             <p>
               {canManageGroups
-                ? 'Define cada grupo y su asignacion: superintendente, siervo o auxiliar, para dejar la estructura lista para usarla en las salidas.'
-                : 'Puedes revisar los grupos existentes y sus responsables. La gestion queda reservada para administradores.'}
+                ? 'Selecciona el numero de grupo, el conductor y su asignacion. Cada grupo puede tener un superintendente o siervo, mas uno o dos auxiliares.'
+                : 'Puedes revisar los grupos existentes y sus asignaciones. La gestion queda reservada para administradores.'}
             </p>
           </div>
 
           <div className="module-hero-stats">
             <article className="module-stat-card">
               <span>Total grupos</span>
-              <strong>{groups.length}</strong>
-              <small>Base activa</small>
+              <strong>{uniqueGroupCount}</strong>
+              <small>Numeros creados</small>
             </article>
             <article className="module-stat-card">
               <span>Superintendentes</span>
@@ -257,12 +349,12 @@ export function GruposPage() {
             <article className="module-stat-card">
               <span>Siervos</span>
               <strong>{servantCount}</strong>
-              <small>Apoyo de grupo</small>
+              <small>Responsables de grupo</small>
             </article>
             <article className="module-stat-card">
               <span>Auxiliares</span>
               <strong>{auxiliaryCount}</strong>
-              <small>Refuerzo asignado</small>
+              <small>Apoyo asignado</small>
             </article>
           </div>
         </section>
@@ -271,7 +363,7 @@ export function GruposPage() {
           <div className="module-registry-toolbar">
             <div>
               <p className="eyebrow">Listado</p>
-              <h3>Grupos cargados</h3>
+              <h3>Asignaciones cargadas</h3>
             </div>
 
             <div className="module-registry-actions">
@@ -281,16 +373,16 @@ export function GruposPage() {
                   type="search"
                   value={searchTerm}
                   onChange={(event) => setSearchTerm(event.target.value)}
-                  placeholder="Buscar por grupo, encargado o asignacion"
+                  placeholder="Buscar por grupo, nombre o asignacion"
                 />
               </label>
 
               <label className="inline-filter">
                 Asignacion
                 <select
-                  value={roleFilter}
+                  value={assignmentFilter}
                   onChange={(event) =>
-                    setRoleFilter(event.target.value as 'todos' | GroupAssignment)
+                    setAssignmentFilter(event.target.value as 'todos' | GroupAssignment)
                   }
                 >
                   <option value="todos">Todos</option>
@@ -311,64 +403,86 @@ export function GruposPage() {
                 : 'Cuando conectes Supabase, aqui apareceran los grupos.'}
             </div>
           ) : (
-            <div className="module-table-shell">
-              <div className="module-table module-table-head">
-                <span>Grupo</span>
-                <span>Encargado</span>
-                <span>Asignacion</span>
-                <span>Acciones</span>
-              </div>
+            <div className="group-assignment-list">
+              {groupedAssignments.map((assignments) => {
+                const firstAssignment = assignments[0]
 
-              <div className="module-table-body">
-                {filteredGroups.map((group) => (
-                  <button
-                    key={group.id}
-                    type="button"
-                    className={
-                      selectedGroupId === group.id
-                        ? 'module-table module-table-row module-table-row-button active'
-                        : 'module-table module-table-row module-table-row-button'
-                    }
-                    onClick={() => setSelectedGroupId(group.id)}
-                  >
-                    <strong>{group.group_name}</strong>
-                    <span>{group.manager_name}</span>
-                    <span>
-                      <span className="status-pill status-pendiente">
-                        {assignmentLabels[group.manager_role]}
-                      </span>
-                    </span>
-                    <span className="module-table-actions">
-                      {canManageGroups ? (
-                        <>
+                if (!firstAssignment) {
+                  return null
+                }
+
+                return (
+                  <article key={getGroupKey(firstAssignment)} className="group-assignment-card">
+                    <div className="group-assignment-head">
+                      <div>
+                        <span>Numero de Grupo</span>
+                        <strong>{getGroupDisplayName(firstAssignment)}</strong>
+                      </div>
+                      <small>{assignments.length} asignacion/es</small>
+                    </div>
+
+                    <div className="module-table-shell">
+                      <div className="module-table module-table-head group-member-table">
+                        <span>Numero</span>
+                        <span>Nombre</span>
+                        <span>Asignacion</span>
+                        <span>Acciones</span>
+                      </div>
+
+                      <div className="module-table-body">
+                        {assignments.map((group) => (
                           <button
+                            key={group.id}
                             type="button"
-                            className="secondary-button"
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              startEditing(group)
-                            }}
+                            className={
+                              selectedGroupId === group.id
+                                ? 'module-table module-table-row module-table-row-button group-member-table active'
+                                : 'module-table module-table-row module-table-row-button group-member-table'
+                            }
+                            onClick={() => setSelectedGroupId(group.id)}
                           >
-                            Editar
+                            <strong>{group.group_number ?? '-'}</strong>
+                            <span>{group.manager_name}</span>
+                            <span>
+                              <span className="status-pill status-pendiente">
+                                {assignmentLabels[group.manager_role]}
+                              </span>
+                            </span>
+                            <span className="module-table-actions">
+                              {canManageGroups ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="secondary-button"
+                                    onClick={(event) => {
+                                      event.stopPropagation()
+                                      startEditing(group)
+                                    }}
+                                  >
+                                    Editar
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="danger-button"
+                                    onClick={(event) => {
+                                      event.stopPropagation()
+                                      void handleDelete(group)
+                                    }}
+                                  >
+                                    Eliminar
+                                  </button>
+                                </>
+                              ) : (
+                                <span className="table-hint">Solo lectura</span>
+                              )}
+                            </span>
                           </button>
-                          <button
-                            type="button"
-                            className="danger-button"
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              void handleDelete(group)
-                            }}
-                          >
-                            Eliminar
-                          </button>
-                        </>
-                      ) : (
-                        <span className="table-hint">Solo lectura</span>
-                      )}
-                    </span>
-                  </button>
-                ))}
-              </div>
+                        ))}
+                      </div>
+                    </div>
+                  </article>
+                )
+              })}
             </div>
           )}
         </section>
@@ -376,43 +490,53 @@ export function GruposPage() {
         <section className="two-column-grid module-form-grid">
           <article className="panel">
             <p className="eyebrow">{editingGroupId ? 'Edicion' : 'Alta'}</p>
-            <h3>{editingGroupId ? 'Editar grupo' : 'Nuevo grupo'}</h3>
+            <h3>{editingGroupId ? 'Editar asignacion' : 'Nueva asignacion'}</h3>
             <p>
-              Carga el nombre del grupo y el responsable para mantener ordenada
-              la estructura del servicio.
+              Carga una fila por cada hermano asignado al grupo. Para sumar
+              auxiliares, repite el mismo numero de grupo y cambia la asignacion.
             </p>
 
             <form className="form-stack" onSubmit={handleSubmit}>
               <label>
-                Nombre del grupo
+                Numero de Grupo
                 <input
-                  value={groupName}
-                  onChange={(event) => setGroupName(event.target.value)}
-                  placeholder="Ej. Grupo Norte"
+                  type="number"
+                  min="1"
+                  value={groupNumber}
+                  onChange={(event) => setGroupNumber(event.target.value)}
+                  placeholder="Ej. 1"
                   disabled={!canManageGroups}
                 />
               </label>
 
               <label>
-                Encargado
-                <input
-                  value={managerName}
-                  onChange={(event) => setManagerName(event.target.value)}
-                  placeholder="Ej. Ana Ruiz"
+                Nombre
+                <select
+                  value={driverId}
+                  onChange={(event) => setDriverId(event.target.value)}
                   disabled={!canManageGroups}
-                />
+                >
+                  <option value="">Seleccionar desde conductores</option>
+                  {activeDrivers.map((driver) => (
+                    <option key={driver.id} value={driver.id}>
+                      {driver.full_name}
+                    </option>
+                  ))}
+                </select>
               </label>
 
               <label>
                 Asignacion
                 <select
-                  value={managerRole}
-                  onChange={(event) => setManagerRole(event.target.value as GroupAssignment)}
+                  value={assignment}
+                  onChange={(event) => setAssignment(event.target.value as GroupAssignment)}
                   disabled={!canManageGroups}
                 >
-                  <option value="superintendente">Superintendente</option>
-                  <option value="siervo">Siervo de grupo</option>
-                  <option value="auxiliar">Auxiliar de grupo</option>
+                  {assignmentOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
               </label>
 
@@ -438,8 +562,8 @@ export function GruposPage() {
                 {isSaving
                   ? 'Guardando...'
                   : editingGroupId
-                    ? 'Actualizar grupo'
-                    : 'Guardar grupo'}
+                    ? 'Actualizar asignacion'
+                    : 'Guardar asignacion'}
               </button>
             </form>
           </article>
@@ -449,13 +573,13 @@ export function GruposPage() {
               {selectedGroup ? 'Ficha rapida' : 'Referencia rapida'}
             </p>
             <h3>
-              {selectedGroup ? selectedGroup.group_name : 'Como conviene usar este modulo'}
+              {selectedGroup ? getGroupDisplayName(selectedGroup) : 'Como conviene usar este modulo'}
             </h3>
 
             {selectedGroup ? (
               <div className="module-detail-list">
                 <div className="module-detail-card">
-                  <span>Encargado</span>
+                  <span>Nombre</span>
                   <strong>{selectedGroup.manager_name}</strong>
                 </div>
                 <div className="module-detail-card">
@@ -468,24 +592,24 @@ export function GruposPage() {
                     {selectedGroup.manager_role === 'superintendente'
                       ? 'Coordina el grupo como responsable principal.'
                       : selectedGroup.manager_role === 'siervo'
-                        ? 'Acompana la organizacion del grupo como apoyo.'
-                        : 'Refuerza la coordinacion cuando se necesita ayuda adicional.'}
+                        ? 'Responsable directo del grupo para la organizacion.'
+                        : 'Auxilia al responsable cuando se necesita apoyo adicional.'}
                   </strong>
                 </div>
               </div>
             ) : (
               <div className="module-guidance-list">
                 <div className="module-guidance-item">
-                  <strong>1. Crea el grupo</strong>
-                  <span>Usa un nombre claro para distinguir zonas o equipos.</span>
+                  <strong>1. Usa el numero del grupo</strong>
+                  <span>El mismo numero agrupa al responsable y sus auxiliares.</span>
                 </div>
                 <div className="module-guidance-item">
-                  <strong>2. Define el responsable</strong>
-                  <span>Marca si corresponde superintendente, siervo o auxiliar.</span>
+                  <strong>2. Elige el nombre desde conductores</strong>
+                  <span>Asi evitamos duplicar personas y mantenemos una sola base.</span>
                 </div>
                 <div className="module-guidance-item">
                   <strong>3. Reutiliza en salidas</strong>
-                  <span>Luego podrás asociar estos grupos al planificador.</span>
+                  <span>Luego podremos usar estos grupos para asignaciones mas rapidas.</span>
                 </div>
               </div>
             )}

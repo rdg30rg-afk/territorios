@@ -20,6 +20,7 @@ type DriverAvailability = {
 type GroupRecord = {
   id: string
   group_name: string
+  group_number: number | null
   manager_name: string
   manager_role: 'superintendente' | 'siervo' | 'auxiliar'
 }
@@ -238,6 +239,14 @@ function getOutingScheduleStatus(value: string) {
     key: 'inactivo' as const,
     label: 'Pasada',
   }
+}
+
+function getGroupLabel(group: GroupRecord) {
+  return group.group_number ? `Grupo ${group.group_number}` : group.group_name
+}
+
+function getGroupSelectionKey(group: GroupRecord) {
+  return group.group_number ? `number-${group.group_number}` : `legacy-${group.group_name}`
 }
 
 function getNextMonday(fromDate: Date) {
@@ -472,7 +481,8 @@ export function SalidasPage() {
           .order('full_name', { ascending: true }),
         client
           .from('grupos_servicio')
-          .select('id, group_name, manager_name, manager_role')
+          .select('id, group_name, group_number, manager_name, manager_role')
+          .order('group_number', { ascending: true, nullsFirst: false })
           .order('group_name', { ascending: true }),
         client
           .from('territorios')
@@ -533,21 +543,38 @@ export function SalidasPage() {
     return availableDrivers.length > 0 ? availableDrivers : activeDrivers
   }
 
+  const selectableGroups = useMemo(() => {
+    const uniqueGroups = new Map<string, GroupRecord>()
+
+    groups.forEach((group) => {
+      const key = getGroupSelectionKey(group)
+      const existingGroup = uniqueGroups.get(key)
+
+      if (!existingGroup || existingGroup.manager_role === 'auxiliar') {
+        uniqueGroups.set(key, group)
+      }
+    })
+
+    return Array.from(uniqueGroups.values())
+  }, [groups])
+
   const outingDetails = useMemo(
     () =>
-      outings.map((outing) => ({
-        ...outing,
-        territoryName:
-          territories.find((territory) => territory.id === outing.territory_id)
-            ?.name ?? 'Sin territorio',
-        driverName:
-          drivers.find((driver) => driver.id === outing.driver_id)?.full_name ??
-          'Sin conductor',
-        groupName:
-          groups.find((group) => group.id === outing.group_id)?.group_name ??
-          'Sin grupo',
-        scheduleStatus: getOutingScheduleStatus(outing.scheduled_for),
-      })),
+      outings.map((outing) => {
+        const selectedGroup = groups.find((group) => group.id === outing.group_id)
+
+        return {
+          ...outing,
+          territoryName:
+            territories.find((territory) => territory.id === outing.territory_id)
+              ?.name ?? 'Sin territorio',
+          driverName:
+            drivers.find((driver) => driver.id === outing.driver_id)?.full_name ??
+            'Sin conductor',
+          groupName: selectedGroup ? getGroupLabel(selectedGroup) : 'Sin grupo',
+          scheduleStatus: getOutingScheduleStatus(outing.scheduled_for),
+        }
+      }),
     [drivers, groups, outings, territories],
   )
 
@@ -1594,9 +1621,9 @@ export function SalidasPage() {
                   disabled={!canManageOutings}
                 >
                   <option value="">Sin grupo asignado</option>
-                  {groups.map((group) => (
+                  {selectableGroups.map((group) => (
                     <option key={group.id} value={group.id}>
-                      {group.group_name}
+                      {getGroupLabel(group)}
                     </option>
                   ))}
                 </select>

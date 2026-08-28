@@ -140,10 +140,18 @@ alter table profiles
 create table if not exists grupos_servicio (
   id uuid primary key default gen_random_uuid(),
   group_name text not null,
+  group_number integer,
+  driver_id uuid references conductores (id) on delete set null,
   manager_name text not null,
   manager_role text not null check (manager_role in ('superintendente', 'siervo', 'auxiliar')),
   created_at timestamptz not null default now()
 );
+
+alter table grupos_servicio
+  add column if not exists group_number integer;
+
+alter table grupos_servicio
+  add column if not exists driver_id uuid references conductores (id) on delete set null;
 
 create table if not exists salidas (
   id uuid primary key default gen_random_uuid(),

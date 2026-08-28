@@ -574,6 +574,43 @@ button {
   grid-template-columns: minmax(0, 1fr) minmax(0, 0.8fr) minmax(220px, 1.2fr) 160px 220px;
 }
 
+.group-member-table {
+  grid-template-columns: 120px minmax(0, 1fr) minmax(190px, 0.75fr) 220px;
+}
+
+.group-assignment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.group-assignment-card {
+  padding: 1rem;
+  border-radius: 22px;
+  border: 1px solid rgba(109, 76, 65, 0.12);
+  background: rgba(255, 248, 242, 0.72);
+}
+
+.group-assignment-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 1rem;
+  margin-bottom: 0.8rem;
+}
+
+.group-assignment-head span,
+.group-assignment-head small {
+  color: var(--text-soft);
+  font-weight: 700;
+}
+
+.group-assignment-head strong {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 1.25rem;
+}
+
 .module-table-body {
   display: flex;
   flex-direction: column;
