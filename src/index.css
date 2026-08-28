@@ -1870,6 +1870,14 @@ button {
   background: rgba(255, 252, 247, 0.94);
 }
 
+.admin-user-card-pending {
+  border-color: rgba(217, 119, 6, 0.34);
+  background:
+    linear-gradient(135deg, rgba(217, 119, 6, 0.12), rgba(255, 252, 247, 0.96)),
+    rgba(255, 252, 247, 0.94);
+  box-shadow: 0 14px 34px rgba(78, 52, 46, 0.08);
+}
+
 .admin-user-main,
 .admin-user-card label,
 .admin-module-checks {
@@ -1915,6 +1923,54 @@ button {
   gap: 0.55rem;
   justify-content: flex-end;
   flex-wrap: wrap;
+}
+
+.admin-notification-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  margin: 1rem 0 1.2rem;
+  padding: 1rem;
+  border-radius: 22px;
+  border: 1px solid rgba(217, 119, 6, 0.22);
+  background: rgba(255, 248, 242, 0.72);
+}
+
+.admin-notification-head,
+.admin-access-subhead {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 1rem;
+}
+
+.admin-notification-head h4,
+.admin-access-subhead h4 {
+  margin: 0.15rem 0 0;
+  font-size: 1.15rem;
+}
+
+.admin-notification-head span,
+.admin-access-subhead span {
+  color: var(--text-soft);
+  font-weight: 700;
+}
+
+.admin-notification-head > strong {
+  min-width: 54px;
+  height: 54px;
+  display: grid;
+  place-items: center;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #bb3e03, #d97706);
+  color: #fff;
+  font-size: 1.45rem;
+}
+
+.admin-access-subhead {
+  margin: 1.15rem 0 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(109, 76, 65, 0.1);
 }
 
 @media (max-width: 1024px) {

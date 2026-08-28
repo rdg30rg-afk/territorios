@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { ModuleKey, ProfileRole } from '../context/AuthTypes'
 import { useAuth } from '../context/useAuth'
 import { supabase } from '../lib/supabase'
@@ -121,6 +121,20 @@ function UserAccessPanel() {
   const [isSavingUserId, setIsSavingUserId] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const pendingUsers = useMemo(
+    () =>
+      managedUsers.filter(
+        (user) => user.role !== 'admin' && user.moduleAccess.length === 0,
+      ),
+    [managedUsers],
+  )
+  const approvedUsers = useMemo(
+    () =>
+      managedUsers.filter(
+        (user) => user.role === 'admin' || user.moduleAccess.length > 0,
+      ),
+    [managedUsers],
+  )
 
   useEffect(() => {
     void loadManagedUsers()
@@ -227,6 +241,123 @@ function UserAccessPanel() {
     setIsSavingUserId(null)
   }
 
+  const renderUserAccessCard = (user: (typeof managedUsers)[number], isPendingCard = false) => {
+    const draftRole = getDraftRole(user.id, user.role)
+    const draftAccess = getDraftModules(user.id, user.moduleAccess)
+    const draftDriverId = getDraftDriverId(user.id, user.driver_id)
+    const isOwnUser = user.id === profile?.id
+
+    return (
+      <article
+        key={user.id}
+        className={
+          isPendingCard
+            ? 'admin-user-card admin-user-card-pending'
+            : 'admin-user-card'
+        }
+      >
+        <div className="admin-user-main">
+          <strong>{user.full_name || user.username || user.auth_email}</strong>
+          <span>{user.auth_email || 'Sin email registrado'}</span>
+          <span
+            className={
+              user.moduleAccess.length > 0 || user.role === 'admin'
+                ? 'status-pill status-activo'
+                : 'status-pill status-pendiente'
+            }
+          >
+            {user.moduleAccess.length > 0 || user.role === 'admin'
+              ? 'Autorizado'
+              : 'Pendiente'}
+          </span>
+        </div>
+
+        <label>
+          Asignacion
+          <select
+            value={draftRole}
+            onChange={(event) =>
+              setDraftRoles((current) => ({
+                ...current,
+                [user.id]: event.target.value as ProfileRole,
+              }))
+            }
+            disabled={isSavingUserId === user.id || isOwnUser}
+          >
+            {manageableRoles.map((role) => (
+              <option key={role.value} value={role.value}>
+                {role.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          Conductor vinculado
+          <select
+            value={draftDriverId}
+            onChange={(event) =>
+              setDraftDriverIds((current) => ({
+                ...current,
+                [user.id]: event.target.value,
+              }))
+            }
+            disabled={isSavingUserId === user.id || isOwnUser}
+          >
+            <option value="">Sin vincular</option>
+            {drivers.map((driver) => (
+              <option key={driver.id} value={driver.id}>
+                {driver.full_name}
+                {driver.status !== 'activo' ? ` (${driver.status})` : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <div className="admin-module-checks">
+          {Object.entries(moduleLabels).map(([moduleKey, label]) => (
+            <label key={moduleKey}>
+              <input
+                type="checkbox"
+                checked={draftAccess.includes(moduleKey as ModuleKey)}
+                onChange={() =>
+                  toggleModule(user.id, moduleKey as ModuleKey, user.moduleAccess)
+                }
+                disabled={isSavingUserId === user.id || isOwnUser || draftRole === 'admin'}
+              />
+              <span>{label}</span>
+            </label>
+          ))}
+        </div>
+
+        <div className="admin-user-actions">
+          <button
+            type="button"
+            className="primary-button"
+            onClick={() =>
+              void saveUser(user.id, user.role, user.moduleAccess, user.driver_id)
+            }
+            disabled={isSavingUserId === user.id || isOwnUser}
+          >
+            {isSavingUserId === user.id
+              ? 'Guardando...'
+              : isPendingCard
+                ? 'Autorizar acceso'
+                : 'Guardar acceso'}
+          </button>
+          <button
+            type="button"
+            className="danger-button"
+            onClick={() => void disableUser(user.id)}
+            disabled={isSavingUserId === user.id || isOwnUser}
+          >
+            Dar de baja
+          </button>
+        </div>
+      </article>
+    )
+  }
+
   return (
     <section className="panel admin-access-panel">
       <div className="section-heading">
@@ -242,106 +373,37 @@ function UserAccessPanel() {
       {error ? <div className="form-feedback error">{error}</div> : null}
       {feedback ? <div className="form-feedback success">{feedback}</div> : null}
 
+      <div className="admin-notification-panel">
+        <div className="admin-notification-head">
+          <div>
+            <p className="eyebrow">Notificaciones</p>
+            <h4>Solicitudes esperando aprobacion</h4>
+            <span>
+              Define los modulos permitidos antes de autorizar el acceso.
+            </span>
+          </div>
+          <strong>{pendingUsers.length}</strong>
+        </div>
+
+        {pendingUsers.length === 0 ? (
+          <div className="status-card">No hay usuarios pendientes de aprobacion.</div>
+        ) : (
+          <div className="admin-user-list">
+            {pendingUsers.map((user) => renderUserAccessCard(user, true))}
+          </div>
+        )}
+      </div>
+
+      <div className="admin-access-subhead">
+        <div>
+          <p className="eyebrow">Usuarios activos</p>
+          <h4>Gestion completa de accesos</h4>
+        </div>
+        <span>{approvedUsers.length} autorizado/s</span>
+      </div>
+
       <div className="admin-user-list">
-        {managedUsers.map((user) => {
-          const draftRole = getDraftRole(user.id, user.role)
-          const draftAccess = getDraftModules(user.id, user.moduleAccess)
-          const draftDriverId = getDraftDriverId(user.id, user.driver_id)
-          const isOwnUser = user.id === profile?.id
-
-          return (
-            <article key={user.id} className="admin-user-card">
-              <div className="admin-user-main">
-                <strong>{user.full_name || user.username || user.auth_email}</strong>
-                <span>{user.auth_email || 'Sin email registrado'}</span>
-                <span className="status-pill status-pendiente">
-                  {user.moduleAccess.length > 0 || user.role === 'admin'
-                    ? 'Autorizado'
-                    : 'Pendiente'}
-                </span>
-              </div>
-
-              <label>
-                Asignacion
-                <select
-                  value={draftRole}
-                  onChange={(event) =>
-                    setDraftRoles((current) => ({
-                      ...current,
-                      [user.id]: event.target.value as ProfileRole,
-                    }))
-                  }
-                  disabled={isSavingUserId === user.id || isOwnUser}
-                >
-                  {manageableRoles.map((role) => (
-                    <option key={role.value} value={role.value}>
-                      {role.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label>
-                Conductor vinculado
-                <select
-                  value={draftDriverId}
-                  onChange={(event) =>
-                    setDraftDriverIds((current) => ({
-                      ...current,
-                      [user.id]: event.target.value,
-                    }))
-                  }
-                  disabled={isSavingUserId === user.id || isOwnUser}
-                >
-                  <option value="">Sin vincular</option>
-                  {drivers.map((driver) => (
-                    <option key={driver.id} value={driver.id}>
-                      {driver.full_name}
-                      {driver.status !== 'activo' ? ` (${driver.status})` : ''}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <div className="admin-module-checks">
-                {Object.entries(moduleLabels).map(([moduleKey, label]) => (
-                  <label key={moduleKey}>
-                    <input
-                      type="checkbox"
-                      checked={draftAccess.includes(moduleKey as ModuleKey)}
-                      onChange={() =>
-                        toggleModule(user.id, moduleKey as ModuleKey, user.moduleAccess)
-                      }
-                      disabled={isSavingUserId === user.id || isOwnUser || draftRole === 'admin'}
-                    />
-                    <span>{label}</span>
-                  </label>
-                ))}
-              </div>
-
-              <div className="admin-user-actions">
-                <button
-                  type="button"
-                  className="primary-button"
-                  onClick={() =>
-                    void saveUser(user.id, user.role, user.moduleAccess, user.driver_id)
-                  }
-                  disabled={isSavingUserId === user.id || isOwnUser}
-                >
-                  {isSavingUserId === user.id ? 'Guardando...' : 'Guardar acceso'}
-                </button>
-                <button
-                  type="button"
-                  className="danger-button"
-                  onClick={() => void disableUser(user.id)}
-                  disabled={isSavingUserId === user.id || isOwnUser}
-                >
-                  Dar de baja
-                </button>
-              </div>
-            </article>
-          )
-        })}
+        {approvedUsers.map((user) => renderUserAccessCard(user))}
       </div>
     </section>
   )
