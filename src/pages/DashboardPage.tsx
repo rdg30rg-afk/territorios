@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { ModuleKey, ProfileRole } from '../context/AuthTypes'
 import { useAuth } from '../context/useAuth'
+import { supabase } from '../lib/supabase'
 
 const moduleStatus = [
   {
@@ -35,6 +36,12 @@ const manageableRoles: Array<{ value: ProfileRole; label: string }> = [
   { value: 'superintendente', label: 'Superintendente' },
   { value: 'admin', label: 'Administrador' },
 ]
+
+type DriverOption = {
+  id: string
+  full_name: string
+  status: 'activo' | 'pendiente' | 'inactivo'
+}
 
 export function DashboardPage() {
   const { profile } = useAuth()
@@ -109,6 +116,8 @@ function UserAccessPanel() {
   } = useAuth()
   const [draftRoles, setDraftRoles] = useState<Record<string, ProfileRole>>({})
   const [draftModules, setDraftModules] = useState<Record<string, ModuleKey[]>>({})
+  const [draftDriverIds, setDraftDriverIds] = useState<Record<string, string>>({})
+  const [drivers, setDrivers] = useState<DriverOption[]>([])
   const [isSavingUserId, setIsSavingUserId] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -117,11 +126,49 @@ function UserAccessPanel() {
     void loadManagedUsers()
   }, [loadManagedUsers])
 
+  useEffect(() => {
+    if (!supabase || profile?.role !== 'admin') {
+      setDrivers([])
+      return
+    }
+
+    const client = supabase
+    let isMounted = true
+
+    const loadDrivers = async () => {
+      const { data, error: loadError } = await client
+        .from('conductores')
+        .select('id, full_name, status')
+        .order('full_name', { ascending: true })
+
+      if (!isMounted) {
+        return
+      }
+
+      if (loadError) {
+        setError(loadError.message)
+        setDrivers([])
+        return
+      }
+
+      setDrivers((data as DriverOption[]) ?? [])
+    }
+
+    void loadDrivers()
+
+    return () => {
+      isMounted = false
+    }
+  }, [profile?.role])
+
   const getDraftRole = (userId: string, fallback: ProfileRole) =>
     draftRoles[userId] ?? fallback
 
   const getDraftModules = (userId: string, fallback: ModuleKey[]) =>
     draftModules[userId] ?? fallback
+
+  const getDraftDriverId = (userId: string, fallback: string | null) =>
+    draftDriverIds[userId] ?? fallback ?? ''
 
   const toggleModule = (userId: string, moduleKey: ModuleKey, fallback: ModuleKey[]) => {
     const currentModules = getDraftModules(userId, fallback)
@@ -135,7 +182,12 @@ function UserAccessPanel() {
     }))
   }
 
-  const saveUser = async (userId: string, fallbackRole: ProfileRole, fallbackModules: ModuleKey[]) => {
+  const saveUser = async (
+    userId: string,
+    fallbackRole: ProfileRole,
+    fallbackModules: ModuleKey[],
+    fallbackDriverId: string | null,
+  ) => {
     setError(null)
     setFeedback(null)
     setIsSavingUserId(userId)
@@ -144,6 +196,7 @@ function UserAccessPanel() {
       userId,
       getDraftRole(userId, fallbackRole),
       getDraftModules(userId, fallbackModules),
+      getDraftDriverId(userId, fallbackDriverId),
     )
 
     if (result.error) {
@@ -167,6 +220,7 @@ function UserAccessPanel() {
     } else {
       setDraftRoles((current) => ({ ...current, [userId]: 'viewer' }))
       setDraftModules((current) => ({ ...current, [userId]: [] }))
+      setDraftDriverIds((current) => ({ ...current, [userId]: '' }))
       setFeedback('Usuario dado de baja correctamente.')
     }
 
@@ -192,6 +246,7 @@ function UserAccessPanel() {
         {managedUsers.map((user) => {
           const draftRole = getDraftRole(user.id, user.role)
           const draftAccess = getDraftModules(user.id, user.moduleAccess)
+          const draftDriverId = getDraftDriverId(user.id, user.driver_id)
           const isOwnUser = user.id === profile?.id
 
           return (
@@ -226,6 +281,28 @@ function UserAccessPanel() {
                 </select>
               </label>
 
+              <label>
+                Conductor vinculado
+                <select
+                  value={draftDriverId}
+                  onChange={(event) =>
+                    setDraftDriverIds((current) => ({
+                      ...current,
+                      [user.id]: event.target.value,
+                    }))
+                  }
+                  disabled={isSavingUserId === user.id || isOwnUser}
+                >
+                  <option value="">Sin vincular</option>
+                  {drivers.map((driver) => (
+                    <option key={driver.id} value={driver.id}>
+                      {driver.full_name}
+                      {driver.status !== 'activo' ? ` (${driver.status})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
               <div className="admin-module-checks">
                 {Object.entries(moduleLabels).map(([moduleKey, label]) => (
                   <label key={moduleKey}>
@@ -246,7 +323,9 @@ function UserAccessPanel() {
                 <button
                   type="button"
                   className="primary-button"
-                  onClick={() => void saveUser(user.id, user.role, user.moduleAccess)}
+                  onClick={() =>
+                    void saveUser(user.id, user.role, user.moduleAccess, user.driver_id)
+                  }
                   disabled={isSavingUserId === user.id || isOwnUser}
                 >
                   {isSavingUserId === user.id ? 'Guardando...' : 'Guardar acceso'}

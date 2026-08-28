@@ -56,7 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const [{ data: profileRow }, { data: accessRows }] = await Promise.all([
         client
           .from('profiles')
-          .select('id, full_name, role')
+          .select('id, full_name, role, driver_id')
           .eq('id', activeSession.user.id)
           .maybeSingle(),
         client
@@ -158,7 +158,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await Promise.all([
         supabase
           .from('profiles')
-          .select('id, full_name, username, auth_email, role')
+          .select('id, full_name, username, auth_email, role, driver_id')
           .order('created_at', { ascending: false }),
         supabase.from('user_module_access').select('user_id, module_key'),
       ])
@@ -174,6 +174,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       username: string | null
       auth_email: string | null
       role: ProfileRole
+      driver_id: string | null
     }>).map((user) => ({
       ...user,
       moduleAccess: ((accessRows ?? []) as Array<{
@@ -250,14 +251,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     userId: string,
     role: ProfileRole,
     modules: ModuleKey[],
+    driverId?: string | null,
   ) => {
     if (!supabase || profile?.role !== 'admin') {
       return { error: 'No tiene permisos de admin.' }
     }
 
+    const profileUpdate: { role: ProfileRole; driver_id?: string | null } = { role }
+
+    if (driverId !== undefined) {
+      profileUpdate.driver_id = driverId || null
+    }
+
     const { error: profileError } = await supabase
       .from('profiles')
-      .update({ role })
+      .update(profileUpdate)
       .eq('id', userId)
 
     if (profileError) {
@@ -296,7 +304,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const deactivateUser = async (userId: string) =>
-    updateUserAccess(userId, 'viewer', [])
+    updateUserAccess(userId, 'viewer', [], null)
 
   const canAccessModule = (moduleKey: ModuleKey) => {
     if (profile?.role === 'admin') {

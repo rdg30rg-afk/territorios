@@ -1778,7 +1778,7 @@ button {
 
 .admin-user-card {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) 180px minmax(260px, 1.2fr) minmax(220px, auto);
+  grid-template-columns: minmax(220px, 1fr) minmax(160px, 0.6fr) minmax(190px, 0.8fr) minmax(260px, 1.1fr) minmax(220px, auto);
   gap: 0.85rem;
   align-items: center;
   padding: 1rem;

@@ -130,6 +130,9 @@ create table if not exists conductores (
   created_at timestamptz not null default now()
 );
 
+alter table profiles
+  add column if not exists driver_id uuid references conductores (id) on delete set null;
+
 create table if not exists grupos_servicio (
   id uuid primary key default gen_random_uuid(),
   group_name text not null,

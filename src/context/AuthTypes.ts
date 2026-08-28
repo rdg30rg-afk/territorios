@@ -14,6 +14,7 @@ export type Profile = {
   id: string
   full_name: string | null
   role: ProfileRole
+  driver_id: string | null
 }
 
 export type PendingUserRequest = {
@@ -28,6 +29,7 @@ export type ManagedUser = {
   username: string | null
   auth_email: string | null
   role: ProfileRole
+  driver_id: string | null
   moduleAccess: ModuleKey[]
 }
 
@@ -56,6 +58,7 @@ export type AuthContextValue = {
     userId: string,
     role: ProfileRole,
     modules: ModuleKey[],
+    driverId?: string | null,
   ) => Promise<{ error: string | null }>
   deactivateUser: (userId: string) => Promise<{ error: string | null }>
   canAccessModule: (moduleKey: ModuleKey) => boolean
