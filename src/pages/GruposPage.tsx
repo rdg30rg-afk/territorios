@@ -424,7 +424,7 @@ export function GruposPage() {
                     <div className="module-table-shell">
                       <div className="module-table module-table-head group-member-table">
                         <span>Numero</span>
-                        <span>Nombre</span>
+                        <span>Nombre y Apellido</span>
                         <span>Asignacion</span>
                         <span>Acciones</span>
                       </div>
@@ -510,7 +510,7 @@ export function GruposPage() {
               </label>
 
               <label>
-                Nombre
+                Nombre y Apellido
                 <select
                   value={driverId}
                   onChange={(event) => setDriverId(event.target.value)}
@@ -579,7 +579,7 @@ export function GruposPage() {
             {selectedGroup ? (
               <div className="module-detail-list">
                 <div className="module-detail-card">
-                  <span>Nombre</span>
+                  <span>Nombre y Apellido</span>
                   <strong>{selectedGroup.manager_name}</strong>
                 </div>
                 <div className="module-detail-card">
