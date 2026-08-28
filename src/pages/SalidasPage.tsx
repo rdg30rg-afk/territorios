@@ -7,6 +7,14 @@ type DriverRecord = {
   id: string
   full_name: string
   status: 'activo' | 'pendiente' | 'inactivo'
+  availability: DriverAvailability | null
+}
+
+type DriverAvailabilityTurn = 'manana' | 'tarde' | 'telefonica'
+
+type DriverAvailability = {
+  days: number[]
+  turns: DriverAvailabilityTurn[]
 }
 
 type GroupRecord = {
@@ -85,6 +93,69 @@ const PHONE_TITLE = 'PREDICACION TELEFONICA'
 const MORNING_HOURS = buildQuarterHourRange(9, 0, 10, 30)
 const AFTERNOON_HOURS = buildQuarterHourRange(15, 30, 19, 0)
 const PHONE_DAYS = new Set([1, 2, 3, 5])
+
+function normalizeDriverAvailability(value: unknown): DriverAvailability {
+  if (!value || typeof value !== 'object') {
+    return {
+      days: [],
+      turns: [],
+    }
+  }
+
+  const availability = value as Partial<DriverAvailability>
+  const days = Array.isArray(availability.days)
+    ? availability.days.filter(
+        (day): day is number =>
+          typeof day === 'number' && Number.isInteger(day) && day >= 0 && day <= 6,
+      )
+    : []
+  const turns = Array.isArray(availability.turns)
+    ? availability.turns.filter(
+        (turn): turn is DriverAvailabilityTurn =>
+          turn === 'manana' || turn === 'tarde' || turn === 'telefonica',
+      )
+    : []
+
+  return {
+    days: Array.from(new Set(days)),
+    turns: Array.from(new Set(turns)),
+  }
+}
+
+function getSlotTurn(slot: PlannerSlot | null): DriverAvailabilityTurn | null {
+  if (!slot) {
+    return null
+  }
+
+  if (slot.kind === 'phone') {
+    return 'telefonica'
+  }
+
+  return slot.period
+}
+
+function isDriverAvailableForSlot(driver: DriverRecord, slot: PlannerSlot | null) {
+  if (driver.status !== 'activo') {
+    return false
+  }
+
+  if (!slot) {
+    return true
+  }
+
+  const availability = normalizeDriverAvailability(driver.availability)
+  const slotDate = new Date(slot.scheduledForValue)
+  const slotDay = slotDate.getDay()
+  const slotTurn = getSlotTurn(slot)
+
+  const matchesDay = availability.days.length === 0 || availability.days.includes(slotDay)
+  const matchesTurn =
+    !slotTurn ||
+    availability.turns.length === 0 ||
+    availability.turns.includes(slotTurn)
+
+  return matchesDay && matchesTurn
+}
 
 function buildQuarterHourRange(
   startHour: number,
@@ -397,7 +468,7 @@ export function SalidasPage() {
       ] = await Promise.all([
         client
           .from('conductores')
-          .select('id, full_name, status')
+          .select('id, full_name, status, availability')
           .order('full_name', { ascending: true }),
         client
           .from('grupos_servicio')
@@ -453,6 +524,14 @@ export function SalidasPage() {
     () => drivers.filter((driver) => driver.status === 'activo'),
     [drivers],
   )
+
+  const getAvailableDriversForSlot = (slot: PlannerSlot | null) => {
+    const availableDrivers = activeDrivers.filter((driver) =>
+      isDriverAvailableForSlot(driver, slot),
+    )
+
+    return availableDrivers.length > 0 ? availableDrivers : activeDrivers
+  }
 
   const outingDetails = useMemo(
     () =>
@@ -1143,6 +1222,7 @@ export function SalidasPage() {
                 const selectedRowSlot = row.slots.find(
                   (slot) => slot.key === draft?.slotKey,
                 ) ?? null
+                const availableRowDrivers = getAvailableDriversForSlot(selectedRowSlot)
                 const selectedRowTerritory =
                   territories.find((territory) => territory.id === draft?.territoryId) ??
                   null
@@ -1192,7 +1272,7 @@ export function SalidasPage() {
                         disabled={!canManageOutings}
                       >
                         <option value="">Conductor</option>
-                        {activeDrivers.map((driver) => (
+                        {availableRowDrivers.map((driver) => (
                           <option key={driver.id} value={driver.id}>
                             {driver.full_name}
                           </option>
@@ -1498,7 +1578,7 @@ export function SalidasPage() {
                   disabled={!canManageOutings}
                 >
                   <option value="">Seleccionar conductor</option>
-                  {activeDrivers.map((driver) => (
+                  {getAvailableDriversForSlot(selectedPlannerSlot).map((driver) => (
                     <option key={driver.id} value={driver.id}>
                       {driver.full_name}
                     </option>

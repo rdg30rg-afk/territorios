@@ -126,9 +126,13 @@ create table if not exists conductores (
   full_name text not null,
   phone text,
   notes text,
+  availability jsonb not null default '{"days": [], "turns": []}'::jsonb,
   status text not null default 'activo' check (status in ('activo', 'pendiente', 'inactivo')),
   created_at timestamptz not null default now()
 );
+
+alter table conductores
+  add column if not exists availability jsonb not null default '{"days": [], "turns": []}'::jsonb;
 
 alter table profiles
   add column if not exists driver_id uuid references conductores (id) on delete set null;

@@ -3,6 +3,12 @@ import { useAuth } from '../context/useAuth'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 
 type DriverStatus = 'activo' | 'pendiente' | 'inactivo'
+type DriverAvailabilityTurn = 'manana' | 'tarde' | 'telefonica'
+
+type DriverAvailability = {
+  days: number[]
+  turns: DriverAvailabilityTurn[]
+}
 
 type DriverRecord = {
   id: string
@@ -10,6 +16,7 @@ type DriverRecord = {
   phone: string | null
   notes: string | null
   status: DriverStatus
+  availability: DriverAvailability | null
   created_at: string
 }
 
@@ -17,6 +24,77 @@ const statusLabels: Record<DriverStatus, string> = {
   activo: 'Activo',
   pendiente: 'Pendiente',
   inactivo: 'Inactivo',
+}
+
+const weekDays = [
+  { value: 1, label: 'Lunes' },
+  { value: 2, label: 'Martes' },
+  { value: 3, label: 'Miercoles' },
+  { value: 4, label: 'Jueves' },
+  { value: 5, label: 'Viernes' },
+  { value: 6, label: 'Sabado' },
+  { value: 0, label: 'Domingo' },
+]
+
+const availabilityTurns: Array<{ value: DriverAvailabilityTurn; label: string }> = [
+  { value: 'manana', label: 'Manana' },
+  { value: 'tarde', label: 'Tarde' },
+  { value: 'telefonica', label: 'Telefonica' },
+]
+
+const emptyAvailability: DriverAvailability = {
+  days: [],
+  turns: [],
+}
+
+function normalizeAvailability(value: unknown): DriverAvailability {
+  if (!value || typeof value !== 'object') {
+    return emptyAvailability
+  }
+
+  const availability = value as Partial<DriverAvailability>
+  const days = Array.isArray(availability.days)
+    ? availability.days.filter(
+        (day): day is number =>
+          typeof day === 'number' && Number.isInteger(day) && day >= 0 && day <= 6,
+      )
+    : []
+  const turns = Array.isArray(availability.turns)
+    ? availability.turns.filter(
+        (turn): turn is DriverAvailabilityTurn =>
+          turn === 'manana' || turn === 'tarde' || turn === 'telefonica',
+      )
+    : []
+
+  return {
+    days: Array.from(new Set(days)),
+    turns: Array.from(new Set(turns)),
+  }
+}
+
+function formatDriverAvailability(availability: DriverAvailability | null) {
+  const normalized = normalizeAvailability(availability)
+
+  if (normalized.days.length === 0 && normalized.turns.length === 0) {
+    return 'Sin disponibilidad cargada'
+  }
+
+  const dayLabels =
+    normalized.days.length === 0
+      ? 'Cualquier dia'
+      : weekDays
+          .filter((day) => normalized.days.includes(day.value))
+          .map((day) => day.label)
+          .join(', ')
+  const turnLabels =
+    normalized.turns.length === 0
+      ? 'Cualquier turno'
+      : availabilityTurns
+          .filter((turn) => normalized.turns.includes(turn.value))
+          .map((turn) => turn.label)
+          .join(', ')
+
+  return `${dayLabels} - ${turnLabels}`
 }
 
 export function ConductoresPage() {
@@ -29,6 +107,7 @@ export function ConductoresPage() {
   const [phone, setPhone] = useState('')
   const [notes, setNotes] = useState('')
   const [status, setStatus] = useState<DriverStatus>('activo')
+  const [availability, setAvailability] = useState<DriverAvailability>(emptyAvailability)
   const [statusFilter, setStatusFilter] = useState<'todos' | DriverStatus>('todos')
   const [searchTerm, setSearchTerm] = useState('')
   const [isLoading, setIsLoading] = useState(true)
@@ -58,7 +137,7 @@ export function ConductoresPage() {
       setIsLoading(true)
       const { data, error: loadError } = await client
         .from('conductores')
-        .select('id, full_name, phone, notes, status, created_at')
+        .select('id, full_name, phone, notes, status, availability, created_at')
         .order('full_name', { ascending: true })
 
       if (!isMounted) {
@@ -116,6 +195,7 @@ export function ConductoresPage() {
     setPhone('')
     setNotes('')
     setStatus('activo')
+    setAvailability(emptyAvailability)
   }
 
   const startEditing = (driver: DriverRecord) => {
@@ -125,8 +205,31 @@ export function ConductoresPage() {
     setPhone(driver.phone ?? '')
     setNotes(driver.notes ?? '')
     setStatus(driver.status)
+    setAvailability(normalizeAvailability(driver.availability))
     setError(null)
     setMessage(null)
+  }
+
+  const toggleAvailabilityDay = (day: number) => {
+    setAvailability((current) => {
+      const days = current.days.includes(day)
+        ? current.days.filter((item) => item !== day)
+        : [...current.days, day]
+
+      return {
+        ...current,
+        days: days.sort((left, right) => left - right),
+      }
+    })
+  }
+
+  const toggleAvailabilityTurn = (turn: DriverAvailabilityTurn) => {
+    setAvailability((current) => ({
+      ...current,
+      turns: current.turns.includes(turn)
+        ? current.turns.filter((item) => item !== turn)
+        : [...current.turns, turn],
+    }))
   }
 
   const handleDelete = async (driver: DriverRecord) => {
@@ -192,6 +295,7 @@ export function ConductoresPage() {
       phone: phone.trim() || null,
       notes: notes.trim() || null,
       status,
+      availability,
     }
 
     const query = editingDriverId
@@ -202,7 +306,7 @@ export function ConductoresPage() {
       : client.from('conductores').insert(payload)
 
     const { data, error: saveError } = await query
-      .select('id, full_name, phone, notes, status, created_at')
+      .select('id, full_name, phone, notes, status, availability, created_at')
       .single()
 
     if (saveError) {
@@ -319,9 +423,10 @@ export function ConductoresPage() {
             </div>
           ) : (
             <div className="module-table-shell">
-              <div className="module-table module-table-head">
+              <div className="module-table module-table-head driver-availability-table">
                 <span>Conductor</span>
                 <span>Telefono</span>
+                <span>Disponibilidad</span>
                 <span>Estado</span>
                 <span>Acciones</span>
               </div>
@@ -333,13 +438,14 @@ export function ConductoresPage() {
                     type="button"
                     className={
                       selectedDriverId === driver.id
-                        ? 'module-table module-table-row module-table-row-button active'
-                        : 'module-table module-table-row module-table-row-button'
+                        ? 'module-table module-table-row module-table-row-button driver-availability-table active'
+                        : 'module-table module-table-row module-table-row-button driver-availability-table'
                     }
                     onClick={() => setSelectedDriverId(driver.id)}
                   >
                     <strong>{driver.full_name}</strong>
                     <span>{driver.phone || 'Sin telefono'}</span>
+                    <span>{formatDriverAvailability(driver.availability)}</span>
                     <span>
                       <span className={`status-pill status-${driver.status}`}>
                         {statusLabels[driver.status]}
@@ -423,6 +529,46 @@ export function ConductoresPage() {
                 </select>
               </label>
 
+              <div className="availability-editor">
+                <div>
+                  <strong>Disponibilidad por dia</strong>
+                  <span>Marca los dias en que puede conducir.</span>
+                </div>
+                <div className="availability-check-grid">
+                  {weekDays.map((day) => (
+                    <label key={day.value}>
+                      <input
+                        type="checkbox"
+                        checked={availability.days.includes(day.value)}
+                        onChange={() => toggleAvailabilityDay(day.value)}
+                        disabled={!canManageDrivers}
+                      />
+                      <span>{day.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="availability-editor">
+                <div>
+                  <strong>Disponibilidad por turno</strong>
+                  <span>Si no marcas nada, quedara sin restriccion de turno.</span>
+                </div>
+                <div className="availability-check-grid compact">
+                  {availabilityTurns.map((turn) => (
+                    <label key={turn.value}>
+                      <input
+                        type="checkbox"
+                        checked={availability.turns.includes(turn.value)}
+                        onChange={() => toggleAvailabilityTurn(turn.value)}
+                        disabled={!canManageDrivers}
+                      />
+                      <span>{turn.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
               <label>
                 Observaciones
                 <textarea
@@ -479,6 +625,10 @@ export function ConductoresPage() {
                 <div className="module-detail-card">
                   <span>Estado</span>
                   <strong>{statusLabels[selectedDriver.status]}</strong>
+                </div>
+                <div className="module-detail-card">
+                  <span>Disponibilidad</span>
+                  <strong>{formatDriverAvailability(selectedDriver.availability)}</strong>
                 </div>
                 <div className="module-detail-card">
                   <span>Observaciones</span>
