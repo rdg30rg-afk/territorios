@@ -91,6 +91,12 @@ type MapSnapshotResult = {
   zoom: number
 }
 
+type MapSnapshotOptions = {
+  paddingRatio?: number
+  targetFillRatio?: number
+  maxZoom?: number
+}
+
 const TILE_SIZE = 256
 
 function formatTerritoryDate(value: string) {
@@ -331,22 +337,22 @@ function drawPdfMapOverlay(
       }
     })
     context.closePath()
-    context.globalAlpha = 0.16
+    context.globalAlpha = 0.1
     context.fillStyle = color
     context.fill()
     context.lineJoin = 'round'
     context.lineCap = 'round'
-    context.globalAlpha = 0.72
+    context.globalAlpha = 0.34
     context.strokeStyle = '#ffffff'
-    context.lineWidth = 7
+    context.lineWidth = 4.5
     context.stroke()
-    context.globalAlpha = 0.9
+    context.globalAlpha = 0.58
     context.strokeStyle = color
-    context.lineWidth = 4
+    context.lineWidth = 2.4
     context.stroke()
-    context.globalAlpha = 0.78
+    context.globalAlpha = 0.32
     context.strokeStyle = '#2f2a27'
-    context.lineWidth = 0.9
+    context.lineWidth = 0.5
     context.stroke()
     context.globalAlpha = 1
 
@@ -371,6 +377,7 @@ async function renderTerritoriesMapSnapshot(
   territories: TerritoryListItem[],
   width: number,
   height: number,
+  options: MapSnapshotOptions = {},
 ): Promise<MapSnapshotResult> {
   const bounds = getLngLatBoundsFromTerritories(territories)
 
@@ -378,18 +385,40 @@ async function renderTerritoriesMapSnapshot(
     throw new Error('No hay coordenadas de territorios para renderizar el plano.')
   }
 
-  const paddedBounds = padLngLatBounds(bounds)
-  const zoom = getBestTileZoom(paddedBounds, width, height)
+  const {
+    paddingRatio = 0.035,
+    targetFillRatio = 0.86,
+    maxZoom = 18,
+  } = options
+  const paddedBounds = padLngLatBounds(bounds, paddingRatio)
+  const baseZoom = getBestTileZoom(paddedBounds, width * 1.6, height * 1.6)
+  const zoom = Math.min(maxZoom, baseZoom + 1)
   const center = getBoundsCenter(paddedBounds)
+  const northWest = lngLatToWorldPixel(paddedBounds.minLng, paddedBounds.maxLat, zoom)
+  const southEast = lngLatToWorldPixel(paddedBounds.maxLng, paddedBounds.minLat, zoom)
+  const boundsPixelWidth = Math.max(Math.abs(southEast.x - northWest.x), 1)
+  const boundsPixelHeight = Math.max(Math.abs(southEast.y - northWest.y), 1)
+  const canvasAspectRatio = width / height
+  const viewportFromWidth = boundsPixelWidth / targetFillRatio
+  const viewportFromHeight = boundsPixelHeight / targetFillRatio
+  let viewportWidth = Math.max(viewportFromWidth, viewportFromHeight * canvasAspectRatio)
+  let viewportHeight = viewportWidth / canvasAspectRatio
+
+  if (viewportHeight < viewportFromHeight) {
+    viewportHeight = viewportFromHeight
+    viewportWidth = viewportHeight * canvasAspectRatio
+  }
+
   const centerWorld = lngLatToWorldPixel(center.lng, center.lat, zoom)
   const topLeft = {
-    x: centerWorld.x - width / 2,
-    y: centerWorld.y - height / 2,
+    x: centerWorld.x - viewportWidth / 2,
+    y: centerWorld.y - viewportHeight / 2,
   }
+  const worldToCanvasScale = width / viewportWidth
   const minTileX = Math.floor(topLeft.x / TILE_SIZE)
   const minTileY = Math.floor(topLeft.y / TILE_SIZE)
-  const maxTileX = Math.floor((topLeft.x + width) / TILE_SIZE)
-  const maxTileY = Math.floor((topLeft.y + height) / TILE_SIZE)
+  const maxTileX = Math.floor((topLeft.x + viewportWidth) / TILE_SIZE)
+  const maxTileY = Math.floor((topLeft.y + viewportHeight) / TILE_SIZE)
   const canvas = document.createElement('canvas')
   const context = canvas.getContext('2d')
 
@@ -419,10 +448,10 @@ async function renderTerritoriesMapSnapshot(
         )
         context.drawImage(
           tile,
-          Math.round(tileX * TILE_SIZE - topLeft.x),
-          Math.round(tileY * TILE_SIZE - topLeft.y),
-          TILE_SIZE,
-          TILE_SIZE,
+          Math.round((tileX * TILE_SIZE - topLeft.x) * worldToCanvasScale),
+          Math.round((tileY * TILE_SIZE - topLeft.y) * worldToCanvasScale),
+          Math.ceil(TILE_SIZE * worldToCanvasScale),
+          Math.ceil(TILE_SIZE * worldToCanvasScale),
         )
       }),
     ),
@@ -432,8 +461,8 @@ async function renderTerritoriesMapSnapshot(
     const worldPoint = lngLatToWorldPixel(lng, lat, zoom)
 
     return {
-      x: worldPoint.x - topLeft.x,
-      y: worldPoint.y - topLeft.y,
+      x: (worldPoint.x - topLeft.x) * worldToCanvasScale,
+      y: (worldPoint.y - topLeft.y) * worldToCanvasScale,
     }
   })
 
@@ -456,7 +485,7 @@ function groupTerritoriesForPdfDetails(territories: TerritoryListItem[]) {
     return [{ title: 'Detalle', territories }]
   }
 
-  const targetPerSector = 8
+  const targetPerSector = 4
   const totalSectors = Math.max(4, Math.ceil(territories.length / targetPerSector))
   const boundsWidth = Math.max(bounds.maxLng - bounds.minLng, 0.0001)
   const boundsHeight = Math.max(bounds.maxLat - bounds.minLat, 0.0001)
@@ -1840,6 +1869,11 @@ export function SanJuanMap() {
         territoriesWithIndex,
         2200,
         1350,
+        {
+          paddingRatio: 0.06,
+          targetFillRatio: 0.72,
+          maxZoom: 16,
+        },
       )
 
       doc.setProperties({
@@ -1896,7 +1930,11 @@ export function SanJuanMap() {
       const detailGroups = groupTerritoriesForPdfDetails(territoriesWithIndex)
 
       for (const group of detailGroups) {
-        const snapshot = await renderTerritoriesMapSnapshot(group.territories, 2200, 1500)
+        const snapshot = await renderTerritoriesMapSnapshot(group.territories, 2400, 1600, {
+          paddingRatio: 0.012,
+          targetFillRatio: 0.92,
+          maxZoom: 18,
+        })
 
         doc.addPage('a4', 'landscape')
         const detailPageWidth = doc.internal.pageSize.getWidth()
