@@ -599,7 +599,12 @@ function groupTerritoriesForPdfDetails(territories: TerritoryListItem[]) {
     groups[row * columns + column].territories.push(territory)
   })
 
-  return groups.filter((group) => group.territories.length > 0)
+  return groups
+    .filter((group) => group.territories.length > 0)
+    .map((group, index) => ({
+      ...group,
+      title: `Sector ${index + 1}`,
+    }))
 }
 
 function collectSnapCandidates(
