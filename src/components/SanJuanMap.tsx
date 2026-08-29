@@ -74,6 +74,11 @@ type TerritoryListItem = TerritoryRecord & {
   color: string
 }
 
+type PdfPoint = {
+  x: number
+  y: number
+}
+
 function formatTerritoryDate(value: string) {
   return new Intl.DateTimeFormat('es-AR', {
     day: '2-digit',
@@ -144,6 +149,107 @@ function getPolygonVertices(geometry: TerritoryPolygon) {
   }
 
   return ring
+}
+
+function getAllTerritoryVertices(territories: TerritoryListItem[]) {
+  return territories.flatMap((territory) =>
+    getPolygonVertices(territory.polygon_geojson),
+  )
+}
+
+function hexToRgb(hexColor: string) {
+  const cleanColor = hexColor.replace('#', '')
+  const fallback = { r: 217, g: 119, b: 6 }
+
+  if (cleanColor.length !== 6) {
+    return fallback
+  }
+
+  const parsed = Number.parseInt(cleanColor, 16)
+
+  if (Number.isNaN(parsed)) {
+    return fallback
+  }
+
+  return {
+    r: (parsed >> 16) & 255,
+    g: (parsed >> 8) & 255,
+    b: parsed & 255,
+  }
+}
+
+function getPdfTerritoryLabel(territory: TerritoryListItem) {
+  return territory.name.trim() || territory.code
+}
+
+function getPdfBounds(territories: TerritoryListItem[]) {
+  const vertices = getAllTerritoryVertices(territories)
+
+  if (vertices.length === 0) {
+    return null
+  }
+
+  const lngValues = vertices.map(([lng]) => lng)
+  const latValues = vertices.map(([, lat]) => lat)
+  const minLng = Math.min(...lngValues)
+  const maxLng = Math.max(...lngValues)
+  const minLat = Math.min(...latValues)
+  const maxLat = Math.max(...latValues)
+  const centerLat = (minLat + maxLat) / 2
+  const lngScale = Math.max(0.2, Math.cos((centerLat * Math.PI) / 180))
+
+  return {
+    minX: minLng * lngScale,
+    maxX: maxLng * lngScale,
+    minY: minLat,
+    maxY: maxLat,
+    lngScale,
+  }
+}
+
+function getPdfProjector(
+  territories: TerritoryListItem[],
+  frame: { x: number, y: number, width: number, height: number },
+) {
+  const bounds = getPdfBounds(territories)
+
+  if (!bounds) {
+    return null
+  }
+
+  const boundsWidth = Math.max(bounds.maxX - bounds.minX, 0.0001)
+  const boundsHeight = Math.max(bounds.maxY - bounds.minY, 0.0001)
+  const scale = Math.min(frame.width / boundsWidth, frame.height / boundsHeight)
+  const drawingWidth = boundsWidth * scale
+  const drawingHeight = boundsHeight * scale
+  const offsetX = frame.x + (frame.width - drawingWidth) / 2
+  const offsetY = frame.y + (frame.height - drawingHeight) / 2
+
+  return ([lng, lat]: [number, number]): PdfPoint => ({
+    x: offsetX + (lng * bounds.lngScale - bounds.minX) * scale,
+    y: offsetY + (bounds.maxY - lat) * scale,
+  })
+}
+
+function getPolygonCenter(points: PdfPoint[]) {
+  const usablePoints =
+    points.length > 1 &&
+    points[0].x === points[points.length - 1].x &&
+    points[0].y === points[points.length - 1].y
+      ? points.slice(0, -1)
+      : points
+
+  if (usablePoints.length === 0) {
+    return { x: 0, y: 0 }
+  }
+
+  return usablePoints.reduce(
+    (center, point) => ({
+      x: center.x + point.x / usablePoints.length,
+      y: center.y + point.y / usablePoints.length,
+    }),
+    { x: 0, y: 0 },
+  )
 }
 
 function collectSnapCandidates(
@@ -377,6 +483,7 @@ export function SanJuanMap() {
   const [currentGeometry, setCurrentGeometry] = useState<TerritoryPolygon | null>(null)
   const [draftVertices, setDraftVertices] = useState<[number, number][]>([])
   const [snapPreviewPoint, setSnapPreviewPoint] = useState<[number, number] | null>(null)
+  const [isExportingPdf, setIsExportingPdf] = useState(false)
   const [overlapPreviewGeometry, setOverlapPreviewGeometry] = useState<
     GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon> | null
   >(null)
@@ -1444,6 +1551,202 @@ export function SanJuanMap() {
     setError(null)
   }
 
+  const handleExportTerritoriesPdf = async () => {
+    if (territoriesWithIndex.length === 0) {
+      setError('No hay territorios cargados para generar el plano PDF.')
+      return
+    }
+
+    setIsExportingPdf(true)
+    setError(null)
+    setMessage(null)
+
+    try {
+      const { default: jsPDF } = await import('jspdf')
+      const doc = new jsPDF({
+        orientation: 'landscape',
+        unit: 'mm',
+        format: 'a4',
+      })
+
+      const pageWidth = doc.internal.pageSize.getWidth()
+      const pageHeight = doc.internal.pageSize.getHeight()
+      const generatedAt = new Intl.DateTimeFormat('es-AR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      }).format(new Date())
+      const mapFrame = {
+        x: 12,
+        y: 28,
+        width: pageWidth - 24,
+        height: pageHeight - 42,
+      }
+      const projectPoint = getPdfProjector(territoriesWithIndex, mapFrame)
+
+      doc.setProperties({
+        title: 'Plano de territorios - San Juan',
+        subject: 'Mapa general de territorios',
+        creator: 'Territorios San Juan',
+      })
+
+      doc.setFillColor(255, 255, 255)
+      doc.rect(0, 0, pageWidth, pageHeight, 'F')
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(20)
+      doc.setTextColor(17, 24, 39)
+      doc.text('Plano general de territorios', 12, 14)
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(9)
+      doc.setTextColor(91, 73, 63)
+      doc.text(
+        `San Juan - ${territoriesWithIndex.length} territorios - ${generatedAt}`,
+        12,
+        21,
+      )
+
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(18)
+      doc.text('N', pageWidth - 24, 13)
+      doc.setDrawColor(17, 24, 39)
+      doc.setLineWidth(0.4)
+      doc.line(pageWidth - 21, 16, pageWidth - 21, 27)
+      doc.line(pageWidth - 25, 21.5, pageWidth - 17, 21.5)
+      doc.triangle(pageWidth - 21, 15.5, pageWidth - 23, 20, pageWidth - 19, 20, 'F')
+
+      doc.setDrawColor(217, 119, 6)
+      doc.setLineWidth(0.7)
+      doc.roundedRect(mapFrame.x, mapFrame.y, mapFrame.width, mapFrame.height, 2, 2, 'S')
+
+      if (projectPoint) {
+        territoriesWithIndex.forEach((territory) => {
+          const color = hexToRgb(territory.color)
+          const points = getPolygonVertices(territory.polygon_geojson).map(projectPoint)
+
+          if (points.length < 3) {
+            return
+          }
+
+          const [startPoint, ...restPoints] = points
+          const lineVectors = restPoints.map((point, index) => {
+            const previousPoint = index === 0 ? startPoint : restPoints[index - 1]
+            return [point.x - previousPoint.x, point.y - previousPoint.y]
+          })
+
+          doc.setFillColor(color.r, color.g, color.b)
+          doc.setDrawColor(color.r, color.g, color.b)
+          doc.setLineWidth(1)
+          doc.lines(lineVectors, startPoint.x, startPoint.y, [1, 1], 'FD', true)
+
+          doc.setDrawColor(93, 64, 55)
+          doc.setLineWidth(0.16)
+          points.forEach((point, index) => {
+            const nextPoint = points[(index + 1) % points.length]
+            doc.line(point.x, point.y, nextPoint.x, nextPoint.y)
+          })
+
+          const center = getPolygonCenter(points)
+          doc.setFillColor(255, 255, 255)
+          doc.setDrawColor(color.r, color.g, color.b)
+          doc.setLineWidth(0.35)
+          doc.circle(center.x, center.y, 3.8, 'FD')
+          doc.setFont('helvetica', 'bold')
+          doc.setFontSize(7)
+          doc.setTextColor(2, 132, 199)
+          doc.text(getPdfTerritoryLabel(territory), center.x, center.y + 0.8, {
+            align: 'center',
+          })
+        })
+      }
+
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(7)
+      doc.setTextColor(91, 73, 63)
+      doc.text(
+        'Plano generado desde territorios guardados. Los numeros identifican cada zona.',
+        12,
+        pageHeight - 7,
+      )
+
+      const legendRows = territoriesWithIndex.map((territory) => ({
+        name: getPdfTerritoryLabel(territory),
+        description: territory.description || 'Sin referencia',
+        color: territory.color,
+        vertices: getPolygonVertexCount(territory.polygon_geojson),
+      }))
+      const rowsPerPage = 24
+
+      for (let pageStart = 0; pageStart < legendRows.length; pageStart += rowsPerPage) {
+        doc.addPage('a4', 'portrait')
+        const legendPageWidth = doc.internal.pageSize.getWidth()
+        const legendPageHeight = doc.internal.pageSize.getHeight()
+        const pageRows = legendRows.slice(pageStart, pageStart + rowsPerPage)
+        let cursorY = 24
+
+        doc.setFillColor(255, 255, 255)
+        doc.rect(0, 0, legendPageWidth, legendPageHeight, 'F')
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(17)
+        doc.setTextColor(17, 24, 39)
+        doc.text('Indice de territorios', 14, 14)
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(9)
+        doc.setTextColor(91, 73, 63)
+        doc.text(
+          `Registros ${pageStart + 1} a ${pageStart + pageRows.length}`,
+          14,
+          20,
+        )
+
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(8)
+        doc.setTextColor(91, 73, 63)
+        doc.text('Color', 14, cursorY)
+        doc.text('Territorio', 32, cursorY)
+        doc.text('Referencia', 72, cursorY)
+        doc.text('Vertices', 181, cursorY, { align: 'right' })
+        cursorY += 4
+        doc.setDrawColor(229, 221, 213)
+        doc.line(14, cursorY, legendPageWidth - 14, cursorY)
+        cursorY += 7
+
+        pageRows.forEach((row) => {
+          const color = hexToRgb(row.color)
+          const description = doc.splitTextToSize(row.description, 95)
+
+          doc.setFillColor(color.r, color.g, color.b)
+          doc.circle(18, cursorY - 1.7, 2.7, 'F')
+          doc.setFont('helvetica', 'bold')
+          doc.setFontSize(9)
+          doc.setTextColor(17, 24, 39)
+          doc.text(row.name, 32, cursorY)
+          doc.setFont('helvetica', 'normal')
+          doc.setTextColor(91, 73, 63)
+          doc.text(description.slice(0, 2), 72, cursorY)
+          doc.setFont('helvetica', 'bold')
+          doc.text(String(row.vertices), 181, cursorY, { align: 'right' })
+
+          cursorY += Math.max(8, description.slice(0, 2).length * 4.5)
+          doc.setDrawColor(245, 239, 232)
+          doc.line(14, cursorY - 3, legendPageWidth - 14, cursorY - 3)
+        })
+      }
+
+      doc.save(`plano-territorios-${new Date().toISOString().slice(0, 10)}.pdf`)
+      setMessage(`Plano PDF generado con ${territoriesWithIndex.length} territorios.`)
+    } catch (pdfError) {
+      setError(
+        pdfError instanceof Error
+          ? pdfError.message
+          : 'No se pudo generar el plano PDF.',
+      )
+    } finally {
+      setIsExportingPdf(false)
+    }
+  }
+
   const toggleFullscreen = async () => {
     const frame = mapFrameRef.current
     const map = mapRef.current
@@ -1646,6 +1949,14 @@ export function SanJuanMap() {
               disabled={!canManageTerritories}
             >
               Nuevo territorio
+            </button>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => void handleExportTerritoriesPdf()}
+              disabled={territoriesWithIndex.length === 0 || isExportingPdf}
+            >
+              {isExportingPdf ? 'Generando PDF...' : 'Descargar plano PDF'}
             </button>
           </div>
         </div>
@@ -2013,6 +2324,14 @@ export function SanJuanMap() {
                 disabled={territoriesWithIndex.length === 0}
               >
                 Exportar CSV
+              </button>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => void handleExportTerritoriesPdf()}
+                disabled={territoriesWithIndex.length === 0 || isExportingPdf}
+              >
+                {isExportingPdf ? 'Generando...' : 'Plano PDF'}
               </button>
             </div>
           </section>
