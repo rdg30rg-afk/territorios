@@ -485,7 +485,7 @@ function groupTerritoriesForPdfDetails(territories: TerritoryListItem[]) {
     return [{ title: 'Detalle', territories }]
   }
 
-  const targetPerSector = 4
+  const targetPerSector = 6
   const totalSectors = Math.max(4, Math.ceil(territories.length / targetPerSector))
   const boundsWidth = Math.max(bounds.maxLng - bounds.minLng, 0.0001)
   const boundsHeight = Math.max(bounds.maxLat - bounds.minLat, 0.0001)
@@ -1931,8 +1931,8 @@ export function SanJuanMap() {
 
       for (const group of detailGroups) {
         const snapshot = await renderTerritoriesMapSnapshot(group.territories, 2400, 1600, {
-          paddingRatio: 0.012,
-          targetFillRatio: 0.92,
+          paddingRatio: 0.018,
+          targetFillRatio: 0.88,
           maxZoom: 18,
         })
 
