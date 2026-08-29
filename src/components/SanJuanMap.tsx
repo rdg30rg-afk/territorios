@@ -2106,6 +2106,18 @@ export function SanJuanMap() {
       }).format(new Date())
       const detailGroups = groupTerritoriesForPdfDetails(territoriesWithIndex)
       const territoryPageNumbers = new Map<string, number>()
+      const sortedTerritoriesForPdfIndex = [...territoriesWithIndex].sort((a, b) => {
+        const labelA = Number(getPdfTerritoryLabel(a))
+        const labelB = Number(getPdfTerritoryLabel(b))
+
+        if (Number.isFinite(labelA) && Number.isFinite(labelB)) {
+          return labelA - labelB
+        }
+
+        return getPdfTerritoryLabel(a).localeCompare(getPdfTerritoryLabel(b), 'es', {
+          numeric: true,
+        })
+      })
 
       detailGroups.forEach((group, groupIndex) => {
         group.territories.forEach((territory) => {
@@ -2144,19 +2156,20 @@ export function SanJuanMap() {
         41,
       )
 
-      const cardGap = 4
-      const cardColumns = 6
+      const cardGap = 3
+      const rowGap = 2.6
+      const cardColumns = 8
       const cardWidth = (pageWidth - 24 - cardGap * (cardColumns - 1)) / cardColumns
-      const cardHeight = 13
+      const cardHeight = 12
       const startX = 12
-      const startY = 56
+      const startY = 54
 
-      territoriesWithIndex.forEach((territory, index) => {
+      sortedTerritoriesForPdfIndex.forEach((territory, index) => {
         const pageNumber = territoryPageNumbers.get(territory.id)
         const column = index % cardColumns
         const row = Math.floor(index / cardColumns)
         const x = startX + column * (cardWidth + cardGap)
-        const y = startY + row * (cardHeight + 3.2)
+        const y = startY + row * (cardHeight + rowGap)
         const color = hexToRgb(territory.color)
 
         doc.setFillColor(255, 255, 255)
@@ -2166,13 +2179,13 @@ export function SanJuanMap() {
         doc.setFillColor(color.r, color.g, color.b)
         doc.circle(x + 4, y + cardHeight / 2, 2.2, 'F')
         doc.setFont('helvetica', 'bold')
-        doc.setFontSize(9)
+        doc.setFontSize(8)
         doc.setTextColor(17, 24, 39)
-        doc.text(`Territorio ${getPdfTerritoryLabel(territory)}`, x + 8, y + 5.2)
+        doc.text(`Territorio ${getPdfTerritoryLabel(territory)}`, x + 7.5, y + 4.9)
         doc.setFont('helvetica', 'normal')
         doc.setFontSize(7)
         doc.setTextColor(91, 73, 63)
-        doc.text(pageNumber ? `Ver sector ${pageNumber - 1}` : 'Sin sector', x + 8, y + 10)
+        doc.text(pageNumber ? `Ver sector ${pageNumber - 1}` : 'Sin sector', x + 7.5, y + 9.4)
 
         if (pageNumber) {
           doc.link(x, y, cardWidth, cardHeight, { pageNumber })
