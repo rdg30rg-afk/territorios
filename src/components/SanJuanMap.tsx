@@ -100,12 +100,20 @@ type LngLatBounds = {
 type MapSnapshotResult = {
   dataUrl: string
   zoom: number
+  territoryHotspots: PdfTerritoryHotspot[]
 }
 
 type MapSnapshotOptions = {
   paddingRatio?: number
   targetFillRatio?: number
   maxZoom?: number
+}
+
+type PdfTerritoryHotspot = {
+  territoryId: string
+  label: string
+  x: number
+  y: number
 }
 
 const TILE_SIZE = 256
@@ -525,15 +533,34 @@ async function renderTerritoriesMapSnapshot(
 
   const territoryIds = new Set(territories.map((territory) => territory.id))
   const visibleBlocks = blocks.filter((block) => territoryIds.has(block.territory_id))
-
-  drawPdfMapOverlay(context, territories, visibleBlocks, ([lng, lat]) => {
+  const projectCanvasPoint = ([lng, lat]: [number, number]) => {
     const worldPoint = lngLatToWorldPixel(lng, lat, zoom)
 
     return {
       x: (worldPoint.x - topLeft.x) * worldToCanvasScale,
       y: (worldPoint.y - topLeft.y) * worldToCanvasScale,
     }
-  })
+  }
+  const territoryHotspots = territories
+    .map((territory) => {
+      const points = getPolygonVertices(territory.polygon_geojson).map(projectCanvasPoint)
+
+      if (points.length < 3) {
+        return null
+      }
+
+      const centerPoint = getPolygonCenter(points)
+
+      return {
+        territoryId: territory.id,
+        label: getPdfTerritoryLabel(territory),
+        x: centerPoint.x,
+        y: centerPoint.y,
+      }
+    })
+    .filter((hotspot): hotspot is PdfTerritoryHotspot => hotspot !== null)
+
+  drawPdfMapOverlay(context, territories, visibleBlocks, projectCanvasPoint)
 
   context.fillStyle = 'rgba(255, 255, 255, 0.86)'
   context.fillRect(12, height - 40, 470, 28)
@@ -544,6 +571,7 @@ async function renderTerritoriesMapSnapshot(
   return {
     dataUrl: canvas.toDataURL('image/jpeg', 0.92),
     zoom,
+    territoryHotspots,
   }
 }
 
@@ -2093,6 +2121,14 @@ export function SanJuanMap() {
           maxZoom: 16,
         },
       )
+      const detailGroups = groupTerritoriesForPdfDetails(territoriesWithIndex)
+      const territoryPageNumbers = new Map<string, number>()
+
+      detailGroups.forEach((group, groupIndex) => {
+        group.territories.forEach((territory) => {
+          territoryPageNumbers.set(territory.id, groupIndex + 2)
+        })
+      })
 
       doc.setProperties({
         title: 'Plano callejero de territorios - San Juan',
@@ -2136,6 +2172,22 @@ export function SanJuanMap() {
         mapFrame.height - 1.6,
       )
 
+      overviewSnapshot.territoryHotspots.forEach((hotspot) => {
+        const pageNumber = territoryPageNumbers.get(hotspot.territoryId)
+
+        if (!pageNumber) {
+          return
+        }
+
+        const linkSize = 13
+        const x =
+          mapFrame.x + 0.8 + (hotspot.x / 2200) * (mapFrame.width - 1.6) - linkSize / 2
+        const y =
+          mapFrame.y + 0.8 + (hotspot.y / 1350) * (mapFrame.height - 1.6) - linkSize / 2
+
+        doc.link(x, y, linkSize, linkSize, { pageNumber })
+      })
+
       doc.setFont('helvetica', 'normal')
       doc.setFontSize(7)
       doc.setTextColor(91, 73, 63)
@@ -2144,8 +2196,6 @@ export function SanJuanMap() {
         12,
         pageHeight - 7,
       )
-
-      const detailGroups = groupTerritoriesForPdfDetails(territoriesWithIndex)
 
       for (const group of detailGroups) {
         const snapshot = await renderTerritoriesMapSnapshot(
@@ -2184,6 +2234,11 @@ export function SanJuanMap() {
           12,
           21,
         )
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(9)
+        doc.setTextColor(187, 62, 3)
+        doc.text('Volver al indice', detailPageWidth - 48, 14)
+        doc.link(detailPageWidth - 50, 8, 38, 9, { pageNumber: 1 })
         doc.setDrawColor(217, 119, 6)
         doc.setLineWidth(0.7)
         doc.roundedRect(
