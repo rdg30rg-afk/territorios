@@ -4,9 +4,11 @@ import 'leaflet-draw'
 import {
   area,
   booleanIntersects,
+  booleanPointInPolygon,
   difference,
   featureCollection,
   intersect,
+  point,
   polygon,
   union,
 } from '@turf/turf'
@@ -64,6 +66,15 @@ type TerritoryRecord = {
   name: string
   description: string | null
   polygon_geojson: TerritoryPolygon
+  created_at: string
+}
+
+type TerritoryBlockRecord = {
+  id: string
+  territory_id: string
+  label: string
+  lat: number
+  lng: number
   created_at: string
 }
 
@@ -202,6 +213,40 @@ function getPdfTerritoryLabel(territory: TerritoryListItem) {
   return territory.name.trim() || territory.code
 }
 
+function getNextBlockLabel(blocks: TerritoryBlockRecord[]) {
+  const usedLabels = new Set(blocks.map((block) => block.label.toLowerCase()))
+  const alphabet = 'abcdefghijklmnopqrstuvwxyz'.split('')
+  const nextLetter = alphabet.find((letter) => !usedLabels.has(letter))
+
+  if (nextLetter) {
+    return nextLetter
+  }
+
+  return String(blocks.length + 1)
+}
+
+function isLngLatInsideTerritory(
+  lngLat: [number, number],
+  territory: TerritoryRecord | TerritoryListItem,
+) {
+  try {
+    return booleanPointInPolygon(
+      point(lngLat),
+      polygon(territory.polygon_geojson.coordinates),
+    )
+  } catch {
+    return false
+  }
+}
+
+function normalizeTerritoryBlock(block: TerritoryBlockRecord) {
+  return {
+    ...block,
+    lat: Number(block.lat),
+    lng: Number(block.lng),
+  }
+}
+
 function getPolygonCenter(points: PdfPoint[]) {
   const usablePoints =
     points.length > 1 &&
@@ -317,6 +362,7 @@ function loadTileImage(src: string) {
 function drawPdfMapOverlay(
   context: CanvasRenderingContext2D,
   territories: TerritoryListItem[],
+  blocks: TerritoryBlockRecord[],
   project: ([lng, lat]: [number, number]) => PdfPoint,
 ) {
   territories.forEach((territory) => {
@@ -371,10 +417,30 @@ function drawPdfMapOverlay(
     context.fillText(getPdfTerritoryLabel(territory), center.x, center.y + 1)
     context.restore()
   })
+
+  blocks.forEach((block) => {
+    const position = project([block.lng, block.lat])
+
+    context.save()
+    context.fillStyle = '#ffffff'
+    context.strokeStyle = '#9c2d91'
+    context.lineWidth = 3
+    context.beginPath()
+    context.arc(position.x, position.y, 14, 0, Math.PI * 2)
+    context.fill()
+    context.stroke()
+    context.fillStyle = '#a72d99'
+    context.font = 'bold 20px Arial'
+    context.textAlign = 'center'
+    context.textBaseline = 'middle'
+    context.fillText(block.label, position.x, position.y + 1)
+    context.restore()
+  })
 }
 
 async function renderTerritoriesMapSnapshot(
   territories: TerritoryListItem[],
+  blocks: TerritoryBlockRecord[],
   width: number,
   height: number,
   options: MapSnapshotOptions = {},
@@ -457,7 +523,10 @@ async function renderTerritoriesMapSnapshot(
     ),
   )
 
-  drawPdfMapOverlay(context, territories, ([lng, lat]) => {
+  const territoryIds = new Set(territories.map((territory) => territory.id))
+  const visibleBlocks = blocks.filter((block) => territoryIds.has(block.territory_id))
+
+  drawPdfMapOverlay(context, territories, visibleBlocks, ([lng, lat]) => {
     const worldPoint = lngLatToWorldPixel(lng, lat, zoom)
 
     return {
@@ -748,6 +817,7 @@ export function SanJuanMap() {
   const existingTerritoryLayerRef = useRef<L.LayerGroup | null>(null)
   const editableGroupRef = useRef<L.FeatureGroup | null>(null)
   const vertexLayerRef = useRef<L.LayerGroup | null>(null)
+  const blockLayerRef = useRef<L.LayerGroup | null>(null)
   const snapGuideLayerRef = useRef<L.LayerGroup | null>(null)
   const overlapLayerRef = useRef<L.LayerGroup | null>(null)
   const drawControlRef = useRef<L.Control.Draw | null>(null)
@@ -756,6 +826,7 @@ export function SanJuanMap() {
   const canManageRef = useRef(canManageTerritories)
 
   const [territories, setTerritories] = useState<TerritoryRecord[]>([])
+  const [territoryBlocks, setTerritoryBlocks] = useState<TerritoryBlockRecord[]>([])
   const [selectedTerritoryId, setSelectedTerritoryId] = useState<string | null>(null)
   const [editingTerritoryId, setEditingTerritoryId] = useState<string | null>(null)
   const [territoryName, setTerritoryName] = useState('')
@@ -770,7 +841,9 @@ export function SanJuanMap() {
   >(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [isDrawing, setIsDrawing] = useState(false)
+  const [isMarkingBlocks, setIsMarkingBlocks] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [isSavingBlock, setIsSavingBlock] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -781,6 +854,16 @@ export function SanJuanMap() {
   const selectedTerritory = useMemo(
     () => territories.find((item) => item.id === selectedTerritoryId) ?? null,
     [selectedTerritoryId, territories],
+  )
+
+  const selectedTerritoryBlocks = useMemo(
+    () =>
+      selectedTerritoryId
+        ? territoryBlocks
+            .filter((block) => block.territory_id === selectedTerritoryId)
+            .sort((first, second) => first.label.localeCompare(second.label, 'es'))
+        : [],
+    [selectedTerritoryId, territoryBlocks],
   )
 
   const territoriesWithIndex = useMemo<TerritoryListItem[]>(
@@ -1063,6 +1146,32 @@ export function SanJuanMap() {
     },
     [selectedColor],
   )
+
+  const renderBlockMarkers = useCallback(() => {
+    const blockLayer = blockLayerRef.current
+    if (!blockLayer) {
+      return
+    }
+
+    blockLayer.clearLayers()
+
+    territoryBlocks.forEach((block) => {
+      const isSelectedBlock = block.territory_id === selectedTerritoryId
+      const marker = L.marker([block.lat, block.lng], {
+        interactive: false,
+        icon: L.divIcon({
+          className: isSelectedBlock
+            ? 'territory-block-label selected'
+            : 'territory-block-label',
+          html: `<span>${block.label}</span>`,
+          iconSize: [26, 26],
+          iconAnchor: [13, 13],
+        }),
+      })
+
+      marker.addTo(blockLayer)
+    })
+  }, [selectedTerritoryId, territoryBlocks])
 
   const renderSnapGuide = useCallback(
     (point: [number, number] | null) => {
@@ -1362,10 +1471,19 @@ export function SanJuanMap() {
 
     const loadTerritories = async () => {
       setIsLoading(true)
-      const { data, error: loadError } = await client
+      const [
+        { data, error: loadError },
+        { data: blockData, error: blockLoadError },
+      ] = await Promise.all([
+        client
         .from('territorios')
         .select('id, name, description, polygon_geojson, created_at')
-        .order('created_at', { ascending: false })
+          .order('created_at', { ascending: false }),
+        client
+          .from('territorio_manzanas')
+          .select('id, territory_id, label, lat, lng, created_at')
+          .order('label', { ascending: true }),
+      ])
 
       if (!isMounted) {
         return
@@ -1377,6 +1495,17 @@ export function SanJuanMap() {
       } else {
         setError(null)
         setTerritories((data as TerritoryRecord[]) ?? [])
+      }
+
+      if (blockLoadError) {
+        setTerritoryBlocks([])
+        if (!loadError) {
+          setMessage('Para usar manzanas, aplica la migracion territorio_manzanas en Supabase.')
+        }
+      } else {
+        setTerritoryBlocks(
+          ((blockData as TerritoryBlockRecord[]) ?? []).map(normalizeTerritoryBlock),
+        )
       }
 
       setIsLoading(false)
@@ -1406,12 +1535,14 @@ export function SanJuanMap() {
     const existingTerritoryLayer = L.layerGroup().addTo(map)
     const editableGroup = new L.FeatureGroup().addTo(map)
     const vertexLayer = L.layerGroup().addTo(map)
+    const blockLayer = L.layerGroup().addTo(map)
     const snapGuideLayer = L.layerGroup().addTo(map)
     const overlapLayer = L.layerGroup().addTo(map)
 
     existingTerritoryLayerRef.current = existingTerritoryLayer
     editableGroupRef.current = editableGroup
     vertexLayerRef.current = vertexLayer
+    blockLayerRef.current = blockLayer
     snapGuideLayerRef.current = snapGuideLayer
     overlapLayerRef.current = overlapLayer
 
@@ -1442,6 +1573,7 @@ export function SanJuanMap() {
       existingTerritoryLayerRef.current = null
       editableGroupRef.current = null
       vertexLayerRef.current = null
+      blockLayerRef.current = null
       snapGuideLayerRef.current = null
       overlapLayerRef.current = null
       drawControlRef.current = null
@@ -1460,6 +1592,10 @@ export function SanJuanMap() {
   useEffect(() => {
     renderVertexMarkers(draftVertices)
   }, [draftVertices, renderVertexMarkers])
+
+  useEffect(() => {
+    renderBlockMarkers()
+  }, [renderBlockMarkers])
 
   useEffect(() => {
     renderSnapGuide(snapPreviewPoint)
@@ -1494,6 +1630,58 @@ export function SanJuanMap() {
     }
   }, [isDrawing, snapLngLat])
 
+  const handleAddBlock = useCallback(
+    async (latLng: L.LatLng) => {
+      if (!client || !selectedTerritory || !canManageTerritories) {
+        return
+      }
+
+      if (isSavingBlock) {
+        return
+      }
+
+      const lngLat: [number, number] = [latLng.lng, latLng.lat]
+
+      if (!isLngLatInsideTerritory(lngLat, selectedTerritory)) {
+        setError('La manzana debe quedar dentro del territorio seleccionado.')
+        return
+      }
+
+      const label = getNextBlockLabel(selectedTerritoryBlocks)
+      setIsSavingBlock(true)
+      setError(null)
+
+      const { data, error: saveBlockError } = await client
+        .from('territorio_manzanas')
+        .insert({
+          territory_id: selectedTerritory.id,
+          label,
+          lat: Number(latLng.lat.toFixed(6)),
+          lng: Number(latLng.lng.toFixed(6)),
+        })
+        .select('id, territory_id, label, lat, lng, created_at')
+        .single()
+
+      if (saveBlockError) {
+        setError(saveBlockError.message)
+        setIsSavingBlock(false)
+        return
+      }
+
+      const savedBlock = normalizeTerritoryBlock(data as TerritoryBlockRecord)
+      setTerritoryBlocks((current) => [...current, savedBlock])
+      setMessage(`Manzana ${savedBlock.label} agregada al territorio ${selectedTerritory.name}.`)
+      setIsSavingBlock(false)
+    },
+    [
+      canManageTerritories,
+      client,
+      isSavingBlock,
+      selectedTerritory,
+      selectedTerritoryBlocks,
+    ],
+  )
+
   useEffect(() => {
     const map = mapRef.current
     if (!map) {
@@ -1501,6 +1689,11 @@ export function SanJuanMap() {
     }
 
     const handleManualPolygonClick = (event: L.LeafletMouseEvent) => {
+      if (isMarkingBlocks) {
+        void handleAddBlock(event.latlng)
+        return
+      }
+
       if (!isDrawing || drawHandlerRef.current) {
         return
       }
@@ -1564,7 +1757,15 @@ export function SanJuanMap() {
     return () => {
       map.off('click', handleManualPolygonClick)
     }
-  }, [editingTerritoryId, isDrawing, selectedColor, snapLngLat, territories])
+  }, [
+    editingTerritoryId,
+    handleAddBlock,
+    isDrawing,
+    isMarkingBlocks,
+    selectedColor,
+    snapLngLat,
+    territories,
+  ])
 
   useEffect(() => {
     if (!currentGeometry) {
@@ -1651,6 +1852,7 @@ export function SanJuanMap() {
     setSnapPreviewPoint(null)
     setOverlapPreviewGeometry(null)
     setIsDrawing(false)
+    setIsMarkingBlocks(false)
     setMessage(null)
     setError(null)
     window.setTimeout(() => renderTerritoriesOnMap('all'), 0)
@@ -1680,6 +1882,7 @@ export function SanJuanMap() {
     setDraftVertices([])
     setCurrentGeometry(null)
     setIsDrawing(true)
+    setIsMarkingBlocks(false)
     setSnapPreviewPoint(null)
     setMessage('Marca los puntos sobre el mapa para delimitar el territorio.')
     setError(null)
@@ -1723,6 +1926,7 @@ export function SanJuanMap() {
     setTerritoryDescription(territory.description ?? '')
     setSelectedColor(territory.color)
     setIsDrawing(false)
+    setIsMarkingBlocks(false)
     setMessage(null)
     setError(null)
     focusGeometry(territory.polygon_geojson)
@@ -1744,6 +1948,7 @@ export function SanJuanMap() {
     setSelectedColor(color)
     setCurrentGeometry(geometry)
     setIsDrawing(false)
+    setIsMarkingBlocks(false)
     setMessage('Territorio cargado en modo edicion.')
     setError(null)
     window.setTimeout(() => focusGeometry(geometry), 0)
@@ -1774,6 +1979,9 @@ export function SanJuanMap() {
     }
 
     setTerritories((current) => current.filter((item) => item.id !== territory.id))
+    setTerritoryBlocks((current) =>
+      current.filter((item) => item.territory_id !== territory.id),
+    )
 
     if (selectedTerritoryId === territory.id || editingTerritoryId === territory.id) {
       resetEditor()
@@ -1793,6 +2001,7 @@ export function SanJuanMap() {
         color: territory.color,
         created_at: territory.created_at,
         polygon_geojson: territory.polygon_geojson,
+        blocks: territoryBlocks.filter((block) => block.territory_id === territory.id),
       })),
     }
 
@@ -1801,13 +2010,15 @@ export function SanJuanMap() {
       JSON.stringify(payload, null, 2),
       'application/json;charset=utf-8',
     )
-    setMessage(`Respaldo JSON descargado con ${territoriesWithIndex.length} territorios.`)
+    setMessage(
+      `Respaldo JSON descargado con ${territoriesWithIndex.length} territorios y ${territoryBlocks.length} manzanas.`,
+    )
     setError(null)
   }
 
   const handleExportTerritoriesCsv = () => {
     const csvLines = [
-      'id,name,description,color,created_at,vertex_count',
+      'id,name,description,color,created_at,vertex_count,block_count',
       ...territoriesWithIndex.map((territory) => {
         const esc = (value: string | null | undefined) =>
           `"${String(value ?? '').replace(/"/g, '""')}"`
@@ -1819,6 +2030,7 @@ export function SanJuanMap() {
           esc(territory.color),
           esc(territory.created_at),
           getPolygonVertexCount(territory.polygon_geojson),
+          territoryBlocks.filter((block) => block.territory_id === territory.id).length,
         ].join(',')
       }),
     ]
@@ -1867,6 +2079,7 @@ export function SanJuanMap() {
       }
       const overviewSnapshot = await renderTerritoriesMapSnapshot(
         territoriesWithIndex,
+        territoryBlocks,
         2200,
         1350,
         {
@@ -1930,11 +2143,17 @@ export function SanJuanMap() {
       const detailGroups = groupTerritoriesForPdfDetails(territoriesWithIndex)
 
       for (const group of detailGroups) {
-        const snapshot = await renderTerritoriesMapSnapshot(group.territories, 2400, 1600, {
-          paddingRatio: 0.018,
-          targetFillRatio: 0.88,
-          maxZoom: 18,
-        })
+        const snapshot = await renderTerritoriesMapSnapshot(
+          group.territories,
+          territoryBlocks,
+          2400,
+          1600,
+          {
+            paddingRatio: 0.018,
+            targetFillRatio: 0.88,
+            maxZoom: 18,
+          },
+        )
 
         doc.addPage('a4', 'landscape')
         const detailPageWidth = doc.internal.pageSize.getWidth()
@@ -2064,6 +2283,53 @@ export function SanJuanMap() {
     } finally {
       setIsExportingPdf(false)
     }
+  }
+
+  const handleStartMarkingBlocks = () => {
+    if (!canManageTerritories) {
+      setError('Solo un usuario administrador puede marcar manzanas.')
+      return
+    }
+
+    if (!selectedTerritory) {
+      setError('Primero selecciona un territorio para agregar sus manzanas.')
+      return
+    }
+
+    disableActiveDrawHandler()
+    setIsDrawing(false)
+    setIsMarkingBlocks(true)
+    setError(null)
+    setMessage(
+      `Haz clic dentro del territorio ${selectedTerritory.name} para agregar la manzana ${getNextBlockLabel(selectedTerritoryBlocks)}.`,
+    )
+  }
+
+  const handleCancelMarkingBlocks = () => {
+    setIsMarkingBlocks(false)
+    setMessage(null)
+    setError(null)
+  }
+
+  const handleDeleteBlock = async (block: TerritoryBlockRecord) => {
+    if (!client || !canManageTerritories) {
+      setError('Solo un usuario administrador puede eliminar manzanas.')
+      return
+    }
+
+    const { error: deleteBlockError } = await client
+      .from('territorio_manzanas')
+      .delete()
+      .eq('id', block.id)
+
+    if (deleteBlockError) {
+      setError(deleteBlockError.message)
+      return
+    }
+
+    setTerritoryBlocks((current) => current.filter((item) => item.id !== block.id))
+    setMessage(`Manzana ${block.label} eliminada.`)
+    setError(null)
   }
 
   const toggleFullscreen = async () => {
@@ -2223,9 +2489,9 @@ export function SanJuanMap() {
             <small>Biblioteca actual</small>
           </article>
           <article className="territory-metric-card">
-            <span>Vertices</span>
-            <strong>{selectedVertexCount}</strong>
-            <small>{currentGeometry ? 'Contorno activo' : 'Sin borrador'}</small>
+            <span>Manzanas</span>
+            <strong>{selectedTerritoryBlocks.length}</strong>
+            <small>{selectedTerritory ? 'Del territorio seleccionado' : 'Sin seleccion'}</small>
           </article>
           <article className="territory-metric-card">
             <span>Modo</span>
@@ -2567,6 +2833,10 @@ export function SanJuanMap() {
                       {selectedTerritory.polygon_geojson.color ?? TERRITORY_COLORS[0]}
                     </strong>
                   </div>
+                  <div>
+                    <span>Manzanas</span>
+                    <strong>{selectedTerritoryBlocks.length}</strong>
+                  </div>
                 </div>
 
                 {canManageTerritories ? (
@@ -2587,6 +2857,60 @@ export function SanJuanMap() {
                     </button>
                   </div>
                 ) : null}
+
+                <div className="territory-block-panel">
+                  <div className="territory-block-panel-head">
+                    <div>
+                      <p className="eyebrow">Manzanas</p>
+                      <strong>
+                        {selectedTerritoryBlocks.length > 0
+                          ? 'Letras cargadas'
+                          : 'Sin letras todavia'}
+                      </strong>
+                    </div>
+                    {canManageTerritories ? (
+                      <button
+                        type="button"
+                        className={isMarkingBlocks ? 'secondary-button' : 'ghost-button'}
+                        onClick={
+                          isMarkingBlocks
+                            ? handleCancelMarkingBlocks
+                            : handleStartMarkingBlocks
+                        }
+                        disabled={isSavingBlock}
+                      >
+                        {isMarkingBlocks ? 'Detener' : 'Marcar manzanas'}
+                      </button>
+                    ) : null}
+                  </div>
+
+                  {selectedTerritoryBlocks.length > 0 ? (
+                    <div className="territory-block-list">
+                      {selectedTerritoryBlocks.map((block) => (
+                        <div key={block.id} className="territory-block-row">
+                          <span className="territory-block-chip">{block.label}</span>
+                          <small>
+                            {block.lat.toFixed(6)}, {block.lng.toFixed(6)}
+                          </small>
+                          {canManageTerritories ? (
+                            <button
+                              type="button"
+                              className="ghost-button compact-button"
+                              onClick={() => void handleDeleteBlock(block)}
+                            >
+                              Quitar
+                            </button>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="status-card">
+                      Selecciona "Marcar manzanas" y haz clic dentro del
+                      territorio para crear las letras a, b, c.
+                    </div>
+                  )}
+                </div>
               </>
             ) : (
               <div className="status-card">
