@@ -79,6 +79,20 @@ type PdfPoint = {
   y: number
 }
 
+type LngLatBounds = {
+  minLng: number
+  maxLng: number
+  minLat: number
+  maxLat: number
+}
+
+type MapSnapshotResult = {
+  dataUrl: string
+  zoom: number
+}
+
+const TILE_SIZE = 256
+
 function formatTerritoryDate(value: string) {
   return new Intl.DateTimeFormat('es-AR', {
     day: '2-digit',
@@ -182,55 +196,6 @@ function getPdfTerritoryLabel(territory: TerritoryListItem) {
   return territory.name.trim() || territory.code
 }
 
-function getPdfBounds(territories: TerritoryListItem[]) {
-  const vertices = getAllTerritoryVertices(territories)
-
-  if (vertices.length === 0) {
-    return null
-  }
-
-  const lngValues = vertices.map(([lng]) => lng)
-  const latValues = vertices.map(([, lat]) => lat)
-  const minLng = Math.min(...lngValues)
-  const maxLng = Math.max(...lngValues)
-  const minLat = Math.min(...latValues)
-  const maxLat = Math.max(...latValues)
-  const centerLat = (minLat + maxLat) / 2
-  const lngScale = Math.max(0.2, Math.cos((centerLat * Math.PI) / 180))
-
-  return {
-    minX: minLng * lngScale,
-    maxX: maxLng * lngScale,
-    minY: minLat,
-    maxY: maxLat,
-    lngScale,
-  }
-}
-
-function getPdfProjector(
-  territories: TerritoryListItem[],
-  frame: { x: number, y: number, width: number, height: number },
-) {
-  const bounds = getPdfBounds(territories)
-
-  if (!bounds) {
-    return null
-  }
-
-  const boundsWidth = Math.max(bounds.maxX - bounds.minX, 0.0001)
-  const boundsHeight = Math.max(bounds.maxY - bounds.minY, 0.0001)
-  const scale = Math.min(frame.width / boundsWidth, frame.height / boundsHeight)
-  const drawingWidth = boundsWidth * scale
-  const drawingHeight = boundsHeight * scale
-  const offsetX = frame.x + (frame.width - drawingWidth) / 2
-  const offsetY = frame.y + (frame.height - drawingHeight) / 2
-
-  return ([lng, lat]: [number, number]): PdfPoint => ({
-    x: offsetX + (lng * bounds.lngScale - bounds.minX) * scale,
-    y: offsetY + (bounds.maxY - lat) * scale,
-  })
-}
-
 function getPolygonCenter(points: PdfPoint[]) {
   const usablePoints =
     points.length > 1 &&
@@ -250,6 +215,287 @@ function getPolygonCenter(points: PdfPoint[]) {
     }),
     { x: 0, y: 0 },
   )
+}
+
+function getLngLatBoundsFromTerritories(territories: TerritoryListItem[]) {
+  const vertices = getAllTerritoryVertices(territories)
+
+  if (vertices.length === 0) {
+    return null
+  }
+
+  return vertices.reduce<LngLatBounds>(
+    (bounds, [lng, lat]) => ({
+      minLng: Math.min(bounds.minLng, lng),
+      maxLng: Math.max(bounds.maxLng, lng),
+      minLat: Math.min(bounds.minLat, lat),
+      maxLat: Math.max(bounds.maxLat, lat),
+    }),
+    {
+      minLng: Number.POSITIVE_INFINITY,
+      maxLng: Number.NEGATIVE_INFINITY,
+      minLat: Number.POSITIVE_INFINITY,
+      maxLat: Number.NEGATIVE_INFINITY,
+    },
+  )
+}
+
+function padLngLatBounds(bounds: LngLatBounds, paddingRatio = 0.08) {
+  const lngPadding = Math.max((bounds.maxLng - bounds.minLng) * paddingRatio, 0.002)
+  const latPadding = Math.max((bounds.maxLat - bounds.minLat) * paddingRatio, 0.002)
+
+  return {
+    minLng: bounds.minLng - lngPadding,
+    maxLng: bounds.maxLng + lngPadding,
+    minLat: bounds.minLat - latPadding,
+    maxLat: bounds.maxLat + latPadding,
+  }
+}
+
+function lngLatToWorldPixel(lng: number, lat: number, zoom: number) {
+  const sinLat = Math.sin((lat * Math.PI) / 180)
+  const clampedSinLat = Math.min(Math.max(sinLat, -0.9999), 0.9999)
+  const scale = TILE_SIZE * 2 ** zoom
+
+  return {
+    x: ((lng + 180) / 360) * scale,
+    y:
+      (0.5 -
+        Math.log((1 + clampedSinLat) / (1 - clampedSinLat)) /
+          (4 * Math.PI)) *
+      scale,
+  }
+}
+
+function getBoundsCenter(bounds: LngLatBounds) {
+  return {
+    lng: (bounds.minLng + bounds.maxLng) / 2,
+    lat: (bounds.minLat + bounds.maxLat) / 2,
+  }
+}
+
+function getBestTileZoom(bounds: LngLatBounds, width: number, height: number) {
+  const paddedBounds = padLngLatBounds(bounds)
+
+  for (let zoom = 18; zoom >= 11; zoom -= 1) {
+    const northWest = lngLatToWorldPixel(
+      paddedBounds.minLng,
+      paddedBounds.maxLat,
+      zoom,
+    )
+    const southEast = lngLatToWorldPixel(
+      paddedBounds.maxLng,
+      paddedBounds.minLat,
+      zoom,
+    )
+
+    if (
+      Math.abs(southEast.x - northWest.x) <= width &&
+      Math.abs(southEast.y - northWest.y) <= height
+    ) {
+      return zoom
+    }
+  }
+
+  return 11
+}
+
+function loadTileImage(src: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image()
+    image.crossOrigin = 'anonymous'
+    image.onload = () => resolve(image)
+    image.onerror = () => reject(new Error(`No se pudo cargar el mapa base: ${src}`))
+    image.src = src
+  })
+}
+
+function drawPdfMapOverlay(
+  context: CanvasRenderingContext2D,
+  territories: TerritoryListItem[],
+  project: ([lng, lat]: [number, number]) => PdfPoint,
+) {
+  territories.forEach((territory) => {
+    const color = territory.color
+    const points = getPolygonVertices(territory.polygon_geojson).map(project)
+
+    if (points.length < 3) {
+      return
+    }
+
+    context.save()
+    context.beginPath()
+    points.forEach((point, index) => {
+      if (index === 0) {
+        context.moveTo(point.x, point.y)
+      } else {
+        context.lineTo(point.x, point.y)
+      }
+    })
+    context.closePath()
+    context.globalAlpha = 0.22
+    context.fillStyle = color
+    context.fill()
+    context.globalAlpha = 1
+    context.lineJoin = 'round'
+    context.lineCap = 'round'
+    context.strokeStyle = '#ffffff'
+    context.lineWidth = 13
+    context.stroke()
+    context.strokeStyle = color
+    context.lineWidth = 8
+    context.stroke()
+    context.strokeStyle = '#2f2a27'
+    context.lineWidth = 2.2
+    context.stroke()
+
+    const center = getPolygonCenter(points)
+    context.fillStyle = '#ffffff'
+    context.strokeStyle = color
+    context.lineWidth = 4
+    context.beginPath()
+    context.arc(center.x, center.y, 21, 0, Math.PI * 2)
+    context.fill()
+    context.stroke()
+    context.fillStyle = '#0284c7'
+    context.font = 'bold 25px Arial'
+    context.textAlign = 'center'
+    context.textBaseline = 'middle'
+    context.fillText(getPdfTerritoryLabel(territory), center.x, center.y + 1)
+    context.restore()
+  })
+}
+
+async function renderTerritoriesMapSnapshot(
+  territories: TerritoryListItem[],
+  width: number,
+  height: number,
+): Promise<MapSnapshotResult> {
+  const bounds = getLngLatBoundsFromTerritories(territories)
+
+  if (!bounds) {
+    throw new Error('No hay coordenadas de territorios para renderizar el plano.')
+  }
+
+  const paddedBounds = padLngLatBounds(bounds)
+  const zoom = getBestTileZoom(paddedBounds, width, height)
+  const center = getBoundsCenter(paddedBounds)
+  const centerWorld = lngLatToWorldPixel(center.lng, center.lat, zoom)
+  const topLeft = {
+    x: centerWorld.x - width / 2,
+    y: centerWorld.y - height / 2,
+  }
+  const minTileX = Math.floor(topLeft.x / TILE_SIZE)
+  const minTileY = Math.floor(topLeft.y / TILE_SIZE)
+  const maxTileX = Math.floor((topLeft.x + width) / TILE_SIZE)
+  const maxTileY = Math.floor((topLeft.y + height) / TILE_SIZE)
+  const canvas = document.createElement('canvas')
+  const context = canvas.getContext('2d')
+
+  canvas.width = width
+  canvas.height = height
+
+  if (!context) {
+    throw new Error('El navegador no pudo preparar el mapa para PDF.')
+  }
+
+  context.fillStyle = '#f8f5ee'
+  context.fillRect(0, 0, width, height)
+
+  await Promise.all(
+    Array.from({ length: maxTileX - minTileX + 1 }).flatMap((_, xIndex) =>
+      Array.from({ length: maxTileY - minTileY + 1 }).map(async (_unused, yIndex) => {
+        const tileX = minTileX + xIndex
+        const tileY = minTileY + yIndex
+        const maxTile = 2 ** zoom
+
+        if (tileX < 0 || tileY < 0 || tileX >= maxTile || tileY >= maxTile) {
+          return
+        }
+
+        const tile = await loadTileImage(
+          `https://tile.openstreetmap.org/${zoom}/${tileX}/${tileY}.png`,
+        )
+        context.drawImage(
+          tile,
+          Math.round(tileX * TILE_SIZE - topLeft.x),
+          Math.round(tileY * TILE_SIZE - topLeft.y),
+          TILE_SIZE,
+          TILE_SIZE,
+        )
+      }),
+    ),
+  )
+
+  drawPdfMapOverlay(context, territories, ([lng, lat]) => {
+    const worldPoint = lngLatToWorldPixel(lng, lat, zoom)
+
+    return {
+      x: worldPoint.x - topLeft.x,
+      y: worldPoint.y - topLeft.y,
+    }
+  })
+
+  context.fillStyle = 'rgba(255, 255, 255, 0.86)'
+  context.fillRect(12, height - 40, 470, 28)
+  context.fillStyle = '#3f342d'
+  context.font = 'bold 20px Arial'
+  context.fillText('© OpenStreetMap contributors', 28, height - 20)
+
+  return {
+    dataUrl: canvas.toDataURL('image/jpeg', 0.92),
+    zoom,
+  }
+}
+
+function groupTerritoriesForPdfDetails(territories: TerritoryListItem[]) {
+  const bounds = getLngLatBoundsFromTerritories(territories)
+
+  if (!bounds || territories.length <= 14) {
+    return [{ title: 'Detalle', territories }]
+  }
+
+  const columns = 2
+  const rows = Math.max(2, Math.ceil(territories.length / 24))
+  const groups = Array.from({ length: columns * rows }, (_unused, index) => ({
+    title: `Sector ${index + 1}`,
+    territories: [] as TerritoryListItem[],
+  }))
+
+  territories.forEach((territory) => {
+    const vertices = getPolygonVertices(territory.polygon_geojson)
+    const center = vertices.reduce(
+      (result, [lng, lat]) => ({
+        lng: result.lng + lng / vertices.length,
+        lat: result.lat + lat / vertices.length,
+      }),
+      { lng: 0, lat: 0 },
+    )
+    const column = Math.min(
+      columns - 1,
+      Math.max(
+        0,
+        Math.floor(
+          ((center.lng - bounds.minLng) / Math.max(bounds.maxLng - bounds.minLng, 0.0001)) *
+            columns,
+        ),
+      ),
+    )
+    const row = Math.min(
+      rows - 1,
+      Math.max(
+        0,
+        Math.floor(
+          ((bounds.maxLat - center.lat) / Math.max(bounds.maxLat - bounds.minLat, 0.0001)) *
+            rows,
+        ),
+      ),
+    )
+
+    groups[row * columns + column].territories.push(territory)
+  })
+
+  return groups.filter((group) => group.territories.length > 0)
 }
 
 function collectSnapCandidates(
@@ -1584,11 +1830,15 @@ export function SanJuanMap() {
         width: pageWidth - 24,
         height: pageHeight - 42,
       }
-      const projectPoint = getPdfProjector(territoriesWithIndex, mapFrame)
+      const overviewSnapshot = await renderTerritoriesMapSnapshot(
+        territoriesWithIndex,
+        2200,
+        1350,
+      )
 
       doc.setProperties({
-        title: 'Plano de territorios - San Juan',
-        subject: 'Mapa general de territorios',
+        title: 'Plano callejero de territorios - San Juan',
+        subject: 'Mapa con calles y contornos de territorios',
         creator: 'Territorios San Juan',
       })
 
@@ -1597,12 +1847,12 @@ export function SanJuanMap() {
       doc.setFont('helvetica', 'bold')
       doc.setFontSize(20)
       doc.setTextColor(17, 24, 39)
-      doc.text('Plano general de territorios', 12, 14)
+      doc.text('Plano callejero de territorios', 12, 14)
       doc.setFont('helvetica', 'normal')
       doc.setFontSize(9)
       doc.setTextColor(91, 73, 63)
       doc.text(
-        `San Juan - ${territoriesWithIndex.length} territorios - ${generatedAt}`,
+        `San Juan - ${territoriesWithIndex.length} territorios - Zoom ${overviewSnapshot.zoom} - ${generatedAt}`,
         12,
         21,
       )
@@ -1619,56 +1869,81 @@ export function SanJuanMap() {
       doc.setDrawColor(217, 119, 6)
       doc.setLineWidth(0.7)
       doc.roundedRect(mapFrame.x, mapFrame.y, mapFrame.width, mapFrame.height, 2, 2, 'S')
-
-      if (projectPoint) {
-        territoriesWithIndex.forEach((territory) => {
-          const color = hexToRgb(territory.color)
-          const points = getPolygonVertices(territory.polygon_geojson).map(projectPoint)
-
-          if (points.length < 3) {
-            return
-          }
-
-          const [startPoint, ...restPoints] = points
-          const lineVectors = restPoints.map((point, index) => {
-            const previousPoint = index === 0 ? startPoint : restPoints[index - 1]
-            return [point.x - previousPoint.x, point.y - previousPoint.y]
-          })
-
-          doc.setFillColor(color.r, color.g, color.b)
-          doc.setDrawColor(color.r, color.g, color.b)
-          doc.setLineWidth(1)
-          doc.lines(lineVectors, startPoint.x, startPoint.y, [1, 1], 'FD', true)
-
-          doc.setDrawColor(93, 64, 55)
-          doc.setLineWidth(0.16)
-          points.forEach((point, index) => {
-            const nextPoint = points[(index + 1) % points.length]
-            doc.line(point.x, point.y, nextPoint.x, nextPoint.y)
-          })
-
-          const center = getPolygonCenter(points)
-          doc.setFillColor(255, 255, 255)
-          doc.setDrawColor(color.r, color.g, color.b)
-          doc.setLineWidth(0.35)
-          doc.circle(center.x, center.y, 3.8, 'FD')
-          doc.setFont('helvetica', 'bold')
-          doc.setFontSize(7)
-          doc.setTextColor(2, 132, 199)
-          doc.text(getPdfTerritoryLabel(territory), center.x, center.y + 0.8, {
-            align: 'center',
-          })
-        })
-      }
+      doc.addImage(
+        overviewSnapshot.dataUrl,
+        'JPEG',
+        mapFrame.x + 0.8,
+        mapFrame.y + 0.8,
+        mapFrame.width - 1.6,
+        mapFrame.height - 1.6,
+      )
 
       doc.setFont('helvetica', 'normal')
       doc.setFontSize(7)
       doc.setTextColor(91, 73, 63)
       doc.text(
-        'Plano generado desde territorios guardados. Los numeros identifican cada zona.',
+        'Mapa base: OpenStreetMap. Los contornos y numeros corresponden a territorios guardados.',
         12,
         pageHeight - 7,
       )
+
+      const detailGroups = groupTerritoriesForPdfDetails(territoriesWithIndex)
+
+      for (const group of detailGroups) {
+        const snapshot = await renderTerritoriesMapSnapshot(group.territories, 1800, 2300)
+
+        doc.addPage('a4', 'portrait')
+        const detailPageWidth = doc.internal.pageSize.getWidth()
+        const detailPageHeight = doc.internal.pageSize.getHeight()
+        const detailFrame = {
+          x: 12,
+          y: 28,
+          width: detailPageWidth - 24,
+          height: detailPageHeight - 42,
+        }
+
+        doc.setFillColor(255, 255, 255)
+        doc.rect(0, 0, detailPageWidth, detailPageHeight, 'F')
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(20)
+        doc.setTextColor(17, 24, 39)
+        doc.text(group.title, 12, 14)
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(9)
+        doc.setTextColor(91, 73, 63)
+        doc.text(
+          `${group.territories.length} territorios - Zoom ${snapshot.zoom}`,
+          12,
+          21,
+        )
+        doc.setDrawColor(217, 119, 6)
+        doc.setLineWidth(0.7)
+        doc.roundedRect(
+          detailFrame.x,
+          detailFrame.y,
+          detailFrame.width,
+          detailFrame.height,
+          2,
+          2,
+          'S',
+        )
+        doc.addImage(
+          snapshot.dataUrl,
+          'JPEG',
+          detailFrame.x + 0.8,
+          detailFrame.y + 0.8,
+          detailFrame.width - 1.6,
+          detailFrame.height - 1.6,
+        )
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(7)
+        doc.setTextColor(91, 73, 63)
+        doc.text(
+          'Detalle generado por zonas para que se distingan calles y contornos.',
+          12,
+          detailPageHeight - 7,
+        )
+      }
 
       const legendRows = territoriesWithIndex.map((territory) => ({
         name: getPdfTerritoryLabel(territory),
