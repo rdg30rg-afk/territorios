@@ -2104,23 +2104,6 @@ export function SanJuanMap() {
         hour: '2-digit',
         minute: '2-digit',
       }).format(new Date())
-      const mapFrame = {
-        x: 12,
-        y: 28,
-        width: pageWidth - 24,
-        height: pageHeight - 42,
-      }
-      const overviewSnapshot = await renderTerritoriesMapSnapshot(
-        territoriesWithIndex,
-        territoryBlocks,
-        2200,
-        1350,
-        {
-          paddingRatio: 0.06,
-          targetFillRatio: 0.72,
-          maxZoom: 16,
-        },
-      )
       const detailGroups = groupTerritoriesForPdfDetails(territoriesWithIndex)
       const territoryPageNumbers = new Map<string, number>()
 
@@ -2146,53 +2129,61 @@ export function SanJuanMap() {
       doc.setFontSize(9)
       doc.setTextColor(91, 73, 63)
       doc.text(
-        `San Juan - ${territoriesWithIndex.length} territorios - Zoom ${overviewSnapshot.zoom} - ${generatedAt}`,
+        `San Juan - ${territoriesWithIndex.length} territorios - ${generatedAt}`,
         12,
         21,
       )
-
+      doc.setFillColor(255, 248, 242)
+      doc.roundedRect(12, 30, pageWidth - 24, 18, 4, 4, 'F')
       doc.setFont('helvetica', 'bold')
-      doc.setFontSize(18)
-      doc.text('N', pageWidth - 24, 13)
-      doc.setDrawColor(17, 24, 39)
-      doc.setLineWidth(0.4)
-      doc.line(pageWidth - 21, 16, pageWidth - 21, 27)
-      doc.line(pageWidth - 25, 21.5, pageWidth - 17, 21.5)
-      doc.triangle(pageWidth - 21, 15.5, pageWidth - 23, 20, pageWidth - 19, 20, 'F')
-
-      doc.setDrawColor(217, 119, 6)
-      doc.setLineWidth(0.7)
-      doc.roundedRect(mapFrame.x, mapFrame.y, mapFrame.width, mapFrame.height, 2, 2, 'S')
-      doc.addImage(
-        overviewSnapshot.dataUrl,
-        'JPEG',
-        mapFrame.x + 0.8,
-        mapFrame.y + 0.8,
-        mapFrame.width - 1.6,
-        mapFrame.height - 1.6,
+      doc.setFontSize(10)
+      doc.setTextColor(91, 73, 63)
+      doc.text(
+        'Toca o haz clic sobre un territorio para ir directo al sector ampliado.',
+        18,
+        41,
       )
 
-      overviewSnapshot.territoryHotspots.forEach((hotspot) => {
-        const pageNumber = territoryPageNumbers.get(hotspot.territoryId)
+      const cardGap = 4
+      const cardColumns = 6
+      const cardWidth = (pageWidth - 24 - cardGap * (cardColumns - 1)) / cardColumns
+      const cardHeight = 13
+      const startX = 12
+      const startY = 56
 
-        if (!pageNumber) {
-          return
+      territoriesWithIndex.forEach((territory, index) => {
+        const pageNumber = territoryPageNumbers.get(territory.id)
+        const column = index % cardColumns
+        const row = Math.floor(index / cardColumns)
+        const x = startX + column * (cardWidth + cardGap)
+        const y = startY + row * (cardHeight + 3.2)
+        const color = hexToRgb(territory.color)
+
+        doc.setFillColor(255, 255, 255)
+        doc.setDrawColor(color.r, color.g, color.b)
+        doc.setLineWidth(0.5)
+        doc.roundedRect(x, y, cardWidth, cardHeight, 2, 2, 'FD')
+        doc.setFillColor(color.r, color.g, color.b)
+        doc.circle(x + 4, y + cardHeight / 2, 2.2, 'F')
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(9)
+        doc.setTextColor(17, 24, 39)
+        doc.text(`Territorio ${getPdfTerritoryLabel(territory)}`, x + 8, y + 5.2)
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(7)
+        doc.setTextColor(91, 73, 63)
+        doc.text(pageNumber ? `Ver sector ${pageNumber - 1}` : 'Sin sector', x + 8, y + 10)
+
+        if (pageNumber) {
+          doc.link(x, y, cardWidth, cardHeight, { pageNumber })
         }
-
-        const linkSize = 13
-        const x =
-          mapFrame.x + 0.8 + (hotspot.x / 2200) * (mapFrame.width - 1.6) - linkSize / 2
-        const y =
-          mapFrame.y + 0.8 + (hotspot.y / 1350) * (mapFrame.height - 1.6) - linkSize / 2
-
-        doc.link(x, y, linkSize, linkSize, { pageNumber })
       })
 
       doc.setFont('helvetica', 'normal')
       doc.setFontSize(7)
       doc.setTextColor(91, 73, 63)
       doc.text(
-        'Mapa base: OpenStreetMap. Los contornos y numeros corresponden a territorios guardados.',
+        'Indice interactivo. Los mapas callejeros comienzan en las paginas de sectores.',
         12,
         pageHeight - 7,
       )
