@@ -240,9 +240,9 @@ function getLngLatBoundsFromTerritories(territories: TerritoryListItem[]) {
   )
 }
 
-function padLngLatBounds(bounds: LngLatBounds, paddingRatio = 0.08) {
-  const lngPadding = Math.max((bounds.maxLng - bounds.minLng) * paddingRatio, 0.002)
-  const latPadding = Math.max((bounds.maxLat - bounds.minLat) * paddingRatio, 0.002)
+function padLngLatBounds(bounds: LngLatBounds, paddingRatio = 0.035) {
+  const lngPadding = Math.max((bounds.maxLng - bounds.minLng) * paddingRatio, 0.00045)
+  const latPadding = Math.max((bounds.maxLat - bounds.minLat) * paddingRatio, 0.00045)
 
   return {
     minLng: bounds.minLng - lngPadding,
@@ -275,17 +275,15 @@ function getBoundsCenter(bounds: LngLatBounds) {
 }
 
 function getBestTileZoom(bounds: LngLatBounds, width: number, height: number) {
-  const paddedBounds = padLngLatBounds(bounds)
-
   for (let zoom = 18; zoom >= 11; zoom -= 1) {
     const northWest = lngLatToWorldPixel(
-      paddedBounds.minLng,
-      paddedBounds.maxLat,
+      bounds.minLng,
+      bounds.maxLat,
       zoom,
     )
     const southEast = lngLatToWorldPixel(
-      paddedBounds.maxLng,
-      paddedBounds.minLat,
+      bounds.maxLng,
+      bounds.minLat,
       zoom,
     )
 
@@ -333,32 +331,35 @@ function drawPdfMapOverlay(
       }
     })
     context.closePath()
-    context.globalAlpha = 0.22
+    context.globalAlpha = 0.16
     context.fillStyle = color
     context.fill()
-    context.globalAlpha = 1
     context.lineJoin = 'round'
     context.lineCap = 'round'
+    context.globalAlpha = 0.72
     context.strokeStyle = '#ffffff'
-    context.lineWidth = 13
+    context.lineWidth = 7
     context.stroke()
+    context.globalAlpha = 0.9
     context.strokeStyle = color
-    context.lineWidth = 8
+    context.lineWidth = 4
     context.stroke()
+    context.globalAlpha = 0.78
     context.strokeStyle = '#2f2a27'
-    context.lineWidth = 2.2
+    context.lineWidth = 0.9
     context.stroke()
+    context.globalAlpha = 1
 
     const center = getPolygonCenter(points)
     context.fillStyle = '#ffffff'
     context.strokeStyle = color
-    context.lineWidth = 4
+    context.lineWidth = 3
     context.beginPath()
     context.arc(center.x, center.y, 21, 0, Math.PI * 2)
     context.fill()
     context.stroke()
     context.fillStyle = '#0284c7'
-    context.font = 'bold 25px Arial'
+    context.font = 'bold 24px Arial'
     context.textAlign = 'center'
     context.textBaseline = 'middle'
     context.fillText(getPdfTerritoryLabel(territory), center.x, center.y + 1)
@@ -455,8 +456,13 @@ function groupTerritoriesForPdfDetails(territories: TerritoryListItem[]) {
     return [{ title: 'Detalle', territories }]
   }
 
-  const columns = 2
-  const rows = Math.max(2, Math.ceil(territories.length / 24))
+  const targetPerSector = 8
+  const totalSectors = Math.max(4, Math.ceil(territories.length / targetPerSector))
+  const boundsWidth = Math.max(bounds.maxLng - bounds.minLng, 0.0001)
+  const boundsHeight = Math.max(bounds.maxLat - bounds.minLat, 0.0001)
+  const aspectRatio = boundsWidth / boundsHeight
+  const columns = Math.max(2, Math.ceil(Math.sqrt(totalSectors * aspectRatio)))
+  const rows = Math.max(2, Math.ceil(totalSectors / columns))
   const groups = Array.from({ length: columns * rows }, (_unused, index) => ({
     title: `Sector ${index + 1}`,
     territories: [] as TerritoryListItem[],
@@ -1890,9 +1896,9 @@ export function SanJuanMap() {
       const detailGroups = groupTerritoriesForPdfDetails(territoriesWithIndex)
 
       for (const group of detailGroups) {
-        const snapshot = await renderTerritoriesMapSnapshot(group.territories, 1800, 2300)
+        const snapshot = await renderTerritoriesMapSnapshot(group.territories, 2200, 1500)
 
-        doc.addPage('a4', 'portrait')
+        doc.addPage('a4', 'landscape')
         const detailPageWidth = doc.internal.pageSize.getWidth()
         const detailPageHeight = doc.internal.pageSize.getHeight()
         const detailFrame = {
