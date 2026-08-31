@@ -8,6 +8,7 @@ type DriverAvailabilityTurn = 'manana' | 'tarde' | 'telefonica'
 type DriverAvailability = {
   days: number[]
   turns: DriverAvailabilityTurn[]
+  byDay?: Record<string, DriverAvailabilityTurn[]>
 }
 
 type DriverRecord = {
@@ -45,6 +46,7 @@ const availabilityTurns: Array<{ value: DriverAvailabilityTurn; label: string }>
 const emptyAvailability: DriverAvailability = {
   days: [],
   turns: [],
+  byDay: {},
 }
 
 function normalizeAvailability(value: unknown): DriverAvailability {
@@ -65,10 +67,36 @@ function normalizeAvailability(value: unknown): DriverAvailability {
           turn === 'manana' || turn === 'tarde' || turn === 'telefonica',
       )
     : []
+  const byDay = Object.entries(availability.byDay ?? {}).reduce<
+    Record<string, DriverAvailabilityTurn[]>
+  >((result, [day, dayTurns]) => {
+    const numericDay = Number(day)
+
+    if (
+      !Number.isInteger(numericDay) ||
+      numericDay < 0 ||
+      numericDay > 6 ||
+      !Array.isArray(dayTurns)
+    ) {
+      return result
+    }
+
+    const normalizedTurns = dayTurns.filter(
+      (turn): turn is DriverAvailabilityTurn =>
+        turn === 'manana' || turn === 'tarde' || turn === 'telefonica',
+    )
+
+    if (normalizedTurns.length > 0) {
+      result[String(numericDay)] = Array.from(new Set(normalizedTurns))
+    }
+
+    return result
+  }, {})
 
   return {
     days: Array.from(new Set(days)),
     turns: Array.from(new Set(turns)),
+    byDay,
   }
 }
 
@@ -86,15 +114,32 @@ function formatDriverAvailability(availability: DriverAvailability | null) {
           .filter((day) => normalized.days.includes(day.value))
           .map((day) => day.label)
           .join(', ')
+  const hasDetailedAvailability = Object.keys(normalized.byDay ?? {}).length > 0
   const turnLabels =
-    normalized.turns.length === 0
+    hasDetailedAvailability
+      ? weekDays
+          .filter((day) => normalized.days.includes(day.value))
+          .map((day) => {
+            const dayTurns = normalized.byDay?.[String(day.value)] ?? []
+
+            if (dayTurns.length === 0) {
+              return `${day.label}: sin turno`
+            }
+
+            return `${day.label}: ${availabilityTurns
+              .filter((turn) => dayTurns.includes(turn.value))
+              .map((turn) => turn.label)
+              .join('/')}`
+          })
+          .join(' · ')
+      : normalized.turns.length === 0
       ? 'Cualquier turno'
       : availabilityTurns
           .filter((turn) => normalized.turns.includes(turn.value))
           .map((turn) => turn.label)
           .join(', ')
 
-  return `${dayLabels} - ${turnLabels}`
+  return hasDetailedAvailability ? turnLabels : `${dayLabels} - ${turnLabels}`
 }
 
 export function ConductoresPage() {
@@ -215,21 +260,38 @@ export function ConductoresPage() {
       const days = current.days.includes(day)
         ? current.days.filter((item) => item !== day)
         : [...current.days, day]
+      const byDay = { ...(current.byDay ?? {}) }
+
+      if (days.includes(day)) {
+        byDay[String(day)] = byDay[String(day)] ?? []
+      } else {
+        delete byDay[String(day)]
+      }
 
       return {
         ...current,
         days: days.sort((left, right) => left - right),
+        byDay,
       }
     })
   }
 
-  const toggleAvailabilityTurn = (turn: DriverAvailabilityTurn) => {
-    setAvailability((current) => ({
-      ...current,
-      turns: current.turns.includes(turn)
-        ? current.turns.filter((item) => item !== turn)
-        : [...current.turns, turn],
-    }))
+  const toggleAvailabilityTurn = (day: number, turn: DriverAvailabilityTurn) => {
+    setAvailability((current) => {
+      const byDay = { ...(current.byDay ?? {}) }
+      const currentTurns = byDay[String(day)] ?? []
+      const nextTurns = currentTurns.includes(turn)
+        ? currentTurns.filter((item) => item !== turn)
+        : [...currentTurns, turn]
+
+      byDay[String(day)] = nextTurns
+
+      return {
+        ...current,
+        turns: [],
+        byDay,
+      }
+    })
   }
 
   const handleDelete = async (driver: DriverRecord) => {
@@ -532,39 +594,46 @@ export function ConductoresPage() {
               <div className="availability-editor">
                 <div>
                   <strong>Disponibilidad por dia</strong>
-                  <span>Marca los dias en que puede conducir.</span>
+                  <span>
+                    Marca un dia y luego elige si puede conducir de manana, tarde
+                    o telefonica.
+                  </span>
                 </div>
-                <div className="availability-check-grid">
+                <div className="availability-day-list">
                   {weekDays.map((day) => (
-                    <label key={day.value}>
-                      <input
-                        type="checkbox"
-                        checked={availability.days.includes(day.value)}
-                        onChange={() => toggleAvailabilityDay(day.value)}
-                        disabled={!canManageDrivers}
-                      />
-                      <span>{day.label}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
+                    <div key={day.value} className="availability-day-card">
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={availability.days.includes(day.value)}
+                          onChange={() => toggleAvailabilityDay(day.value)}
+                          disabled={!canManageDrivers}
+                        />
+                        <span>{day.label}</span>
+                      </label>
 
-              <div className="availability-editor">
-                <div>
-                  <strong>Disponibilidad por turno</strong>
-                  <span>Si no marcas nada, quedara sin restriccion de turno.</span>
-                </div>
-                <div className="availability-check-grid compact">
-                  {availabilityTurns.map((turn) => (
-                    <label key={turn.value}>
-                      <input
-                        type="checkbox"
-                        checked={availability.turns.includes(turn.value)}
-                        onChange={() => toggleAvailabilityTurn(turn.value)}
-                        disabled={!canManageDrivers}
-                      />
-                      <span>{turn.label}</span>
-                    </label>
+                      {availability.days.includes(day.value) ? (
+                        <div className="availability-turn-options">
+                          {availabilityTurns.map((turn) => (
+                            <label key={turn.value}>
+                              <input
+                                type="checkbox"
+                                checked={Boolean(
+                                  availability.byDay?.[String(day.value)]?.includes(
+                                    turn.value,
+                                  ),
+                                )}
+                                onChange={() =>
+                                  toggleAvailabilityTurn(day.value, turn.value)
+                                }
+                                disabled={!canManageDrivers}
+                              />
+                              <span>{turn.label}</span>
+                            </label>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
                   ))}
                 </div>
               </div>

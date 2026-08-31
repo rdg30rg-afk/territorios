@@ -78,7 +78,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               value === 'mapas' ||
               value === 'conductores' ||
               value === 'grupos' ||
-              value === 'salidas',
+              value === 'salidas' ||
+              value === 'salidas_grupo',
           ),
       )
       setIsLoading(false)

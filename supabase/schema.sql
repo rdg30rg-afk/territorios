@@ -107,7 +107,7 @@ $$;
 create table if not exists user_module_access (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references profiles (id) on delete cascade,
-  module_key text not null check (module_key in ('mapas', 'conductores', 'grupos', 'salidas')),
+  module_key text not null check (module_key in ('mapas', 'conductores', 'grupos', 'salidas', 'salidas_grupo')),
   granted_at timestamptz not null default now(),
   unique (user_id, module_key)
 );
@@ -244,21 +244,32 @@ create policy "Users with conductores can read drivers"
 on conductores
 for select
 to authenticated
-using (public.can_access_module('conductores') or public.can_access_module('salidas'));
+using (
+  public.can_access_module('conductores') or
+  public.can_access_module('salidas') or
+  public.can_access_module('salidas_grupo')
+);
 
 drop policy if exists "Authenticated users can read groups" on grupos_servicio;
 create policy "Users with grupos can read groups"
 on grupos_servicio
 for select
 to authenticated
-using (public.can_access_module('grupos') or public.can_access_module('salidas'));
+using (
+  public.can_access_module('grupos') or
+  public.can_access_module('salidas') or
+  public.can_access_module('salidas_grupo')
+);
 
 drop policy if exists "Authenticated users can read outings" on salidas;
 create policy "Users with salidas can read outings"
 on salidas
 for select
 to authenticated
-using (public.can_access_module('salidas'));
+using (
+  public.can_access_module('salidas') or
+  public.can_access_module('salidas_grupo')
+);
 
 drop policy if exists "Admins manage territorios" on territorios;
 create policy "Admins manage territorios"
@@ -299,3 +310,77 @@ for all
 to authenticated
 using (public.is_admin(auth.uid()))
 with check (public.is_admin(auth.uid()));
+
+drop policy if exists "Group service users can create outings" on salidas;
+create policy "Group service users can create outings"
+on salidas
+for insert
+to authenticated
+with check (
+  public.is_admin(auth.uid()) or
+  (
+    public.can_access_module('salidas_grupo') and
+    exists (
+      select 1
+      from public.profiles p
+      join public.grupos_servicio g on g.driver_id = p.driver_id
+      where p.id = auth.uid()
+        and g.id = salidas.group_id
+        and g.manager_role in ('superintendente', 'auxiliar')
+    )
+  )
+);
+
+drop policy if exists "Group service users can update their group outings" on salidas;
+create policy "Group service users can update their group outings"
+on salidas
+for update
+to authenticated
+using (
+  public.is_admin(auth.uid()) or
+  (
+    public.can_access_module('salidas_grupo') and
+    exists (
+      select 1
+      from public.profiles p
+      join public.grupos_servicio g on g.driver_id = p.driver_id
+      where p.id = auth.uid()
+        and g.id = salidas.group_id
+        and g.manager_role in ('superintendente', 'auxiliar')
+    )
+  )
+)
+with check (
+  public.is_admin(auth.uid()) or
+  (
+    public.can_access_module('salidas_grupo') and
+    exists (
+      select 1
+      from public.profiles p
+      join public.grupos_servicio g on g.driver_id = p.driver_id
+      where p.id = auth.uid()
+        and g.id = salidas.group_id
+        and g.manager_role in ('superintendente', 'auxiliar')
+    )
+  )
+);
+
+drop policy if exists "Group service users can delete their group outings" on salidas;
+create policy "Group service users can delete their group outings"
+on salidas
+for delete
+to authenticated
+using (
+  public.is_admin(auth.uid()) or
+  (
+    public.can_access_module('salidas_grupo') and
+    exists (
+      select 1
+      from public.profiles p
+      join public.grupos_servicio g on g.driver_id = p.driver_id
+      where p.id = auth.uid()
+        and g.id = salidas.group_id
+        and g.manager_role in ('superintendente', 'auxiliar')
+    )
+  )
+);

@@ -3,7 +3,13 @@ export type ModuleDefinition = {
   title: string
   summary: string
   icon: string
-  key: 'dashboard' | 'mapas' | 'conductores' | 'grupos' | 'salidas'
+  key:
+    | 'dashboard'
+    | 'mapas'
+    | 'conductores'
+    | 'grupos'
+    | 'salidas'
+    | 'salidas_grupo'
 }
 
 export const modules: ModuleDefinition[] = [
@@ -41,5 +47,12 @@ export const modules: ModuleDefinition[] = [
     summary: 'Puntos de encuentro, horarios y asignaciones.',
     icon: '05',
     key: 'salidas',
+  },
+  {
+    path: '/salidas-grupo',
+    title: 'Salidas Grupo de Servicio',
+    summary: 'Reservas de territorios por cada grupo.',
+    icon: '06',
+    key: 'salidas_grupo',
   },
 ]

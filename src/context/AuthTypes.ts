@@ -8,7 +8,12 @@ export type ProfileRole =
   | 'conductor'
   | 'viewer'
 
-export type ModuleKey = 'mapas' | 'conductores' | 'grupos' | 'salidas'
+export type ModuleKey =
+  | 'mapas'
+  | 'conductores'
+  | 'grupos'
+  | 'salidas'
+  | 'salidas_grupo'
 
 export type Profile = {
   id: string

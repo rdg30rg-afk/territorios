@@ -7,6 +7,7 @@ import { DashboardPage } from './pages/DashboardPage'
 import { GruposPage } from './pages/GruposPage'
 import { LoginPage } from './pages/LoginPage'
 import { MapasPage } from './pages/MapasPage'
+import { SalidasGrupoPage } from './pages/SalidasGrupoPage'
 import { SalidasPage } from './pages/SalidasPage'
 
 function App() {
@@ -27,6 +28,9 @@ function App() {
           </Route>
           <Route element={<ModuleGuard moduleKey="salidas" />}>
             <Route path="salidas" element={<SalidasPage />} />
+          </Route>
+          <Route element={<ModuleGuard moduleKey="salidas_grupo" />}>
+            <Route path="salidas-grupo" element={<SalidasGrupoPage />} />
           </Route>
         </Route>
       </Route>

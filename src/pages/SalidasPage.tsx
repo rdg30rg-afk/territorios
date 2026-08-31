@@ -15,12 +15,14 @@ type DriverAvailabilityTurn = 'manana' | 'tarde' | 'telefonica'
 type DriverAvailability = {
   days: number[]
   turns: DriverAvailabilityTurn[]
+  byDay?: Record<string, DriverAvailabilityTurn[]>
 }
 
 type GroupRecord = {
   id: string
   group_name: string
   group_number: number | null
+  driver_id: string | null
   manager_name: string
   manager_role: 'superintendente' | 'siervo' | 'auxiliar'
 }
@@ -79,6 +81,10 @@ type PlannerDraft = {
   mapOpen: boolean
 }
 
+type SalidasPageProps = {
+  groupServiceMode?: boolean
+}
+
 const dayFormatter = new Intl.DateTimeFormat('es-AR', {
   weekday: 'long',
   day: '2-digit',
@@ -116,10 +122,36 @@ function normalizeDriverAvailability(value: unknown): DriverAvailability {
           turn === 'manana' || turn === 'tarde' || turn === 'telefonica',
       )
     : []
+  const byDay = Object.entries(availability.byDay ?? {}).reduce<
+    Record<string, DriverAvailabilityTurn[]>
+  >((result, [day, dayTurns]) => {
+    const numericDay = Number(day)
+
+    if (
+      !Number.isInteger(numericDay) ||
+      numericDay < 0 ||
+      numericDay > 6 ||
+      !Array.isArray(dayTurns)
+    ) {
+      return result
+    }
+
+    const normalizedTurns = dayTurns.filter(
+      (turn): turn is DriverAvailabilityTurn =>
+        turn === 'manana' || turn === 'tarde' || turn === 'telefonica',
+    )
+
+    if (normalizedTurns.length > 0) {
+      result[String(numericDay)] = Array.from(new Set(normalizedTurns))
+    }
+
+    return result
+  }, {})
 
   return {
     days: Array.from(new Set(days)),
     turns: Array.from(new Set(turns)),
+    byDay,
   }
 }
 
@@ -148,6 +180,11 @@ function isDriverAvailableForSlot(driver: DriverRecord, slot: PlannerSlot | null
   const slotDate = new Date(slot.scheduledForValue)
   const slotDay = slotDate.getDay()
   const slotTurn = getSlotTurn(slot)
+  const detailedTurns = availability.byDay?.[String(slotDay)]
+
+  if (detailedTurns) {
+    return !slotTurn || detailedTurns.includes(slotTurn)
+  }
 
   const matchesDay = availability.days.length === 0 || availability.days.includes(slotDay)
   const matchesTurn =
@@ -268,7 +305,7 @@ function getNextMonday(fromDate: Date) {
 }
 
 function buildPlannerSlots() {
-  const monday = getNextMonday(new Date(2026, 7, 20, 0, 0, 0, 0))
+  const monday = getNextMonday(new Date())
   const slots: PlannerSlot[] = []
 
   for (let dayIndex = 0; dayIndex < 14; dayIndex += 1) {
@@ -333,7 +370,7 @@ function buildPlannerSlots() {
   return slots
 }
 
-export function SalidasPage() {
+export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {}) {
   const { profile } = useAuth()
   const client = supabase
   const [drivers, setDrivers] = useState<DriverRecord[]>([])
@@ -362,7 +399,7 @@ export function SalidasPage() {
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
 
-  const canManageOutings = profile?.role === 'admin'
+  const canManageGeneralOutings = profile?.role === 'admin'
   const plannerSlots = useMemo(() => buildPlannerSlots(), [])
   const plannerSlotsByDay = useMemo(() => {
     const grouped = new Map<string, PlannerSlot[]>()
@@ -481,7 +518,7 @@ export function SalidasPage() {
           .order('full_name', { ascending: true }),
         client
           .from('grupos_servicio')
-          .select('id, group_name, group_number, manager_name, manager_role')
+          .select('id, group_name, group_number, driver_id, manager_name, manager_role')
           .order('group_number', { ascending: true, nullsFirst: false })
           .order('group_name', { ascending: true }),
         client
@@ -558,6 +595,23 @@ export function SalidasPage() {
     return Array.from(uniqueGroups.values())
   }, [groups])
 
+  const serviceGroupAssignments = useMemo(
+    () =>
+      groups.filter(
+        (group) =>
+          group.driver_id === profile?.driver_id &&
+          (group.manager_role === 'superintendente' ||
+            group.manager_role === 'auxiliar'),
+      ),
+    [groups, profile?.driver_id],
+  )
+  const currentServiceGroup = serviceGroupAssignments[0] ?? null
+  const isGroupServiceDelegate = groupServiceMode && !canManageGeneralOutings
+  const lockedGroupId = isGroupServiceDelegate ? currentServiceGroup?.id ?? '' : groupId
+  const canManageOutings =
+    canManageGeneralOutings || (groupServiceMode && serviceGroupAssignments.length > 0)
+  const plannerStartLabel = plannerSlotsByDay[0]?.dayLabel ?? 'el proximo lunes'
+
   const outingDetails = useMemo(
     () =>
       outings.map((outing) => {
@@ -578,11 +632,48 @@ export function SalidasPage() {
     [drivers, groups, outings, territories],
   )
 
+  const visibleOutingDetails = useMemo(
+    () =>
+      groupServiceMode && !canManageGeneralOutings
+        ? outingDetails.filter((outing) => outing.group_id === lockedGroupId)
+        : outingDetails,
+    [canManageGeneralOutings, groupServiceMode, lockedGroupId, outingDetails],
+  )
+
+  const reservedTerritoriesByOtherGroups = useMemo(() => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const reservations = new Map<string, string>()
+
+    if (!groupServiceMode || !lockedGroupId) {
+      return reservations
+    }
+
+    outingDetails.forEach((outing) => {
+      if (
+        outing.territory_id &&
+        outing.group_id &&
+        outing.group_id !== lockedGroupId &&
+        new Date(outing.scheduled_for).getTime() >= today.getTime()
+      ) {
+        reservations.set(outing.territory_id, outing.groupName)
+      }
+    })
+
+    return reservations
+  }, [groupServiceMode, lockedGroupId, outingDetails])
+
+  useEffect(() => {
+    if (isGroupServiceDelegate && currentServiceGroup?.id && groupId !== currentServiceGroup.id) {
+      setGroupId(currentServiceGroup.id)
+    }
+  }, [currentServiceGroup?.id, groupId, isGroupServiceDelegate])
+
   const filteredOutings = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase()
     const now = new Date()
 
-    return outingDetails.filter((outing) => {
+    return visibleOutingDetails.filter((outing) => {
       const matchesTerritory =
         territoryFilter === 'todos' ? true : outing.territory_id === territoryFilter
 
@@ -621,18 +712,18 @@ export function SalidasPage() {
 
       return haystack.includes(normalizedSearch)
     })
-  }, [outingDetails, scheduleFilter, searchTerm, territoryFilter])
+  }, [scheduleFilter, searchTerm, territoryFilter, visibleOutingDetails])
 
   const selectedOuting = useMemo(
-    () => outingDetails.find((outing) => outing.id === selectedOutingId) ?? null,
-    [outingDetails, selectedOutingId],
+    () => visibleOutingDetails.find((outing) => outing.id === selectedOutingId) ?? null,
+    [selectedOutingId, visibleOutingDetails],
   )
 
-  const outingsWithGroup = outingDetails.filter((outing) => outing.group_id).length
-  const scheduledTodayCount = outingDetails.filter(
+  const outingsWithGroup = visibleOutingDetails.filter((outing) => outing.group_id).length
+  const scheduledTodayCount = visibleOutingDetails.filter(
     (outing) => outing.scheduleStatus.label === 'Hoy',
   ).length
-  const upcomingCount = outingDetails.filter(
+  const upcomingCount = visibleOutingDetails.filter(
     (outing) => outing.scheduleStatus.label === 'Proxima',
   ).length
 
@@ -643,7 +734,7 @@ export function SalidasPage() {
     setTitle('')
     setTerritoryId('')
     setDriverId('')
-    setGroupId('')
+    setGroupId(isGroupServiceDelegate ? currentServiceGroup?.id ?? '' : '')
     setMeetingPointName('')
     setScheduledFor('')
     setNotes('')
@@ -924,7 +1015,7 @@ export function SalidasPage() {
     const driverName =
       drivers.find((driver) => driver.id === driverId)?.full_name ?? 'Sin conductor'
     const groupName =
-      groups.find((group) => group.id === groupId)?.group_name ?? 'Sin grupo'
+      groups.find((group) => group.id === lockedGroupId)?.group_name ?? 'Sin grupo'
     const territoryName = selectedFormTerritory?.name ?? 'Sin territorio'
 
     if (
@@ -981,7 +1072,11 @@ export function SalidasPage() {
     }
 
     if (!canManageOutings) {
-      setError('Solo un administrador puede crear salidas.')
+      setError(
+        groupServiceMode
+          ? 'Solo superintendentes o auxiliares asociados a un grupo pueden crear estas salidas.'
+          : 'Solo un administrador puede crear salidas.',
+      )
       return
     }
 
@@ -998,8 +1093,20 @@ export function SalidasPage() {
       return
     }
 
+    if (groupServiceMode && !lockedGroupId) {
+      setError('Selecciona el grupo de servicio antes de guardar la salida.')
+      return
+    }
+
     if (!meetingCoords) {
       setError('Debes marcar el punto de encuentro en el mapa.')
+      return
+    }
+
+    const reservedByGroup = reservedTerritoriesByOtherGroups.get(territoryId)
+
+    if (reservedByGroup) {
+      setError(`El territorio ya esta reservado por ${reservedByGroup}.`)
       return
     }
 
@@ -1009,7 +1116,7 @@ export function SalidasPage() {
       title: title.trim(),
       territory_id: territoryId,
       driver_id: driverId,
-      group_id: groupId || null,
+      group_id: lockedGroupId || null,
       meeting_point_name: meetingPointName.trim(),
       meeting_point_lat: Number(meetingCoords[1].toFixed(6)),
       meeting_point_lng: Number(meetingCoords[0].toFixed(6)),
@@ -1061,7 +1168,11 @@ export function SalidasPage() {
     }
 
     if (!canManageOutings) {
-      setError('Solo un administrador puede crear salidas.')
+      setError(
+        groupServiceMode
+          ? 'Solo superintendentes o auxiliares asociados a un grupo pueden crear estas salidas.'
+          : 'Solo un administrador puede crear salidas.',
+      )
       return
     }
 
@@ -1101,6 +1212,35 @@ export function SalidasPage() {
       return
     }
 
+    if (groupServiceMode && !lockedGroupId) {
+      setError('Selecciona el grupo de servicio antes de guardar las salidas.')
+      return
+    }
+
+    const blockedDraft = enabledDrafts.find(({ draft }) =>
+      reservedTerritoriesByOtherGroups.has(draft.territoryId),
+    )
+
+    if (blockedDraft) {
+      const reservedByGroup = reservedTerritoriesByOtherGroups.get(
+        blockedDraft.draft.territoryId,
+      )
+      setError(`Hay un territorio reservado por ${reservedByGroup}. Cambialo antes de guardar.`)
+      return
+    }
+
+    const duplicatedTerritory = enabledDrafts.find(({ draft }, index) =>
+      enabledDrafts.some(
+        (candidate, candidateIndex) =>
+          candidateIndex !== index && candidate.draft.territoryId === draft.territoryId,
+      ),
+    )
+
+    if (groupServiceMode && duplicatedTerritory) {
+      setError('No repitas el mismo territorio dentro de las salidas tildadas.')
+      return
+    }
+
     setIsSaving(true)
 
     const payload = enabledDrafts.map(({ draft, slot, territory }) => ({
@@ -1110,7 +1250,7 @@ export function SalidasPage() {
           : `${territory?.name ?? 'Salida'} ${slot?.dayShort ?? ''} ${slot?.timeLabel ?? ''}`.trim(),
       territory_id: territory?.id ?? null,
       driver_id: draft.driverId,
-      group_id: groupId || null,
+      group_id: lockedGroupId || null,
       meeting_point_name: draft.meetingPointName.trim(),
       meeting_point_lat: Number(draft.meetingCoords?.[1].toFixed(6)),
       meeting_point_lng: Number(draft.meetingCoords?.[0].toFixed(6)),
@@ -1162,11 +1302,12 @@ export function SalidasPage() {
     <div className="page">
       <section className="page-header">
         <div>
-          <p className="eyebrow">Modulo 4</p>
-          <h2>Salidas</h2>
+          <p className="eyebrow">{groupServiceMode ? 'Modulo 6' : 'Modulo 4'}</p>
+          <h2>{groupServiceMode ? 'Salidas Grupo de Servicio' : 'Salidas'}</h2>
           <p className="lead">
-            Planificador operativo para 2 semanas, con horarios por franja,
-            predicacion telefonica y ficha PDF de cada salida.
+            {groupServiceMode
+              ? 'Planificador para que cada grupo reserve territorios sin pisarse con otros grupos.'
+              : 'Planificador operativo para 2 semanas, con horarios por franja, predicacion telefonica y ficha PDF de cada salida.'}
           </p>
         </div>
       </section>
@@ -1175,19 +1316,25 @@ export function SalidasPage() {
         <section className="module-hero">
           <div className="module-hero-copy">
             <p className="eyebrow">Planificador quincenal</p>
-            <h3>Agenda desde el lunes 24 de agosto de 2026 por 2 semanas</h3>
+            <h3>
+              {isGroupServiceDelegate && currentServiceGroup
+                ? `${getGroupLabel(currentServiceGroup)} - agenda de servicio`
+                : `Agenda desde ${plannerStartLabel} por 2 semanas`}
+            </h3>
             <p>
               {canManageOutings
                 ? 'Elige un slot del calendario, completa territorio, conductor y GPS, y descarga la ficha en PDF cuando quede lista.'
-                : 'Puedes consultar la agenda de salidas. La planificacion queda reservada para administradores.'}
+                : groupServiceMode
+                  ? 'Tu usuario debe estar asociado como superintendente o auxiliar en Grupos para el Servicio.'
+                  : 'Puedes consultar la agenda de salidas. La planificacion queda reservada para administradores.'}
             </p>
           </div>
 
           <div className="module-hero-stats">
             <article className="module-stat-card">
               <span>Total salidas</span>
-              <strong>{outingDetails.length}</strong>
-              <small>Agenda acumulada</small>
+              <strong>{visibleOutingDetails.length}</strong>
+              <small>{groupServiceMode ? 'Del grupo' : 'Agenda acumulada'}</small>
             </article>
             <article className="module-stat-card">
               <span>Hoy</span>
@@ -1331,11 +1478,23 @@ export function SalidasPage() {
                         disabled={!canManageOutings}
                       >
                         <option value="">Territorio</option>
-                        {territories.map((territory) => (
-                          <option key={territory.id} value={territory.id}>
-                            {territory.name}
-                          </option>
-                        ))}
+                        {territories.map((territory) => {
+                          const reservedByGroup = reservedTerritoriesByOtherGroups.get(
+                            territory.id,
+                          )
+
+                          return (
+                            <option
+                              key={territory.id}
+                              value={territory.id}
+                              disabled={Boolean(reservedByGroup)}
+                            >
+                              {reservedByGroup
+                                ? `${territory.name} - reservado por ${reservedByGroup}`
+                                : territory.name}
+                            </option>
+                          )
+                        })}
                       </select>
                       <button
                         type="button"
@@ -1411,11 +1570,23 @@ export function SalidasPage() {
                   onChange={(event) => setTerritoryFilter(event.target.value)}
                 >
                   <option value="todos">Todos</option>
-                  {territories.map((territory) => (
-                    <option key={territory.id} value={territory.id}>
-                      {territory.name}
-                    </option>
-                  ))}
+                  {territories.map((territory) => {
+                    const reservedByGroup = reservedTerritoriesByOtherGroups.get(
+                      territory.id,
+                    )
+
+                    return (
+                      <option
+                        key={territory.id}
+                        value={territory.id}
+                        disabled={Boolean(reservedByGroup)}
+                      >
+                        {reservedByGroup
+                          ? `${territory.name} - reservado por ${reservedByGroup}`
+                          : territory.name}
+                      </option>
+                    )
+                  })}
                 </select>
               </label>
 
@@ -1618,10 +1789,12 @@ export function SalidasPage() {
                 <select
                   value={groupId}
                   onChange={(event) => setGroupId(event.target.value)}
-                  disabled={!canManageOutings}
+                  disabled={!canManageOutings || isGroupServiceDelegate}
                 >
-                  <option value="">Sin grupo asignado</option>
-                  {selectableGroups.map((group) => (
+                  <option value="">
+                    {isGroupServiceDelegate ? 'Sin grupo asociado' : 'Sin grupo asignado'}
+                  </option>
+                  {(isGroupServiceDelegate ? serviceGroupAssignments : selectableGroups).map((group) => (
                     <option key={group.id} value={group.id}>
                       {getGroupLabel(group)}
                     </option>

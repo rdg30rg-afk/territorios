@@ -1659,6 +1659,41 @@ button {
   accent-color: var(--accent);
 }
 
+.availability-day-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.availability-day-card {
+  padding: 0.7rem;
+  border: 1px solid rgba(109, 76, 65, 0.1);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.availability-day-card > label,
+.availability-turn-options label {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.availability-turn-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin-top: 0.65rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid rgba(109, 76, 65, 0.08);
+}
+
+.availability-turn-options label {
+  padding: 0.55rem 0.65rem;
+  border-radius: 12px;
+  background: rgba(187, 62, 3, 0.06);
+}
+
 .inline-filter {
   display: flex;
   flex-direction: column;

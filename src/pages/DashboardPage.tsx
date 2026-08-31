@@ -20,6 +20,10 @@ const moduleStatus = [
     name: 'Salidas',
     detail: 'Modelo listo para usar puntos de encuentro geolocalizados.',
   },
+  {
+    name: 'Salidas Grupo de Servicio',
+    detail: 'Reservas de territorios por grupo con acceso delegado.',
+  },
 ]
 
 const moduleLabels: Record<ModuleKey, string> = {
@@ -27,6 +31,7 @@ const moduleLabels: Record<ModuleKey, string> = {
   conductores: 'Conductores',
   grupos: 'Grupos para el Servicio',
   salidas: 'Salidas',
+  salidas_grupo: 'Salidas Grupo de Servicio',
 }
 
 const manageableRoles: Array<{ value: ProfileRole; label: string }> = [
