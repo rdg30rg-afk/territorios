@@ -107,7 +107,7 @@ $$;
 create table if not exists user_module_access (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references profiles (id) on delete cascade,
-  module_key text not null check (module_key in ('mapas', 'conductores', 'grupos', 'salidas', 'salidas_grupo')),
+  module_key text not null check (module_key in ('mapas', 'conductores', 'grupos', 'salidas', 'salidas_grupo', 'territorio_personal')),
   granted_at timestamptz not null default now(),
   unique (user_id, module_key)
 );
@@ -130,6 +130,20 @@ create table if not exists territorio_manzanas (
   created_at timestamptz not null default now(),
   unique (territory_id, label)
 );
+
+create table if not exists territorio_personal_reservas (
+  id uuid primary key default gen_random_uuid(),
+  territory_id uuid not null references territorios (id) on delete cascade,
+  reserved_for text not null,
+  status text not null default 'activa' check (status in ('activa', 'liberada')),
+  reserved_at timestamptz not null default now(),
+  released_at timestamptz,
+  created_by uuid references profiles (id) on delete set null
+);
+
+create unique index if not exists territorio_personal_reservas_active_unique_idx
+  on territorio_personal_reservas (territory_id)
+  where status = 'activa';
 
 create table if not exists conductores (
   id uuid primary key default gen_random_uuid(),
@@ -190,6 +204,7 @@ alter table pending_users enable row level security;
 alter table user_module_access enable row level security;
 alter table territorios enable row level security;
 alter table territorio_manzanas enable row level security;
+alter table territorio_personal_reservas enable row level security;
 alter table conductores enable row level security;
 alter table grupos_servicio enable row level security;
 alter table salidas enable row level security;
@@ -248,6 +263,13 @@ for select
 to authenticated
 using (public.can_access_module('mapas'));
 
+drop policy if exists "Users with personal territories can read territorios" on territorios;
+create policy "Users with personal territories can read territorios"
+on territorios
+for select
+to authenticated
+using (public.can_access_module('territorio_personal'));
+
 drop policy if exists "Users with mapas can read territory blocks" on territorio_manzanas;
 create policy "Users with mapas can read territory blocks"
 on territorio_manzanas
@@ -298,6 +320,26 @@ with check (public.is_admin(auth.uid()));
 drop policy if exists "Admins manage territory blocks" on territorio_manzanas;
 create policy "Admins manage territory blocks"
 on territorio_manzanas
+for all
+to authenticated
+using (public.is_admin(auth.uid()))
+with check (public.is_admin(auth.uid()));
+
+drop policy if exists "Users can read personal territory reservations" on territorio_personal_reservas;
+create policy "Users can read personal territory reservations"
+on territorio_personal_reservas
+for select
+to authenticated
+using (
+  public.is_admin(auth.uid()) or
+  public.can_access_module('territorio_personal') or
+  public.can_access_module('salidas') or
+  public.can_access_module('salidas_grupo')
+);
+
+drop policy if exists "Admins manage personal territory reservations" on territorio_personal_reservas;
+create policy "Admins manage personal territory reservations"
+on territorio_personal_reservas
 for all
 to authenticated
 using (public.is_admin(auth.uid()))

@@ -47,6 +47,14 @@ type OutingRecord = {
   notes: string | null
 }
 
+type PersonalTerritoryReservation = {
+  id: string
+  territory_id: string
+  reserved_for: string
+  status: 'activa' | 'liberada'
+  reserved_at: string
+}
+
 type ScheduleFilter = 'todos' | 'hoy' | 'proximas' | 'pasadas'
 type PlannerSlotKind = 'territorial' | 'phone'
 
@@ -376,6 +384,9 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
   const [groups, setGroups] = useState<GroupRecord[]>([])
   const [territories, setTerritories] = useState<TerritoryRecord[]>([])
   const [outings, setOutings] = useState<OutingRecord[]>([])
+  const [personalReservations, setPersonalReservations] = useState<
+    PersonalTerritoryReservation[]
+  >([])
   const [selectedOutingId, setSelectedOutingId] = useState<string | null>(null)
   const [editingOutingId, setEditingOutingId] = useState<string | null>(null)
   const [selectedSlotKey, setSelectedSlotKey] = useState<string | null>(null)
@@ -510,6 +521,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
         { data: groupsData, error: groupsError },
         { data: territoriesData, error: territoriesError },
         { data: outingsData, error: outingsError },
+        { data: personalReservationsData, error: personalReservationsError },
       ] = await Promise.all([
         client
           .from('conductores')
@@ -530,6 +542,11 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
             'id, title, territory_id, driver_id, group_id, meeting_point_name, meeting_point_lat, meeting_point_lng, scheduled_for, notes',
           )
           .order('scheduled_for', { ascending: true }),
+        client
+          .from('territorio_personal_reservas')
+          .select('id, territory_id, reserved_for, status, reserved_at')
+          .eq('status', 'activa')
+          .order('reserved_at', { ascending: false }),
       ])
 
       if (!isMounted) {
@@ -540,7 +557,8 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
         driversError?.message ||
         groupsError?.message ||
         territoriesError?.message ||
-        outingsError?.message
+        outingsError?.message ||
+        personalReservationsError?.message
 
       if (loadError) {
         setError(loadError)
@@ -548,12 +566,16 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
         setGroups([])
         setTerritories([])
         setOutings([])
+        setPersonalReservations([])
       } else {
         setError(null)
         setDrivers((driversData as DriverRecord[]) ?? [])
         setGroups((groupsData as GroupRecord[]) ?? [])
         setTerritories((territoriesData as TerritoryRecord[]) ?? [])
         setOutings((outingsData as OutingRecord[]) ?? [])
+        setPersonalReservations(
+          (personalReservationsData as PersonalTerritoryReservation[]) ?? [],
+        )
       }
 
       setIsLoading(false)
@@ -659,6 +681,16 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
 
     return reservations
   }, [groupServiceMode, lockedGroupId, outingDetails])
+
+  const reservedTerritoriesByPersonalUse = useMemo(() => {
+    const reservations = new Map<string, string>()
+
+    personalReservations.forEach((reservation) => {
+      reservations.set(reservation.territory_id, reservation.reserved_for)
+    })
+
+    return reservations
+  }, [personalReservations])
 
   useEffect(() => {
     if (isGroupServiceDelegate && currentServiceGroup?.id && groupId !== currentServiceGroup.id) {
@@ -1120,6 +1152,13 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
       return
     }
 
+    const reservedForPersonalUse = reservedTerritoriesByPersonalUse.get(territoryId)
+
+    if (reservedForPersonalUse) {
+      setError(`El territorio esta reservado personalmente para ${reservedForPersonalUse}.`)
+      return
+    }
+
     setIsSaving(true)
 
     const payload = {
@@ -1236,6 +1275,20 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
         blockedDraft.draft.territoryId,
       )
       setError(`Hay un territorio reservado por ${reservedByGroup}. Cambialo antes de guardar.`)
+      return
+    }
+
+    const personalBlockedDraft = enabledDrafts.find(({ draft }) =>
+      reservedTerritoriesByPersonalUse.has(draft.territoryId),
+    )
+
+    if (personalBlockedDraft) {
+      const reservedFor = reservedTerritoriesByPersonalUse.get(
+        personalBlockedDraft.draft.territoryId,
+      )
+      setError(
+        `Hay un territorio reservado personalmente para ${reservedFor}. Cambialo antes de guardar.`,
+      )
       return
     }
 
@@ -1497,15 +1550,19 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                           const reservedByGroup = reservedTerritoriesByOtherGroups.get(
                             territory.id,
                           )
+                          const reservedForPersonalUse =
+                            reservedTerritoriesByPersonalUse.get(territory.id)
 
                           return (
                             <option
                               key={territory.id}
                               value={territory.id}
-                              disabled={Boolean(reservedByGroup)}
+                              disabled={Boolean(reservedByGroup || reservedForPersonalUse)}
                             >
                               {reservedByGroup
                                 ? `${territory.name} - reservado por ${reservedByGroup}`
+                                : reservedForPersonalUse
+                                  ? `${territory.name} - reservado para ${reservedForPersonalUse}`
                                 : territory.name}
                             </option>
                           )
@@ -1589,15 +1646,19 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                     const reservedByGroup = reservedTerritoriesByOtherGroups.get(
                       territory.id,
                     )
+                    const reservedForPersonalUse =
+                      reservedTerritoriesByPersonalUse.get(territory.id)
 
                     return (
                       <option
                         key={territory.id}
                         value={territory.id}
-                        disabled={Boolean(reservedByGroup)}
+                        disabled={Boolean(reservedByGroup || reservedForPersonalUse)}
                       >
                         {reservedByGroup
                           ? `${territory.name} - reservado por ${reservedByGroup}`
+                          : reservedForPersonalUse
+                            ? `${territory.name} - reservado para ${reservedForPersonalUse}`
                           : territory.name}
                       </option>
                     )
@@ -1746,11 +1807,27 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                   disabled={!canManageOutings}
                 >
                   <option value="">Seleccionar territorio</option>
-                  {territories.map((territory) => (
-                    <option key={territory.id} value={territory.id}>
-                      {territory.name}
-                    </option>
-                  ))}
+                  {territories.map((territory) => {
+                    const reservedByGroup = reservedTerritoriesByOtherGroups.get(
+                      territory.id,
+                    )
+                    const reservedForPersonalUse =
+                      reservedTerritoriesByPersonalUse.get(territory.id)
+
+                    return (
+                      <option
+                        key={territory.id}
+                        value={territory.id}
+                        disabled={Boolean(reservedByGroup || reservedForPersonalUse)}
+                      >
+                        {reservedByGroup
+                          ? `${territory.name} - reservado por ${reservedByGroup}`
+                          : reservedForPersonalUse
+                            ? `${territory.name} - reservado para ${reservedForPersonalUse}`
+                            : territory.name}
+                      </option>
+                    )
+                  })}
                 </select>
               </label>
 

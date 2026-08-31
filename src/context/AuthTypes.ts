@@ -14,6 +14,7 @@ export type ModuleKey =
   | 'grupos'
   | 'salidas'
   | 'salidas_grupo'
+  | 'territorio_personal'
 
 export type Profile = {
   id: string

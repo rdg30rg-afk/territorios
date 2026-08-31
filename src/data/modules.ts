@@ -10,6 +10,7 @@ export type ModuleDefinition = {
     | 'grupos'
     | 'salidas'
     | 'salidas_grupo'
+    | 'territorio_personal'
 }
 
 export const modules: ModuleDefinition[] = [
@@ -54,5 +55,12 @@ export const modules: ModuleDefinition[] = [
     summary: 'Reservas de territorios por cada grupo.',
     icon: '06',
     key: 'salidas_grupo',
+  },
+  {
+    path: '/territorio-personal',
+    title: 'Territorio Personal',
+    summary: 'Reservas personales para personas o familias.',
+    icon: '07',
+    key: 'territorio_personal',
   },
 ]

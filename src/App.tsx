@@ -9,6 +9,7 @@ import { LoginPage } from './pages/LoginPage'
 import { MapasPage } from './pages/MapasPage'
 import { SalidasGrupoPage } from './pages/SalidasGrupoPage'
 import { SalidasPage } from './pages/SalidasPage'
+import { TerritorioPersonalPage } from './pages/TerritorioPersonalPage'
 
 function App() {
   return (
@@ -31,6 +32,9 @@ function App() {
           </Route>
           <Route element={<ModuleGuard moduleKey="salidas_grupo" />}>
             <Route path="salidas-grupo" element={<SalidasGrupoPage />} />
+          </Route>
+          <Route element={<ModuleGuard moduleKey="territorio_personal" />}>
+            <Route path="territorio-personal" element={<TerritorioPersonalPage />} />
           </Route>
         </Route>
       </Route>

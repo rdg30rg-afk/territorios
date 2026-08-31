@@ -24,6 +24,10 @@ const moduleStatus = [
     name: 'Salidas Grupo de Servicio',
     detail: 'Reservas de territorios por grupo con acceso delegado.',
   },
+  {
+    name: 'Territorio Personal',
+    detail: 'Reservas de territorios para personas o familias.',
+  },
 ]
 
 const moduleLabels: Record<ModuleKey, string> = {
@@ -32,6 +36,7 @@ const moduleLabels: Record<ModuleKey, string> = {
   grupos: 'Grupos para el Servicio',
   salidas: 'Salidas',
   salidas_grupo: 'Salidas Grupo de Servicio',
+  territorio_personal: 'Territorio Personal',
 }
 
 const manageableRoles: Array<{ value: ProfileRole; label: string }> = [
