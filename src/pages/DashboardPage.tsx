@@ -251,6 +251,8 @@ function UserAccessPanel() {
     const draftAccess = getDraftModules(user.id, user.moduleAccess)
     const draftDriverId = getDraftDriverId(user.id, user.driver_id)
     const isOwnUser = user.id === profile?.id
+    const isRequestOnly = Boolean(user.requestOnly)
+    const isDisabled = isSavingUserId === user.id || isOwnUser || isRequestOnly
 
     return (
       <article
@@ -271,10 +273,18 @@ function UserAccessPanel() {
                 : 'status-pill status-pendiente'
             }
           >
-            {user.moduleAccess.length > 0 || user.role === 'admin'
+            {isRequestOnly
+              ? 'Solicitud recibida'
+              : user.moduleAccess.length > 0 || user.role === 'admin'
               ? 'Autorizado'
               : 'Pendiente'}
           </span>
+          {isRequestOnly ? (
+            <span>
+              Falta confirmar el email o sincronizar el perfil antes de asignar
+              modulos.
+            </span>
+          ) : null}
         </div>
 
         <label>
@@ -287,7 +297,7 @@ function UserAccessPanel() {
                 [user.id]: event.target.value as ProfileRole,
               }))
             }
-            disabled={isSavingUserId === user.id || isOwnUser}
+            disabled={isDisabled}
           >
             {manageableRoles.map((role) => (
               <option key={role.value} value={role.value}>
@@ -307,7 +317,7 @@ function UserAccessPanel() {
                 [user.id]: event.target.value,
               }))
             }
-            disabled={isSavingUserId === user.id || isOwnUser}
+            disabled={isDisabled}
           >
             <option value="">Sin vincular</option>
             {drivers.map((driver) => (
@@ -328,7 +338,7 @@ function UserAccessPanel() {
                 onChange={() =>
                   toggleModule(user.id, moduleKey as ModuleKey, user.moduleAccess)
                 }
-                disabled={isSavingUserId === user.id || isOwnUser || draftRole === 'admin'}
+                disabled={isDisabled || draftRole === 'admin'}
               />
               <span>{label}</span>
             </label>
@@ -342,7 +352,7 @@ function UserAccessPanel() {
             onClick={() =>
               void saveUser(user.id, user.role, user.moduleAccess, user.driver_id)
             }
-            disabled={isSavingUserId === user.id || isOwnUser}
+            disabled={isDisabled}
           >
             {isSavingUserId === user.id
               ? 'Guardando...'
@@ -354,7 +364,7 @@ function UserAccessPanel() {
             type="button"
             className="danger-button"
             onClick={() => void disableUser(user.id)}
-            disabled={isSavingUserId === user.id || isOwnUser}
+            disabled={isDisabled}
           >
             Dar de baja
           </button>

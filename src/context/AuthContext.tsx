@@ -19,6 +19,13 @@ import {
 const PRIMARY_LOGIN_ALIAS = 'Blade30$'
 const PRIMARY_LOGIN_EMAIL = 'blade30@territorios.app'
 
+type PendingUserRow = {
+  id: string
+  full_name: string | null
+  email: string
+  username: string | null
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
@@ -155,13 +162,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    const [{ data: profileRows, error: profileError }, { data: accessRows, error: accessError }] =
+    const [
+      { data: profileRows, error: profileError },
+      { data: accessRows, error: accessError },
+      { data: pendingRows, error: pendingError },
+    ] =
       await Promise.all([
         supabase
           .from('profiles')
           .select('id, full_name, username, auth_email, role, driver_id')
           .order('created_at', { ascending: false }),
         supabase.from('user_module_access').select('user_id, module_key'),
+        supabase
+          .from('pending_users')
+          .select('id, full_name, email, username')
+          .order('requested_at', { ascending: false }),
       ])
 
     if (profileError || accessError) {
@@ -169,7 +184,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    const users = ((profileRows ?? []) as Array<{
+    if (pendingError) {
+      console.error(pendingError.message)
+    }
+
+    const users: ManagedUser[] = ((profileRows ?? []) as Array<{
       id: string
       full_name: string | null
       username: string | null
@@ -186,9 +205,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .map((access) => access.module_key),
     }))
 
-    setManagedUsers(users)
-    setPendingRequests(
+    const existingEmails = new Set(
       users
+        .map((user) => user.auth_email?.toLowerCase())
+        .filter((email): email is string => Boolean(email)),
+    )
+    const requestOnlyUsers: ManagedUser[] = ((pendingRows ?? []) as PendingUserRow[])
+      .filter((request) => !existingEmails.has(request.email.toLowerCase()))
+      .map((request) => ({
+        id: `request:${request.id}`,
+        full_name: request.full_name,
+        username: request.username,
+        auth_email: request.email,
+        role: 'viewer',
+        driver_id: null,
+        moduleAccess: [],
+        requestOnly: true,
+      }))
+
+    const allUsers = [...requestOnlyUsers, ...users]
+
+    setManagedUsers(allUsers)
+    setPendingRequests(
+      allUsers
         .filter((user) => user.role !== 'admin' && user.moduleAccess.length === 0)
         .map((user) => ({
           id: user.id,
@@ -224,19 +263,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { error: 'Faltan las variables de entorno de Supabase.' }
     }
 
+    const normalizedEmail = email.trim()
+    const normalizedUsername = username?.trim() || normalizedEmail.split('@')[0]
+
     const { error } = await supabase.auth.signUp({
-      email: email.trim(),
+      email: normalizedEmail,
       password,
       options: {
         data: {
           full_name: fullName.trim(),
-          username: username?.trim() || email.trim().split('@')[0],
+          username: normalizedUsername,
         },
       },
     })
 
     if (error) {
       return { error: error.message }
+    }
+
+    const { error: pendingError } = await supabase.from('pending_users').upsert(
+      {
+        full_name: fullName.trim(),
+        email: normalizedEmail,
+        username: normalizedUsername,
+      },
+      { onConflict: 'email' },
+    )
+
+    if (pendingError) {
+      return {
+        error:
+          'El usuario se creo en Supabase, pero no se pudo guardar la solicitud pendiente. Ejecuta el SQL de reparacion y prueba otra vez.',
+      }
     }
 
     await supabase.auth.signOut()
@@ -297,6 +355,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (insertAccessError) {
         return { error: insertAccessError.message }
       }
+    }
+
+    const authorizedUser = managedUsers.find((user) => user.id === userId)
+
+    if (authorizedUser?.auth_email) {
+      await supabase.from('pending_users').delete().eq('email', authorizedUser.auth_email)
     }
 
     await loadManagedUsers()

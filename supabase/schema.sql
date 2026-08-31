@@ -186,12 +186,28 @@ create trigger on_auth_user_created
   for each row execute procedure public.handle_new_user();
 
 alter table profiles enable row level security;
+alter table pending_users enable row level security;
 alter table user_module_access enable row level security;
 alter table territorios enable row level security;
 alter table territorio_manzanas enable row level security;
 alter table conductores enable row level security;
 alter table grupos_servicio enable row level security;
 alter table salidas enable row level security;
+
+drop policy if exists "Anyone can request access" on pending_users;
+create policy "Anyone can request access"
+on pending_users
+for insert
+to anon, authenticated
+with check (true);
+
+drop policy if exists "Admins can manage pending users" on pending_users;
+create policy "Admins can manage pending users"
+on pending_users
+for all
+to authenticated
+using (public.is_admin(auth.uid()))
+with check (public.is_admin(auth.uid()));
 
 drop policy if exists "Users can read their own profile" on profiles;
 create policy "Users can read their own profile"

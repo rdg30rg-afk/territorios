@@ -36,6 +36,7 @@ export type ManagedUser = {
   role: ProfileRole
   driver_id: string | null
   moduleAccess: ModuleKey[]
+  requestOnly?: boolean
 }
 
 export type AuthContextValue = {
