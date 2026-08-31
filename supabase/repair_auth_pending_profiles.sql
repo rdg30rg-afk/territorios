@@ -1,3 +1,22 @@
+create extension if not exists pgcrypto;
+
+create table if not exists public.pending_users (
+  id uuid primary key default gen_random_uuid(),
+  full_name text not null,
+  email text unique not null,
+  username text,
+  requested_at timestamptz not null default now()
+);
+
+alter table public.profiles
+  add column if not exists username text;
+
+alter table public.profiles
+  add column if not exists auth_email text;
+
+alter table public.profiles
+  add column if not exists driver_id uuid references public.conductores (id) on delete set null;
+
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
