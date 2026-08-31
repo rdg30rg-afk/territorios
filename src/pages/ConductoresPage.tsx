@@ -86,9 +86,7 @@ function normalizeAvailability(value: unknown): DriverAvailability {
         turn === 'manana' || turn === 'tarde' || turn === 'telefonica',
     )
 
-    if (normalizedTurns.length > 0) {
-      result[String(numericDay)] = Array.from(new Set(normalizedTurns))
-    }
+    result[String(numericDay)] = Array.from(new Set(normalizedTurns))
 
     return result
   }, {})

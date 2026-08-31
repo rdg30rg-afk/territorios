@@ -141,9 +141,7 @@ function normalizeDriverAvailability(value: unknown): DriverAvailability {
         turn === 'manana' || turn === 'tarde' || turn === 'telefonica',
     )
 
-    if (normalizedTurns.length > 0) {
-      result[String(numericDay)] = Array.from(new Set(normalizedTurns))
-    }
+    result[String(numericDay)] = Array.from(new Set(normalizedTurns))
 
     return result
   }, {})
@@ -182,15 +180,16 @@ function isDriverAvailableForSlot(driver: DriverRecord, slot: PlannerSlot | null
   const slotTurn = getSlotTurn(slot)
   const detailedTurns = availability.byDay?.[String(slotDay)]
 
-  if (detailedTurns) {
-    return !slotTurn || detailedTurns.includes(slotTurn)
+  if (!slotTurn) {
+    return false
   }
 
-  const matchesDay = availability.days.length === 0 || availability.days.includes(slotDay)
-  const matchesTurn =
-    !slotTurn ||
-    availability.turns.length === 0 ||
-    availability.turns.includes(slotTurn)
+  if (detailedTurns) {
+    return detailedTurns.includes(slotTurn)
+  }
+
+  const matchesDay = availability.days.includes(slotDay)
+  const matchesTurn = availability.turns.includes(slotTurn)
 
   return matchesDay && matchesTurn
 }
@@ -573,11 +572,9 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
   )
 
   const getAvailableDriversForSlot = (slot: PlannerSlot | null) => {
-    const availableDrivers = activeDrivers.filter((driver) =>
+    return activeDrivers.filter((driver) =>
       isDriverAvailableForSlot(driver, slot),
     )
-
-    return availableDrivers.length > 0 ? availableDrivers : activeDrivers
   }
 
   const selectableGroups = useMemo(() => {
@@ -759,6 +756,13 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
   const handleSelectPlannerSlot = (slot: PlannerSlot) => {
     setSelectedSlotKey(slot.key)
     setScheduledFor(slot.scheduledForValue)
+    setDriverId((currentDriverId) => {
+      const currentDriver = activeDrivers.find((driver) => driver.id === currentDriverId)
+
+      return currentDriver && isDriverAvailableForSlot(currentDriver, slot)
+        ? currentDriverId
+        : ''
+    })
     setError(null)
     setMessage(
       slot.kind === 'phone'
@@ -829,6 +833,12 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
       ...draft,
       enabled: true,
       slotKey: slot.key,
+      driverId: activeDrivers.some(
+        (driver) =>
+          driver.id === draft.driverId && isDriverAvailableForSlot(driver, slot),
+      )
+        ? draft.driverId
+        : '',
     }))
     setActivePlannerRowKey(row.key)
     handleSelectPlannerSlot(slot)
@@ -1446,6 +1456,11 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                         disabled={!canManageOutings}
                       >
                         <option value="">Conductor</option>
+                        {selectedRowSlot && availableRowDrivers.length === 0 ? (
+                          <option value="" disabled>
+                            No hay conductores disponibles
+                          </option>
+                        ) : null}
                         {availableRowDrivers.map((driver) => (
                           <option key={driver.id} value={driver.id}>
                             {driver.full_name}
@@ -1776,6 +1791,12 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                   disabled={!canManageOutings}
                 >
                   <option value="">Seleccionar conductor</option>
+                  {selectedPlannerSlot &&
+                  getAvailableDriversForSlot(selectedPlannerSlot).length === 0 ? (
+                    <option value="" disabled>
+                      No hay conductores disponibles
+                    </option>
+                  ) : null}
                   {getAvailableDriversForSlot(selectedPlannerSlot).map((driver) => (
                     <option key={driver.id} value={driver.id}>
                       {driver.full_name}
