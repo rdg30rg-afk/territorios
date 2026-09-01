@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ModuleKey, ProfileRole } from '../context/AuthTypes'
 import { useAuth } from '../context/useAuth'
 import { supabase } from '../lib/supabase'
@@ -160,7 +160,7 @@ function UserAccessPanel() {
     void loadManagedUsers()
   }, [loadManagedUsers])
 
-  const loadDrivers = async () => {
+  const loadDrivers = useCallback(async () => {
     if (!supabase || profile?.role !== 'admin') {
       setDrivers([])
       return
@@ -178,11 +178,11 @@ function UserAccessPanel() {
     }
 
     setDrivers((data as DriverOption[]) ?? [])
-  }
+  }, [profile?.role])
 
   useEffect(() => {
     void loadDrivers()
-  }, [profile?.role])
+  }, [loadDrivers])
 
   const refreshAccessPanel = async () => {
     setError(null)
@@ -285,7 +285,10 @@ function UserAccessPanel() {
       >
         <div className="admin-user-main">
           <strong>{user.full_name || user.username || user.auth_email}</strong>
-          <span>{user.auth_email || 'Sin email registrado'}</span>
+          <span>
+            {user.auth_email ||
+              'Sin email registrado: falta sincronizar con Supabase Auth'}
+          </span>
           <span
             className={
               user.moduleAccess.length > 0 || user.role === 'admin'
@@ -299,10 +302,10 @@ function UserAccessPanel() {
               ? 'Autorizado'
               : 'Pendiente'}
           </span>
-          {isRequestOnly ? (
+          {!user.auth_email || isRequestOnly ? (
             <span>
-              Falta confirmar el email o sincronizar el perfil antes de asignar
-              modulos.
+              Si no puede iniciar sesion, revisa tambien que el email este
+              confirmado en Supabase Authentication.
             </span>
           ) : null}
         </div>

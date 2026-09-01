@@ -2,6 +2,18 @@ import { useState } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/useAuth'
 
+const getFriendlyAuthError = (error: string | null) => {
+  if (!error) {
+    return null
+  }
+
+  if (error.toLowerCase().includes('email not confirmed')) {
+    return 'El email todavia no fue confirmado en Supabase. Primero debe confirmar el correo recibido o un administrador debe marcarlo como confirmado en Authentication.'
+  }
+
+  return error
+}
+
 export function LoginPage() {
   const { isConfigured, isAuthenticated, isLoading, signIn, signUp } = useAuth()
   const location = useLocation()
@@ -28,7 +40,7 @@ export function LoginPage() {
     setIsSubmitting(true)
 
     const result = await signIn(login, password)
-    setError(result.error)
+    setError(getFriendlyAuthError(result.error))
 
     setIsSubmitting(false)
   }

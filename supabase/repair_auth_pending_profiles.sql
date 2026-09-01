@@ -67,6 +67,22 @@ where not exists (
   where profiles.id = users.id
 );
 
+update public.profiles as profile
+set
+  full_name = coalesce(nullif(profile.full_name, ''), users.raw_user_meta_data ->> 'full_name', split_part(users.email, '@', 1)),
+  username = coalesce(nullif(profile.username, ''), users.raw_user_meta_data ->> 'username', split_part(users.email, '@', 1)),
+  auth_email = coalesce(nullif(profile.auth_email, ''), users.email)
+from auth.users as users
+where profile.id = users.id
+  and (
+    profile.full_name is null
+    or profile.full_name = ''
+    or profile.username is null
+    or profile.username = ''
+    or profile.auth_email is null
+    or profile.auth_email = ''
+  );
+
 alter table public.pending_users enable row level security;
 
 drop policy if exists "Anyone can request access" on public.pending_users;
