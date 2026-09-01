@@ -1,17 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet-draw'
-import {
-  area,
-  booleanIntersects,
-  booleanPointInPolygon,
-  difference,
-  featureCollection,
-  intersect,
-  point,
-  polygon,
-  union,
-} from '@turf/turf'
+import { area } from '@turf/area'
+import { booleanIntersects } from '@turf/boolean-intersects'
+import { booleanPointInPolygon } from '@turf/boolean-point-in-polygon'
+import { difference } from '@turf/difference'
+import { featureCollection, point, polygon } from '@turf/helpers'
+import { intersect } from '@turf/intersect'
+import { union } from '@turf/union'
 import { useAuth } from '../context/useAuth'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 
@@ -67,6 +63,22 @@ type TerritoryRecord = {
   description: string | null
   polygon_geojson: TerritoryPolygon
   created_at: string
+}
+
+/**
+ * Formas de las manzanas, servidas como archivo estatico.
+ *
+ * La base guarda cada manzana como un punto (label + lat + lng): no tiene
+ * donde poner un poligono. Antes que cambiarle el esquema, las formas viajan
+ * en public/datos/manzanas-territorios.json, indexadas por numero de
+ * territorio, que es el campo `name` de la tabla territorios.
+ *
+ * Si el archivo falta o falla, el mapa sigue funcionando como siempre: se
+ * dibujan los puntos de la base. Nunca es un requisito para operar.
+ */
+type ManzanaForma = {
+  letra: string
+  geom: { type: 'Polygon'; coordinates: [number, number][][] }
 }
 
 type TerritoryBlockRecord = {
@@ -367,6 +379,29 @@ function loadTileImage(src: string) {
   })
 }
 
+async function mapWithConcurrency<Item, Result>(
+  items: Item[],
+  concurrency: number,
+  mapper: (item: Item) => Promise<Result>,
+) {
+  const results = new Array<Result>(items.length)
+  let nextIndex = 0
+
+  async function worker() {
+    while (nextIndex < items.length) {
+      const index = nextIndex
+      nextIndex += 1
+      results[index] = await mapper(items[index])
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, items.length) }, () => worker()),
+  )
+
+  return results
+}
+
 function drawPdfMapOverlay(
   context: CanvasRenderingContext2D,
   territories: TerritoryListItem[],
@@ -506,30 +541,41 @@ async function renderTerritoriesMapSnapshot(
   context.fillStyle = '#f8f5ee'
   context.fillRect(0, 0, width, height)
 
-  await Promise.all(
-    Array.from({ length: maxTileX - minTileX + 1 }).flatMap((_, xIndex) =>
-      Array.from({ length: maxTileY - minTileY + 1 }).map(async (_unused, yIndex) => {
+  const tileCoordinates = Array.from({ length: maxTileX - minTileX + 1 }).flatMap(
+    (_, xIndex) =>
+      Array.from({ length: maxTileY - minTileY + 1 }).flatMap((_unused, yIndex) => {
         const tileX = minTileX + xIndex
         const tileY = minTileY + yIndex
         const maxTile = 2 ** zoom
 
         if (tileX < 0 || tileY < 0 || tileX >= maxTile || tileY >= maxTile) {
-          return
+          return []
         }
 
-        const tile = await loadTileImage(
-          `https://tile.openstreetmap.org/${zoom}/${tileX}/${tileY}.png`,
-        )
-        context.drawImage(
-          tile,
-          Math.round((tileX * TILE_SIZE - topLeft.x) * worldToCanvasScale),
-          Math.round((tileY * TILE_SIZE - topLeft.y) * worldToCanvasScale),
-          Math.ceil(TILE_SIZE * worldToCanvasScale),
-          Math.ceil(TILE_SIZE * worldToCanvasScale),
-        )
+        return [{ tileX, tileY }]
       }),
-    ),
   )
+  const tiles = await mapWithConcurrency(
+    tileCoordinates,
+    4,
+    async ({ tileX, tileY }) => ({
+      tileX,
+      tileY,
+      image: await loadTileImage(
+        `https://tile.openstreetmap.org/${zoom}/${tileX}/${tileY}.png`,
+      ),
+    }),
+  )
+
+  tiles.forEach(({ image, tileX, tileY }) => {
+    context.drawImage(
+      image,
+      Math.round((tileX * TILE_SIZE - topLeft.x) * worldToCanvasScale),
+      Math.round((tileY * TILE_SIZE - topLeft.y) * worldToCanvasScale),
+      Math.ceil(TILE_SIZE * worldToCanvasScale),
+      Math.ceil(TILE_SIZE * worldToCanvasScale),
+    )
+  })
 
   const territoryIds = new Set(territories.map((territory) => territory.id))
   const visibleBlocks = blocks.filter((block) => territoryIds.has(block.territory_id))
@@ -860,6 +906,7 @@ export function SanJuanMap() {
 
   const [territories, setTerritories] = useState<TerritoryRecord[]>([])
   const [territoryBlocks, setTerritoryBlocks] = useState<TerritoryBlockRecord[]>([])
+  const [manzanaFormas, setManzanaFormas] = useState<Record<string, ManzanaForma[]>>({})
   const [selectedTerritoryId, setSelectedTerritoryId] = useState<string | null>(null)
   const [editingTerritoryId, setEditingTerritoryId] = useState<string | null>(null)
   const [territoryName, setTerritoryName] = useState('')
@@ -1180,6 +1227,25 @@ export function SanJuanMap() {
     [selectedColor],
   )
 
+  useEffect(() => {
+    let vigente = true
+
+    void fetch('/datos/manzanas-territorios.json')
+      .then((respuesta) => (respuesta.ok ? respuesta.json() : null))
+      .then((datos) => {
+        if (vigente && datos?.territorios) {
+          setManzanaFormas(datos.territorios as Record<string, ManzanaForma[]>)
+        }
+      })
+      .catch(() => {
+        // Sin formas se muestran los puntos, que es el comportamiento previo.
+      })
+
+    return () => {
+      vigente = false
+    }
+  }, [])
+
   const renderBlockMarkers = useCallback(() => {
     const blockLayer = blockLayerRef.current
     if (!blockLayer) {
@@ -1188,7 +1254,63 @@ export function SanJuanMap() {
 
     blockLayer.clearLayers()
 
+    // Territorios que tienen forma en el archivo: para esos se dibuja el
+    // poligono y se omiten sus puntos, para no mostrar las dos cosas encima.
+    const conForma = new Set<string>()
+
+    territories.forEach((territory, index) => {
+      const formas = manzanaFormas[territory.name]
+      if (!formas?.length) {
+        return
+      }
+
+      conForma.add(territory.id)
+
+      const esSeleccionado = territory.id === selectedTerritoryId
+      const color = getTerritoryColor(index, territory.polygon_geojson.color)
+
+      formas.forEach((manzana) => {
+        const anillo = manzana.geom.coordinates[0].map(
+          ([lng, lat]) => [lat, lng] as [number, number],
+        )
+
+        L.polygon(anillo, {
+          color,
+          weight: esSeleccionado ? 2 : 1.2,
+          fillColor: color,
+          fillOpacity: esSeleccionado ? 0.45 : 0.22,
+          interactive: false,
+        }).addTo(blockLayer)
+
+        // La letra va en el centro de la manzana, no en el punto de la base:
+        // asi cae siempre dentro de su forma.
+        const centro = anillo.reduce(
+          (acumulado, [lat, lng]) => [
+            acumulado[0] + lat / anillo.length,
+            acumulado[1] + lng / anillo.length,
+          ],
+          [0, 0],
+        )
+
+        L.marker(centro as [number, number], {
+          interactive: false,
+          icon: L.divIcon({
+            className: esSeleccionado
+              ? 'territory-block-label selected'
+              : 'territory-block-label',
+            html: `<span>${manzana.letra}</span>`,
+            iconSize: [26, 26],
+            iconAnchor: [13, 13],
+          }),
+        }).addTo(blockLayer)
+      })
+    })
+
     territoryBlocks.forEach((block) => {
+      if (conForma.has(block.territory_id)) {
+        return
+      }
+
       const isSelectedBlock = block.territory_id === selectedTerritoryId
       const marker = L.marker([block.lat, block.lng], {
         interactive: false,
@@ -1204,7 +1326,7 @@ export function SanJuanMap() {
 
       marker.addTo(blockLayer)
     })
-  }, [selectedTerritoryId, territoryBlocks])
+  }, [manzanaFormas, selectedTerritoryId, territories, territoryBlocks])
 
   const renderSnapGuide = useCallback(
     (point: [number, number] | null) => {
