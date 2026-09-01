@@ -134,15 +134,24 @@ function UserAccessPanel() {
   const pendingUsers = useMemo(
     () =>
       managedUsers.filter(
-        (user) => user.role !== 'admin' && user.moduleAccess.length === 0,
+        (user) =>
+          user.role !== 'admin' &&
+          user.access_status !== 'inactive' &&
+          user.moduleAccess.length === 0,
       ),
     [managedUsers],
   )
   const approvedUsers = useMemo(
     () =>
       managedUsers.filter(
-        (user) => user.role === 'admin' || user.moduleAccess.length > 0,
+        (user) =>
+          user.access_status !== 'inactive' &&
+          (user.role === 'admin' || user.moduleAccess.length > 0),
       ),
+    [managedUsers],
+  )
+  const inactiveUsers = useMemo(
+    () => managedUsers.filter((user) => user.access_status === 'inactive'),
     [managedUsers],
   )
 
@@ -425,6 +434,16 @@ function UserAccessPanel() {
       <div className="admin-user-list">
         {approvedUsers.map((user) => renderUserAccessCard(user))}
       </div>
+
+      {inactiveUsers.length > 0 ? (
+        <div className="admin-access-subhead">
+          <div>
+            <p className="eyebrow">Usuarios dados de baja</p>
+            <h4>Fuera de solicitudes y accesos activos</h4>
+          </div>
+          <span>{inactiveUsers.length} dado/s de baja</span>
+        </div>
+      ) : null}
     </section>
   )
 }
