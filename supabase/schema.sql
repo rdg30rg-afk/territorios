@@ -15,13 +15,14 @@ security definer
 set search_path = public
 as $$
 begin
-  insert into public.profiles (id, full_name, username, auth_email, role)
+  insert into public.profiles (id, full_name, username, auth_email, role, access_status)
   values (
     new.id,
     coalesce(new.raw_user_meta_data ->> 'full_name', split_part(new.email, '@', 1)),
     coalesce(new.raw_user_meta_data ->> 'username', split_part(new.email, '@', 1)),
     new.email,
-    'viewer'
+    'viewer',
+    'pending'
   )
   on conflict (id) do nothing;
 
@@ -65,11 +66,15 @@ create table if not exists profiles (
   username text unique,
   auth_email text unique,
   role text not null default 'viewer' check (role in ('admin', 'superintendente', 'siervo', 'conductor', 'viewer')),
+  access_status text not null default 'pending' check (access_status in ('pending', 'active', 'inactive')),
   created_at timestamptz not null default now()
 );
 
 alter table profiles add column if not exists username text;
 alter table profiles add column if not exists auth_email text;
+alter table profiles
+  add column if not exists access_status text not null default 'pending'
+  check (access_status in ('pending', 'active', 'inactive'));
 
 create unique index if not exists profiles_username_unique_idx
   on profiles (lower(username))

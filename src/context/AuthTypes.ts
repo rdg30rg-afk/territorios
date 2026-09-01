@@ -21,6 +21,7 @@ export type Profile = {
   full_name: string | null
   role: ProfileRole
   driver_id: string | null
+  access_status: 'pending' | 'active' | 'inactive'
 }
 
 export type PendingUserRequest = {
@@ -36,6 +37,7 @@ export type ManagedUser = {
   auth_email: string | null
   role: ProfileRole
   driver_id: string | null
+  access_status: 'pending' | 'active' | 'inactive'
   moduleAccess: ModuleKey[]
   requestOnly?: boolean
 }

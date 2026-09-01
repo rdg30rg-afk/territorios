@@ -17,6 +17,10 @@ alter table public.profiles
 alter table public.profiles
   add column if not exists driver_id uuid references public.conductores (id) on delete set null;
 
+alter table public.profiles
+  add column if not exists access_status text not null default 'pending'
+  check (access_status in ('pending', 'active', 'inactive'));
+
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -24,13 +28,14 @@ security definer
 set search_path = public
 as $$
 begin
-  insert into public.profiles (id, full_name, username, auth_email, role)
+  insert into public.profiles (id, full_name, username, auth_email, role, access_status)
   values (
     new.id,
     coalesce(new.raw_user_meta_data ->> 'full_name', split_part(new.email, '@', 1)),
     coalesce(new.raw_user_meta_data ->> 'username', split_part(new.email, '@', 1)),
     new.email,
-    'viewer'
+    'viewer',
+    'pending'
   )
   on conflict (id) do update
   set
@@ -47,13 +52,14 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
 
-insert into public.profiles (id, full_name, username, auth_email, role)
+insert into public.profiles (id, full_name, username, auth_email, role, access_status)
 select
   users.id,
   coalesce(users.raw_user_meta_data ->> 'full_name', split_part(users.email, '@', 1)),
   coalesce(users.raw_user_meta_data ->> 'username', split_part(users.email, '@', 1)),
   users.email,
-  'viewer'
+  'viewer',
+  'pending'
 from auth.users
 where not exists (
   select 1

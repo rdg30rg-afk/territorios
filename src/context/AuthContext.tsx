@@ -63,7 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const [{ data: profileRow }, { data: accessRows }] = await Promise.all([
         client
           .from('profiles')
-          .select('id, full_name, role, driver_id')
+          .select('id, full_name, role, driver_id, access_status')
           .eq('id', activeSession.user.id)
           .maybeSingle(),
         client
@@ -171,7 +171,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await Promise.all([
         supabase
           .from('profiles')
-          .select('id, full_name, username, auth_email, role, driver_id')
+          .select('id, full_name, username, auth_email, role, driver_id, access_status')
           .order('created_at', { ascending: false }),
         supabase.from('user_module_access').select('user_id, module_key'),
         supabase
@@ -196,8 +196,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       auth_email: string | null
       role: ProfileRole
       driver_id: string | null
+      access_status: 'pending' | 'active' | 'inactive' | null
     }>).map((user) => ({
       ...user,
+      access_status: user.access_status ?? 'pending',
       moduleAccess: ((accessRows ?? []) as Array<{
         user_id: string
         module_key: ModuleKey
@@ -220,6 +222,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         auth_email: request.email,
         role: 'viewer',
         driver_id: null,
+        access_status: 'pending',
         moduleAccess: [],
         requestOnly: true,
       }))
@@ -229,7 +232,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setManagedUsers(allUsers)
     setPendingRequests(
       allUsers
-        .filter((user) => user.role !== 'admin' && user.moduleAccess.length === 0)
+        .filter(
+          (user) =>
+            user.role !== 'admin' &&
+            user.access_status !== 'inactive' &&
+            user.moduleAccess.length === 0,
+        )
         .map((user) => ({
           id: user.id,
           full_name: user.full_name ?? user.username ?? 'Usuario sin nombre',
@@ -317,7 +325,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { error: 'No tiene permisos de admin.' }
     }
 
-    const profileUpdate: { role: ProfileRole; driver_id?: string | null } = { role }
+    const profileUpdate: {
+      role: ProfileRole
+      driver_id?: string | null
+      access_status: 'pending' | 'active' | 'inactive'
+    } = {
+      role,
+      access_status: role === 'admin' || modules.length > 0 ? 'active' : 'pending',
+    }
 
     if (driverId !== undefined) {
       profileUpdate.driver_id = driverId || null
@@ -369,8 +384,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: null }
   }
 
-  const deactivateUser = async (userId: string) =>
-    updateUserAccess(userId, 'viewer', [], null)
+  const deactivateUser = async (userId: string) => {
+    if (!supabase || profile?.role !== 'admin') {
+      return { error: 'No tiene permisos de admin.' }
+    }
+
+    const deactivatedUser = managedUsers.find((user) => user.id === userId)
+
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .update({
+        role: 'viewer',
+        driver_id: null,
+        access_status: 'inactive',
+      })
+      .eq('id', userId)
+
+    if (profileError) {
+      return { error: profileError.message }
+    }
+
+    const { error: deleteAccessError } = await supabase
+      .from('user_module_access')
+      .delete()
+      .eq('user_id', userId)
+
+    if (deleteAccessError) {
+      return { error: deleteAccessError.message }
+    }
+
+    if (deactivatedUser?.auth_email) {
+      await supabase.from('pending_users').delete().eq('email', deactivatedUser.auth_email)
+    }
+
+    await loadManagedUsers()
+
+    return { error: null }
+  }
 
   const canAccessModule = (moduleKey: ModuleKey) => {
     if (profile?.role === 'admin') {
