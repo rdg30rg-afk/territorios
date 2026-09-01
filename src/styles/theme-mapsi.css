@@ -1,0 +1,1575 @@
+/* ==========================================================================
+   Tema Mapsi para Territorios
+   --------------------------------------------------------------------------
+   Capa visual aislada. Se activa solo con <html data-theme="mapsi">.
+   Sin este atributo la app conserva exactamente el tema original.
+
+   Reglas de esta capa:
+   - No cambia rutas, guards, consultas, permisos ni geometria.
+   - No modifica src/index.css: se carga despues y gana por especificidad.
+   - Origen de los tokens: docs/ui-madre-mapsi/design-tokens.json
+   ========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
+
+/* --------------------------------------------------------------------------
+   1. Tokens
+   -------------------------------------------------------------------------- */
+
+:root[data-theme='mapsi'] {
+  /* Paleta Mapsi */
+  --mapsi-canvas: #ffffff;
+  --mapsi-surface: #f4f4f5;
+  --mapsi-line: #cecfd3;
+  --mapsi-text-strong: #3d3c3f;
+  --mapsi-text-muted: #888a8b;
+  --mapsi-primary: #407dfe;
+  --mapsi-secondary: #5554f2;
+  --mapsi-purple: #8d5af8;
+  --mapsi-orange: #fa5d27;
+  --mapsi-green: #01bc73;
+  --mapsi-lime: #cad510;
+
+  /* Derivados con opacidad, para tintes y estados */
+  --mapsi-primary-rgb: 64, 125, 254;
+  --mapsi-secondary-rgb: 85, 84, 242;
+  --mapsi-text-rgb: 61, 60, 63;
+  --mapsi-primary-tint: rgba(64, 125, 254, 0.08);
+  --mapsi-primary-tint-strong: rgba(64, 125, 254, 0.14);
+  --mapsi-secondary-tint: rgba(85, 84, 242, 0.1);
+
+  /* Cada color semantico con dos derivados: el fondo tenue y el tono oscuro
+     que si pasa contraste sobre ese fondo. El color puro es para superficies
+     llenas y marcadores, nunca para texto chico. */
+  --mapsi-green-tint: rgba(1, 188, 115, 0.12);
+  --mapsi-green-ink: #017a4b;
+  --mapsi-orange-tint: rgba(250, 93, 39, 0.12);
+  --mapsi-orange-ink: #b83a0c;
+  --mapsi-purple-tint: rgba(141, 90, 248, 0.12);
+  --mapsi-purple-ink: #6b34d6;
+  --mapsi-lime-tint: rgba(202, 213, 16, 0.18);
+  --mapsi-lime-ink: #6b7100;
+
+  /* Forma */
+  --mapsi-radius-control: 12px;
+  --mapsi-radius-panel: 20px;
+  --mapsi-radius-hero: 28px;
+  --mapsi-radius-chip: 999px;
+
+  /* Profundidad */
+  --mapsi-shadow-soft: 0 8px 24px rgba(61, 60, 63, 0.07);
+  --mapsi-shadow-float: 0 18px 40px rgba(61, 60, 63, 0.1);
+  --mapsi-shadow-focus: 0 0 0 4px rgba(64, 125, 254, 0.14);
+
+  /* Movimiento */
+  --mapsi-duration: 180ms;
+  --mapsi-duration-emphasis: 280ms;
+  --mapsi-ease: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Mapeo sobre los tokens que ya existen en index.css.
+     Esto reskinea de entrada todo lo que ya usaba var(). */
+  --page-bg: var(--mapsi-canvas);
+  --panel-bg: var(--mapsi-canvas);
+  --panel-border: var(--mapsi-line);
+  --text-main: var(--mapsi-text-strong);
+  --text-soft: var(--mapsi-text-muted);
+  --accent: var(--mapsi-primary);
+  --accent-dark: var(--mapsi-secondary);
+  --accent-soft: var(--mapsi-primary-tint);
+  --shadow: var(--mapsi-shadow-soft);
+
+  /* Variables que index.css usa pero nunca define. Se completan aca. */
+  --ink: var(--mapsi-text-strong);
+  --muted: var(--mapsi-text-muted);
+  --border: var(--mapsi-line);
+
+  font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+  color: var(--mapsi-text-strong);
+  background: var(--mapsi-canvas);
+}
+
+/* --------------------------------------------------------------------------
+   2. Base y tipografia
+   -------------------------------------------------------------------------- */
+
+:root[data-theme='mapsi'] body {
+  background: var(--mapsi-canvas);
+  font-weight: 300;
+}
+
+:root[data-theme='mapsi'] h1,
+:root[data-theme='mapsi'] h2,
+:root[data-theme='mapsi'] h3,
+:root[data-theme='mapsi'] h4 {
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--mapsi-text-strong);
+}
+
+:root[data-theme='mapsi'] h2 {
+  font-size: clamp(1.5rem, 1.15rem + 1.1vw, 2rem);
+  line-height: 1.12;
+  letter-spacing: -0.025em;
+}
+
+:root[data-theme='mapsi'] h3 {
+  font-size: 1.25rem;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+}
+
+/* Eyebrow: label corto, no grito. La referencia usa peso medio y azul. */
+:root[data-theme='mapsi'] .eyebrow {
+  color: var(--mapsi-primary);
+  font-weight: 500;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+}
+
+:root[data-theme='mapsi'] .lead {
+  color: var(--mapsi-text-muted);
+  font-weight: 300;
+  line-height: 1.5;
+}
+
+/* --------------------------------------------------------------------------
+   3. Shell y navegacion lateral
+   La referencia pide superficie neutra con estado activo azul,
+   en lugar del panel marron actual.
+   -------------------------------------------------------------------------- */
+
+:root[data-theme='mapsi'] .app-shell {
+  background: var(--mapsi-canvas);
+}
+
+:root[data-theme='mapsi'] .sidebar {
+  background: var(--mapsi-canvas);
+  border-right: 1px solid var(--mapsi-line);
+  color: var(--mapsi-text-strong);
+  gap: 1.25rem;
+}
+
+:root[data-theme='mapsi'] .sidebar .eyebrow {
+  color: var(--mapsi-primary);
+}
+
+:root[data-theme='mapsi'] .sidebar .brand-copy,
+:root[data-theme='mapsi'] .sidebar .security-card li,
+:root[data-theme='mapsi'] .sidebar .module-link small {
+  color: var(--mapsi-text-muted);
+}
+
+/* Bloque de marca: peso visual bajo, para que los datos manden. */
+:root[data-theme='mapsi'] .brand-panel {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  padding: 0.5rem 0.25rem 0;
+}
+
+:root[data-theme='mapsi'] .brand-panel h1 {
+  font-size: 1.35rem;
+  letter-spacing: -0.02em;
+}
+
+/* Enlaces de modulo: chip neutro, activo en indigo. */
+:root[data-theme='mapsi'] .module-link {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--mapsi-radius-control);
+  padding: 0.7rem 0.8rem;
+  color: var(--mapsi-text-strong);
+  transition:
+    background var(--mapsi-duration) var(--mapsi-ease),
+    color var(--mapsi-duration) var(--mapsi-ease);
+}
+
+:root[data-theme='mapsi'] .module-link:hover {
+  transform: none;
+  background: var(--mapsi-surface);
+  border-color: transparent;
+}
+
+:root[data-theme='mapsi'] .module-link.active {
+  background: var(--mapsi-secondary-tint);
+  border-color: transparent;
+  color: var(--mapsi-secondary);
+}
+
+:root[data-theme='mapsi'] .module-link.active small {
+  color: rgba(var(--mapsi-secondary-rgb), 0.75);
+}
+
+/* Numeral del modulo como nodo de mapa. */
+:root[data-theme='mapsi'] .module-icon {
+  background: var(--mapsi-surface);
+  color: var(--mapsi-text-muted);
+  border-radius: 10px;
+  font-weight: 500;
+  font-size: 0.8rem;
+  transition: all var(--mapsi-duration) var(--mapsi-ease);
+}
+
+:root[data-theme='mapsi'] .module-link.active .module-icon {
+  background: var(--mapsi-secondary);
+  color: #fff;
+}
+
+/* Tarjetas auxiliares de la sidebar: sin caja pesada. */
+:root[data-theme='mapsi'] .user-card,
+:root[data-theme='mapsi'] .security-card,
+:root[data-theme='mapsi'] .install-card {
+  background: var(--mapsi-surface);
+  border: 1px solid transparent;
+  box-shadow: none;
+  border-radius: var(--mapsi-radius-panel);
+  padding: 1rem;
+}
+
+:root[data-theme='mapsi'] .user-card small,
+:root[data-theme='mapsi'] .security-card li {
+  color: var(--mapsi-text-muted);
+}
+
+:root[data-theme='mapsi'] .install-card {
+  background: var(--mapsi-primary-tint);
+}
+
+:root[data-theme='mapsi'] .content {
+  background: var(--mapsi-canvas);
+  padding: 2rem 2.5rem;
+  max-width: 1280px;
+}
+
+/* --------------------------------------------------------------------------
+   4. Encabezado de pagina, hero y metricas
+   -------------------------------------------------------------------------- */
+
+:root[data-theme='mapsi'] .page-header {
+  background: transparent;
+  padding: 0;
+}
+
+:root[data-theme='mapsi'] .hero-card {
+  background: var(--mapsi-surface);
+  border: 0;
+  box-shadow: none;
+  border-radius: var(--mapsi-radius-hero);
+  padding: 2rem;
+}
+
+:root[data-theme='mapsi'] .hero-highlight {
+  background: var(--mapsi-canvas);
+  border: 1px solid var(--mapsi-line);
+  border-radius: var(--mapsi-radius-panel);
+  color: var(--mapsi-text-strong);
+}
+
+:root[data-theme='mapsi'] .hero-highlight span {
+  color: var(--mapsi-primary);
+}
+
+:root[data-theme='mapsi'] .stat-card,
+:root[data-theme='mapsi'] .module-stat-card,
+:root[data-theme='mapsi'] .territory-metric-card {
+  background: var(--mapsi-canvas);
+  border: 1px solid var(--mapsi-line);
+  box-shadow: none;
+  border-radius: var(--mapsi-radius-panel);
+  transition:
+    border-color var(--mapsi-duration) var(--mapsi-ease),
+    box-shadow var(--mapsi-duration) var(--mapsi-ease);
+}
+
+:root[data-theme='mapsi'] .stat-card:hover,
+:root[data-theme='mapsi'] .module-stat-card:hover,
+:root[data-theme='mapsi'] .territory-metric-card:hover {
+  border-color: rgba(var(--mapsi-primary-rgb), 0.35);
+  box-shadow: var(--mapsi-shadow-soft);
+}
+
+:root[data-theme='mapsi'] .stat-card strong {
+  color: var(--mapsi-text-strong);
+  font-weight: 500;
+}
+
+/* --------------------------------------------------------------------------
+   5. Paneles y tarjetas
+   -------------------------------------------------------------------------- */
+
+:root[data-theme='mapsi'] .panel,
+:root[data-theme='mapsi'] .list-card,
+:root[data-theme='mapsi'] .map-panel,
+:root[data-theme='mapsi'] .status-card,
+:root[data-theme='mapsi'] .module-detail-card,
+:root[data-theme='mapsi'] .module-guidance-item,
+:root[data-theme='mapsi'] .module-registry-panel,
+:root[data-theme='mapsi'] .territory-registry-panel,
+:root[data-theme='mapsi'] .territory-block-panel,
+:root[data-theme='mapsi'] .personal-alert-panel,
+:root[data-theme='mapsi'] .admin-access-panel,
+:root[data-theme='mapsi'] .territory-studio,
+:root[data-theme='mapsi'] .territory-console,
+:root[data-theme='mapsi'] .module-console {
+  background: var(--mapsi-canvas);
+  border: 1px solid var(--mapsi-line);
+  box-shadow: none;
+  border-radius: var(--mapsi-radius-panel);
+}
+
+:root[data-theme='mapsi'] .module-hero,
+:root[data-theme='mapsi'] .territory-hero,
+:root[data-theme='mapsi'] .group-assignment-card,
+:root[data-theme='mapsi'] .outing-day-card,
+:root[data-theme='mapsi'] .driver-card,
+:root[data-theme='mapsi'] .availability-day-card,
+:root[data-theme='mapsi'] .personal-reservation-card,
+:root[data-theme='mapsi'] .territory-summary-box,
+:root[data-theme='mapsi'] .availability-editor {
+  background: var(--mapsi-surface);
+  border: 1px solid transparent;
+  box-shadow: none;
+  border-radius: var(--mapsi-radius-panel);
+}
+
+:root[data-theme='mapsi'] .module-hero-copy .eyebrow,
+:root[data-theme='mapsi'] .territory-hero-copy .eyebrow,
+:root[data-theme='mapsi'] .auth-copy .eyebrow {
+  color: var(--mapsi-primary);
+}
+
+/* Inversion de superficies oscuras.
+   En el tema original .module-hero, .territory-hero y .auth-copy eran
+   paneles marrones con texto claro. Al pasarlos a superficie clara hay que
+   reasignar TODO el texto que heredaba blanco, o queda ilegible. */
+:root[data-theme='mapsi'] .module-hero,
+:root[data-theme='mapsi'] .territory-hero,
+:root[data-theme='mapsi'] .auth-copy {
+  color: var(--mapsi-text-strong);
+}
+
+:root[data-theme='mapsi'] .module-hero-copy p:last-child,
+:root[data-theme='mapsi'] .module-stat-card small,
+:root[data-theme='mapsi'] .module-stat-card span,
+:root[data-theme='mapsi'] .table-hint,
+:root[data-theme='mapsi'] .territory-hero-copy .toolbar-copy,
+:root[data-theme='mapsi'] .territory-map-floating-card span,
+:root[data-theme='mapsi'] .territory-metric-card span,
+:root[data-theme='mapsi'] .territory-metric-card small,
+:root[data-theme='mapsi'] .auth-copy .lead {
+  color: var(--mapsi-text-muted);
+}
+
+/* Las metricas vivian sobre el hero oscuro con un blanco al 9 % de opacidad,
+   invisible sobre fondo claro. Pasan a tarjeta blanca con borde. */
+:root[data-theme='mapsi'] .module-stat-card,
+:root[data-theme='mapsi'] .territory-metric-card {
+  background: var(--mapsi-canvas);
+  border: 1px solid var(--mapsi-line);
+  border-radius: var(--mapsi-radius-control);
+}
+
+:root[data-theme='mapsi'] .module-stat-card strong,
+:root[data-theme='mapsi'] .territory-metric-card strong,
+:root[data-theme='mapsi'] .territory-count-pill strong,
+:root[data-theme='mapsi'] .territory-vertex-badge strong {
+  color: var(--mapsi-text-strong);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+:root[data-theme='mapsi'] .territory-vertex-badge strong,
+:root[data-theme='mapsi'] .territory-vertex-badge span {
+  color: #fff;
+}
+
+/* Tarjeta flotante sobre el mapa: aca si corresponde elevacion. */
+:root[data-theme='mapsi'] .territory-map-floating-card,
+:root[data-theme='mapsi'] .map-picker-panel {
+  background: var(--mapsi-canvas);
+  border: 1px solid var(--mapsi-line);
+  border-radius: var(--mapsi-radius-panel);
+  box-shadow: var(--mapsi-shadow-float);
+}
+
+:root[data-theme='mapsi'] .territory-summary-row + .territory-summary-row,
+:root[data-theme='mapsi'] .territory-block-row,
+:root[data-theme='mapsi'] .territory-selected-meta > div {
+  border-color: var(--mapsi-line);
+}
+
+/* --------------------------------------------------------------------------
+   6. Botones
+   Primaria azul plana, secundaria neutra, fantasma sobre superficie clara.
+   -------------------------------------------------------------------------- */
+
+:root[data-theme='mapsi'] .primary-button,
+:root[data-theme='mapsi'] .secondary-button,
+:root[data-theme='mapsi'] .ghost-button,
+:root[data-theme='mapsi'] .danger-button,
+:root[data-theme='mapsi'] .compact-button {
+  border-radius: var(--mapsi-radius-chip);
+  font-weight: 500;
+  min-height: 44px;
+  transition:
+    background var(--mapsi-duration) var(--mapsi-ease),
+    box-shadow var(--mapsi-duration) var(--mapsi-ease),
+    color var(--mapsi-duration) var(--mapsi-ease);
+}
+
+:root[data-theme='mapsi'] .primary-button {
+  background: var(--mapsi-primary);
+  color: #fff;
+}
+
+:root[data-theme='mapsi'] .primary-button:hover:not(:disabled) {
+  background: #2f6ef0;
+  transform: none;
+  box-shadow: var(--mapsi-shadow-soft);
+}
+
+/* Correccion segun el UI kit del modulo 03: la accion secundaria no es gris
+   sobre gris, es superficie neutra con TEXTO AZUL. La destructiva usa la
+   misma superficie con TEXTO NARANJA. El color vive en el texto, no en el
+   fondo. */
+:root[data-theme='mapsi'] .secondary-button,
+:root[data-theme='mapsi'] .ghost-button {
+  background: var(--mapsi-surface);
+  color: var(--mapsi-primary);
+  border: 1px solid transparent;
+}
+
+:root[data-theme='mapsi'] .secondary-button:hover:not(:disabled),
+:root[data-theme='mapsi'] .ghost-button:hover:not(:disabled) {
+  background: var(--mapsi-primary-tint);
+  color: var(--mapsi-primary);
+  transform: none;
+}
+
+:root[data-theme='mapsi'] .danger-button {
+  background: var(--mapsi-surface);
+  color: var(--mapsi-orange);
+}
+
+:root[data-theme='mapsi'] .danger-button:hover:not(:disabled) {
+  background: rgba(250, 93, 39, 0.18);
+  transform: none;
+}
+
+:root[data-theme='mapsi'] .compact-button {
+  min-height: 36px;
+}
+
+:root[data-theme='mapsi'] .toolbar-actions button,
+:root[data-theme='mapsi'] .territory-toolbar-actions button {
+  border-radius: var(--mapsi-radius-chip);
+}
+
+/* Foco visible y consistente en todo lo interactivo. */
+:root[data-theme='mapsi'] button:focus-visible,
+:root[data-theme='mapsi'] a:focus-visible,
+:root[data-theme='mapsi'] input:focus-visible,
+:root[data-theme='mapsi'] select:focus-visible,
+:root[data-theme='mapsi'] textarea:focus-visible {
+  outline: 2px solid var(--mapsi-primary);
+  outline-offset: 2px;
+  box-shadow: var(--mapsi-shadow-focus);
+}
+
+/* --------------------------------------------------------------------------
+   7. Formularios
+   -------------------------------------------------------------------------- */
+
+:root[data-theme='mapsi'] .form-stack input,
+:root[data-theme='mapsi'] .form-stack textarea,
+:root[data-theme='mapsi'] .form-stack select,
+:root[data-theme='mapsi'] .inline-filter select,
+:root[data-theme='mapsi'] .module-search-field input,
+:root[data-theme='mapsi'] .territory-search-field input,
+:root[data-theme='mapsi'] .territory-inline-field input,
+:root[data-theme='mapsi'] .auth-form input,
+:root[data-theme='mapsi'] .admin-user-card select,
+:root[data-theme='mapsi'] .outing-schedule-row input,
+:root[data-theme='mapsi'] .outing-schedule-row select {
+  background: var(--mapsi-canvas);
+  border: 1px solid var(--mapsi-line);
+  border-radius: var(--mapsi-radius-control);
+  color: var(--mapsi-text-strong);
+  font-weight: 300;
+  min-height: 44px;
+  transition:
+    border-color var(--mapsi-duration) var(--mapsi-ease),
+    box-shadow var(--mapsi-duration) var(--mapsi-ease);
+}
+
+:root[data-theme='mapsi'] .form-stack input:focus,
+:root[data-theme='mapsi'] .form-stack textarea:focus,
+:root[data-theme='mapsi'] .form-stack select:focus,
+:root[data-theme='mapsi'] .territory-search-field input:focus,
+:root[data-theme='mapsi'] .module-search-field input:focus,
+:root[data-theme='mapsi'] .auth-form input:focus {
+  outline: none;
+  border-color: var(--mapsi-primary);
+  box-shadow: var(--mapsi-shadow-focus);
+}
+
+:root[data-theme='mapsi'] input::placeholder,
+:root[data-theme='mapsi'] textarea::placeholder {
+  color: var(--mapsi-text-muted);
+}
+
+:root[data-theme='mapsi'] .form-stack label,
+:root[data-theme='mapsi'] .auth-form label {
+  font-size: 0.8rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--mapsi-text-strong);
+}
+
+/* Casillas presentadas como tarjeta seleccionable.
+   Ojo: en index.css estos contenedores traen espaciados distintos entre si
+   (admin-module-checks no tiene ni padding ni gap propios), asi que aca se
+   normalizan los tres juntos. Sin esto el texto queda pegado a la casilla. */
+:root[data-theme='mapsi'] .availability-check-grid label,
+:root[data-theme='mapsi'] .availability-turn-options label,
+:root[data-theme='mapsi'] .admin-module-checks label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+  padding: 0.6rem 0.75rem;
+  min-height: 44px;
+  background: var(--mapsi-canvas);
+  border: 1px solid var(--mapsi-line);
+  border-radius: var(--mapsi-radius-control);
+  color: var(--mapsi-text-strong);
+  font-weight: 400;
+  cursor: pointer;
+  transition:
+    border-color var(--mapsi-duration) var(--mapsi-ease),
+    background var(--mapsi-duration) var(--mapsi-ease),
+    color var(--mapsi-duration) var(--mapsi-ease);
+}
+
+/* El texto se acorta con puntos suspensivos antes que desbordar la columna.
+   Estos contenedores son grillas de 2 y 3 columnas muy angostas. */
+:root[data-theme='mapsi'] .availability-check-grid label,
+:root[data-theme='mapsi'] .availability-turn-options label,
+:root[data-theme='mapsi'] .admin-module-checks label {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+:root[data-theme='mapsi'] .availability-check-grid label:hover,
+:root[data-theme='mapsi'] .availability-turn-options label:hover,
+:root[data-theme='mapsi'] .admin-module-checks label:hover {
+  border-color: var(--mapsi-primary);
+  background: var(--mapsi-primary-tint);
+}
+
+:root[data-theme='mapsi'] .availability-turn-options {
+  background: transparent;
+}
+
+/* .outing-check es una etiqueta suelta en linea, no una tarjeta.
+   Le habia puesto caja con borde y fondo, que no corresponde. */
+:root[data-theme='mapsi'] .outing-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: var(--mapsi-text-strong);
+  font-weight: 400;
+  cursor: pointer;
+}
+
+/* Casillas y radios dibujados a mano, siguiendo el UI kit: cuadrado de
+   esquinas suaves relleno de azul con tilde blanca, y circulo con punto
+   central. accent-color no alcanza para llegar a esa forma. */
+:root[data-theme='mapsi'] input[type='checkbox'],
+:root[data-theme='mapsi'] input[type='radio'] {
+  appearance: none;
+  -webkit-appearance: none;
+  /* Anula la regla generica de campos de formulario de mas arriba, que
+     impone min-height 44px y padding pensados para inputs de texto. */
+  min-height: 0;
+  min-width: 0;
+  padding: 0;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  margin: 0;
+  border: 1.5px solid var(--mapsi-line);
+  background: var(--mapsi-canvas);
+  cursor: pointer;
+  display: inline-grid;
+  place-content: center;
+  transition:
+    background var(--mapsi-duration) var(--mapsi-ease),
+    border-color var(--mapsi-duration) var(--mapsi-ease);
+}
+
+:root[data-theme='mapsi'] input[type='checkbox'] {
+  border-radius: 6px;
+}
+
+:root[data-theme='mapsi'] input[type='radio'] {
+  border-radius: 50%;
+}
+
+:root[data-theme='mapsi'] input[type='checkbox']::before {
+  content: '';
+  width: 11px;
+  height: 11px;
+  transform: scale(0);
+  transition: transform 140ms var(--mapsi-ease);
+  background: #fff;
+  clip-path: polygon(
+    14% 44%,
+    0 60%,
+    39% 100%,
+    100% 22%,
+    85% 8%,
+    39% 70%
+  );
+}
+
+:root[data-theme='mapsi'] input[type='radio']::before {
+  content: '';
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  transform: scale(0);
+  transition: transform 140ms var(--mapsi-ease);
+  background: #fff;
+}
+
+:root[data-theme='mapsi'] input[type='checkbox']:checked,
+:root[data-theme='mapsi'] input[type='radio']:checked {
+  background: var(--mapsi-primary);
+  border-color: var(--mapsi-primary);
+}
+
+:root[data-theme='mapsi'] input[type='checkbox']:checked::before,
+:root[data-theme='mapsi'] input[type='radio']:checked::before {
+  transform: scale(1);
+}
+
+:root[data-theme='mapsi'] input[type='checkbox']:disabled,
+:root[data-theme='mapsi'] input[type='radio']:disabled {
+  background: var(--mapsi-surface);
+  border-color: var(--mapsi-line);
+  cursor: not-allowed;
+}
+
+/* La casilla marcada tine su etiqueta, como en la referencia. */
+:root[data-theme='mapsi'] .availability-check-grid label:has(input:checked),
+:root[data-theme='mapsi'] .availability-turn-options label:has(input:checked),
+:root[data-theme='mapsi'] .admin-module-checks label:has(input:checked) {
+  border-color: var(--mapsi-primary);
+  background: var(--mapsi-primary-tint);
+  color: var(--mapsi-primary);
+}
+
+/* --------------------------------------------------------------------------
+   8. Tablas y registros
+   La referencia evita convertir cada fila en tarjeta: encabezado apagado,
+   divisor fino y fila activa con tinte azul + barra de 2 px.
+   -------------------------------------------------------------------------- */
+
+:root[data-theme='mapsi'] .module-table-shell,
+:root[data-theme='mapsi'] .territory-table-shell,
+:root[data-theme='mapsi'] .outing-schedule-shell {
+  background: var(--mapsi-canvas);
+  border: 1px solid var(--mapsi-line);
+  border-radius: var(--mapsi-radius-panel);
+  overflow: hidden;
+}
+
+:root[data-theme='mapsi'] .module-table-head,
+:root[data-theme='mapsi'] .territory-table-head,
+:root[data-theme='mapsi'] .outing-schedule-head {
+  background: var(--mapsi-surface);
+  color: var(--mapsi-text-muted);
+  font-weight: 500;
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  border-bottom: 1px solid var(--mapsi-line);
+}
+
+:root[data-theme='mapsi'] .module-table-row,
+:root[data-theme='mapsi'] .territory-table-row,
+:root[data-theme='mapsi'] .outing-schedule-row,
+:root[data-theme='mapsi'] .table-row {
+  background: var(--mapsi-canvas);
+  border-top: 1px solid var(--mapsi-line);
+  border-left: 2px solid transparent;
+  color: var(--mapsi-text-strong);
+  transition: background var(--mapsi-duration) var(--mapsi-ease);
+}
+
+:root[data-theme='mapsi'] .module-table-row:hover,
+:root[data-theme='mapsi'] .territory-table-row:hover,
+:root[data-theme='mapsi'] .outing-schedule-row:hover {
+  background: var(--mapsi-surface);
+  transform: none;
+}
+
+:root[data-theme='mapsi'] .territory-table-row.active,
+:root[data-theme='mapsi'] .module-table-row-button.active,
+:root[data-theme='mapsi'] .outing-schedule-row.active {
+  background: var(--mapsi-primary-tint);
+  border-left-color: var(--mapsi-primary);
+}
+
+:root[data-theme='mapsi'] .territory-item {
+  background: var(--mapsi-canvas);
+  border: 1px solid var(--mapsi-line);
+  border-radius: var(--mapsi-radius-control);
+  transition: all var(--mapsi-duration) var(--mapsi-ease);
+}
+
+:root[data-theme='mapsi'] .territory-item:hover {
+  border-color: rgba(var(--mapsi-primary-rgb), 0.4);
+  background: var(--mapsi-canvas);
+}
+
+:root[data-theme='mapsi'] .territory-item.active {
+  border-color: var(--mapsi-primary);
+  background: var(--mapsi-primary-tint);
+}
+
+:root[data-theme='mapsi'] .territory-item-order {
+  background: var(--mapsi-surface);
+  color: var(--mapsi-text-muted);
+  border-radius: 10px;
+  font-weight: 500;
+}
+
+:root[data-theme='mapsi'] .territory-item.active .territory-item-order {
+  background: var(--mapsi-primary);
+  color: #fff;
+}
+
+/* --------------------------------------------------------------------------
+   9. Chips, pills y estados
+   Regla del sistema: el color nunca comunica solo. Siempre color + texto.
+   -------------------------------------------------------------------------- */
+
+:root[data-theme='mapsi'] .status-pill,
+:root[data-theme='mapsi'] .territory-count-pill,
+:root[data-theme='mapsi'] .outing-type-pill,
+:root[data-theme='mapsi'] .tag-row span {
+  border-radius: var(--mapsi-radius-chip);
+  font-weight: 500;
+  font-size: 0.78rem;
+  letter-spacing: 0.01em;
+}
+
+:root[data-theme='mapsi'] .status-activo {
+  background: var(--mapsi-green-tint);
+  color: var(--mapsi-green-ink);
+}
+
+:root[data-theme='mapsi'] .status-pendiente {
+  background: var(--mapsi-orange-tint);
+  color: var(--mapsi-orange-ink);
+}
+
+:root[data-theme='mapsi'] .status-inactivo {
+  background: var(--mapsi-surface);
+  color: var(--mapsi-text-muted);
+}
+
+:root[data-theme='mapsi'] .territory-count-pill,
+:root[data-theme='mapsi'] .tag-row span {
+  background: var(--mapsi-primary-tint);
+  color: var(--mapsi-primary);
+}
+
+:root[data-theme='mapsi'] .outing-type-pill {
+  background: var(--mapsi-purple-tint);
+  color: var(--mapsi-purple-ink);
+}
+
+/* Fases del flujo de territorio: pasos como nodos de recorrido. */
+:root[data-theme='mapsi'] .territory-phase-strip span {
+  background: var(--mapsi-surface);
+  color: var(--mapsi-text-muted);
+  border-radius: var(--mapsi-radius-chip);
+  font-weight: 500;
+}
+
+:root[data-theme='mapsi'] .territory-phase-strip span.active {
+  background: var(--mapsi-primary);
+  color: #fff;
+}
+
+:root[data-theme='mapsi'] .territory-step {
+  background: var(--mapsi-canvas);
+  border: 1px solid var(--mapsi-line);
+  border-radius: var(--mapsi-radius-panel);
+}
+
+:root[data-theme='mapsi'] .territory-step.active {
+  border-color: var(--mapsi-primary);
+  background: var(--mapsi-primary-tint);
+}
+
+/* Lo que quedaba de la paleta anterior y no llegaba a la capa del tema.
+   Son elementos del modulo de mapas, escritos con colores literales en
+   index.css: sobre el resto ya vestido de Mapsi quedaban como parches. */
+
+/* .toolbar-actions button: beige #ecd8ca sobre marron #8a4b2d. Son las
+   acciones del mapa (deshacer punto, refrescar, pantalla completa,
+   cancelar). Pasan a la accion secundaria del sistema. */
+:root[data-theme='mapsi'] .toolbar-actions button {
+  background: var(--mapsi-surface);
+  color: var(--mapsi-primary);
+  font-weight: 500;
+  border: 1px solid var(--mapsi-line);
+  transition: background var(--mapsi-duration) var(--mapsi-ease),
+    border-color var(--mapsi-duration) var(--mapsi-ease);
+}
+
+:root[data-theme='mapsi'] .toolbar-actions button:hover:not(:disabled) {
+  background: var(--mapsi-primary-tint);
+  border-color: rgba(var(--mapsi-primary-rgb), 0.35);
+}
+
+/* "Cancelar" descarta el dibujo en curso y deberia llevar el naranja de
+   alerta, pero ese boton no tiene ninguna clase propia en el componente.
+   Marcarlo por posicion (:last-child) haria que, si manana se agrega otra
+   accion, el naranja caiga sobre el boton equivocado. Queda como accion
+   secundaria hasta que el componente le ponga una clase. */
+
+/* Las etiquetas de manzana sobre el mapa eran magenta #9c2d91, el unico
+   resto fuerte de la paleta vieja y el color mas repetido de la pantalla:
+   635 marcadores. Pasan al violeta del sistema. */
+:root[data-theme='mapsi'] .territory-block-label span {
+  border-color: rgba(141, 90, 248, 0.9);
+  color: var(--mapsi-purple-ink);
+  font-weight: 700;
+  box-shadow: var(--mapsi-shadow-soft);
+}
+
+:root[data-theme='mapsi'] .territory-block-chip {
+  background: var(--mapsi-purple-tint);
+  color: var(--mapsi-purple-ink);
+  font-weight: 600;
+}
+
+/* El lima es el acento de Mapsi para "esto es lo que estas haciendo ahora".
+   Se reserva para el turno elegido y el paso en curso, que son estados
+   momentaneos: usado en mas lugares dejaria de significar nada. */
+:root[data-theme='mapsi'] .outing-slot-button.active {
+  background: var(--mapsi-lime-tint);
+  border-color: rgba(202, 213, 16, 0.55);
+  color: var(--mapsi-lime-ink);
+}
+
+:root[data-theme='mapsi'] .territory-phase-strip span.active {
+  background: var(--mapsi-secondary);
+  color: #fff;
+}
+
+/* --------------------------------------------------------------------------
+   10. Feedback
+   -------------------------------------------------------------------------- */
+
+:root[data-theme='mapsi'] .form-feedback {
+  border-radius: var(--mapsi-radius-control);
+  font-weight: 400;
+  border: 1px solid transparent;
+}
+
+:root[data-theme='mapsi'] .form-feedback.error {
+  background: var(--mapsi-orange-tint);
+  border-color: rgba(250, 93, 39, 0.28);
+  color: var(--mapsi-orange-ink);
+}
+
+:root[data-theme='mapsi'] .form-feedback.success {
+  background: var(--mapsi-green-tint);
+  border-color: rgba(1, 188, 115, 0.28);
+  color: var(--mapsi-green-ink);
+}
+
+:root[data-theme='mapsi'] .status-card {
+  color: var(--mapsi-text-strong);
+  border-radius: var(--mapsi-radius-panel);
+}
+
+:root[data-theme='mapsi'] .admin-notification-panel {
+  background: var(--mapsi-primary-tint);
+  border: 1px solid rgba(var(--mapsi-primary-rgb), 0.25);
+  border-radius: var(--mapsi-radius-panel);
+}
+
+/* Badge de conteo de solicitudes: cuadrado con el numero, no un titulo. */
+:root[data-theme='mapsi'] .admin-notification-head > strong {
+  background: var(--mapsi-primary);
+  color: #fff;
+  border-radius: var(--mapsi-radius-control);
+  font-weight: 500;
+}
+
+:root[data-theme='mapsi'] .admin-user-card {
+  background: var(--mapsi-canvas);
+  border: 1px solid var(--mapsi-line);
+  border-radius: var(--mapsi-radius-panel);
+}
+
+:root[data-theme='mapsi'] .admin-user-card-pending {
+  border-color: rgba(250, 93, 39, 0.4);
+  background: rgba(250, 93, 39, 0.04);
+}
+
+:root[data-theme='mapsi'] .admin-access-subhead {
+  color: var(--mapsi-text-muted);
+}
+
+/* --------------------------------------------------------------------------
+   11. Mapa
+   Solo cromatica de la interfaz alrededor del mapa. El motor, las capas,
+   la geometria y el proveedor de tiles quedan intactos.
+   -------------------------------------------------------------------------- */
+
+:root[data-theme='mapsi'] .territory-map-frame,
+:root[data-theme='mapsi'] .territory-map-stage,
+:root[data-theme='mapsi'] .map-canvas,
+:root[data-theme='mapsi'] .meeting-map-canvas,
+:root[data-theme='mapsi'] .territory-leaflet-canvas {
+  border-radius: var(--mapsi-radius-panel);
+  border-color: var(--mapsi-line);
+}
+
+/* Controles de Leaflet con la gramatica de la referencia:
+   columna compacta, blanca, flotante. */
+:root[data-theme='mapsi'] .territory-leaflet-canvas .leaflet-control-zoom a,
+:root[data-theme='mapsi'] .territory-leaflet-canvas .leaflet-draw-toolbar a,
+:root[data-theme='mapsi'] .territory-leaflet-canvas .leaflet-bar a {
+  background-color: var(--mapsi-canvas);
+  color: var(--mapsi-text-strong);
+  border-color: var(--mapsi-line);
+  border-radius: 10px;
+}
+
+:root[data-theme='mapsi'] .territory-leaflet-canvas .leaflet-bar a:hover,
+:root[data-theme='mapsi'] .territory-leaflet-canvas .leaflet-control-zoom a:hover {
+  background-color: var(--mapsi-primary-tint);
+  color: var(--mapsi-primary);
+}
+
+:root[data-theme='mapsi'] .territory-leaflet-canvas .leaflet-bar {
+  box-shadow: var(--mapsi-shadow-float);
+  border: 0;
+}
+
+:root[data-theme='mapsi'] .territory-tooltip,
+:root[data-theme='mapsi'] .territory-vertex-label,
+:root[data-theme='mapsi'] .territory-snap-guide-label,
+:root[data-theme='mapsi'] .maplibregl-popup-content {
+  background: var(--mapsi-canvas);
+  color: var(--mapsi-text-strong);
+  border: 1px solid var(--mapsi-line);
+  border-radius: 10px;
+  box-shadow: var(--mapsi-shadow-soft);
+  font-weight: 400;
+}
+
+:root[data-theme='mapsi'] .territory-vertex-badge {
+  background: var(--mapsi-primary);
+  color: #fff;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 3px rgba(var(--mapsi-primary-rgb), 0.22);
+}
+
+:root[data-theme='mapsi'] .territory-leaflet-canvas .leaflet-editing-icon {
+  border-color: var(--mapsi-primary);
+  background: #fff;
+}
+
+/* Capa de tiles: acerca el raster de OSM al mapa palido de la referencia.
+   Es un filtro de presentacion, no cambia el proveedor ni las coordenadas. */
+:root[data-theme='mapsi'] .territory-leaflet-canvas .leaflet-tile-pane,
+:root[data-theme='mapsi'] .meeting-map-canvas .maplibregl-canvas {
+  filter: saturate(0.78) brightness(1.06) contrast(0.94);
+}
+
+/* --------------------------------------------------------------------------
+   12. Planificador de salidas
+   -------------------------------------------------------------------------- */
+
+:root[data-theme='mapsi'] .outing-slot-button {
+  background: var(--mapsi-canvas);
+  border: 1px solid var(--mapsi-line);
+  border-radius: var(--mapsi-radius-control);
+  color: var(--mapsi-text-strong);
+  min-height: 44px;
+}
+
+:root[data-theme='mapsi'] .outing-slot-button:hover {
+  transform: none;
+  border-color: var(--mapsi-primary);
+  background: var(--mapsi-primary-tint);
+}
+
+:root[data-theme='mapsi'] .outing-slot-button span {
+  color: var(--mapsi-primary);
+  font-weight: 500;
+}
+
+:root[data-theme='mapsi'] .outing-slot-button strong {
+  color: var(--mapsi-text-muted);
+  font-weight: 300;
+}
+
+:root[data-theme='mapsi'] .outing-slot-button.active {
+  background: var(--mapsi-primary);
+  border-color: var(--mapsi-primary);
+}
+
+:root[data-theme='mapsi'] .outing-slot-button.active span,
+:root[data-theme='mapsi'] .outing-slot-button.active strong {
+  color: #fff;
+}
+
+:root[data-theme='mapsi'] .outing-schedule-entry,
+:root[data-theme='mapsi'] .outing-row-map {
+  border-color: var(--mapsi-line);
+  border-radius: var(--mapsi-radius-control);
+}
+
+/* --------------------------------------------------------------------------
+   13. Acceso
+   -------------------------------------------------------------------------- */
+
+:root[data-theme='mapsi'] .auth-layout {
+  background: var(--mapsi-canvas);
+}
+
+:root[data-theme='mapsi'] .auth-card {
+  background: var(--mapsi-canvas);
+  border: 1px solid var(--mapsi-line);
+  border-radius: var(--mapsi-radius-hero);
+  box-shadow: var(--mapsi-shadow-float);
+}
+
+/* Correccion de maquetado heredada del tema original: .auth-card es una
+   grilla de 2 columnas y el formulario caia debajo del texto, en la columna
+   izquierda, mientras las pestanas se estiraban a lo alto de la fila.
+   Se resuelve haciendo que la columna de texto ocupe ambas filas. */
+:root[data-theme='mapsi'] .auth-copy {
+  background: var(--mapsi-surface);
+  border-radius: var(--mapsi-radius-panel);
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+:root[data-theme='mapsi'] .auth-mode-tabs {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: start;
+  margin: 1.75rem 1.75rem 0;
+  padding: 4px;
+}
+
+:root[data-theme='mapsi'] .auth-form {
+  grid-column: 2;
+  grid-row: 2;
+  align-self: start;
+}
+
+/* Cuando faltan las variables de entorno, el aviso ocupa la columna derecha. */
+:root[data-theme='mapsi'] .auth-card > .status-card {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: center;
+  margin: 1.75rem;
+}
+
+:root[data-theme='mapsi'] .auth-mode-tabs,
+:root[data-theme='mapsi'] .mode-switch {
+  background: var(--mapsi-surface);
+  border-radius: var(--mapsi-radius-chip);
+  padding: 4px;
+  gap: 4px;
+}
+
+:root[data-theme='mapsi'] .auth-mode-tabs button,
+:root[data-theme='mapsi'] .mode-switch button {
+  background: transparent;
+  color: var(--mapsi-text-muted);
+  border: 0;
+  border-radius: var(--mapsi-radius-chip);
+  font-weight: 500;
+  min-height: 40px;
+  transition: all var(--mapsi-duration) var(--mapsi-ease);
+}
+
+:root[data-theme='mapsi'] .auth-mode-tabs button.active,
+:root[data-theme='mapsi'] .mode-switch button.active {
+  background: var(--mapsi-canvas);
+  color: var(--mapsi-primary);
+  box-shadow: var(--mapsi-shadow-soft);
+}
+
+/* --------------------------------------------------------------------------
+   14. Responsive
+   La referencia exige target tactil de 44 px y prohibe el scroll horizontal
+   accidental. Aca solo se ajusta la piel; la estructura no cambia.
+   -------------------------------------------------------------------------- */
+
+@media (max-width: 1024px) {
+  /* La sidebar pasa a barra superior fija y compacta.
+     Sin esto hay que recorrer cuatro tarjetas antes de ver la pagina,
+     que es justo lo que rompe el uso en telefono.
+     Presentacion unicamente: no se quita ninguna accion ni se altera
+     el orden de navegacion. */
+  /* Sin esto la tira horizontal no puede encogerse: los items de grid y de
+     flex tienen min-width auto y estiran la pagina entera a lo ancho. */
+  :root[data-theme='mapsi'] .app-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  :root[data-theme='mapsi'] .sidebar,
+  :root[data-theme='mapsi'] .module-nav,
+  :root[data-theme='mapsi'] .brand-panel,
+  :root[data-theme='mapsi'] .user-card,
+  :root[data-theme='mapsi'] .install-card {
+    min-width: 0;
+  }
+
+  /* La sidebar deja de ser una caja y sus hijos pasan a ser hijos directos
+     del shell. Solo asi se los puede reordenar por separado en una sola
+     columna: la marca arriba, el contenido inmediatamente despues, la
+     navegacion abajo al alcance del pulgar y las tarjetas al final.
+     Es reordenamiento visual: no se quita ninguna accion. */
+  :root[data-theme='mapsi'] .app-shell {
+    display: flex;
+    flex-direction: column;
+    /* Los hijos que vienen de la sidebar traian su ancho de la columna
+       lateral; en una sola columna tienen que ocupar todo el ancho. */
+    align-items: stretch;
+    min-height: 100dvh;
+  }
+
+  :root[data-theme='mapsi'] .sidebar {
+    display: contents;
+  }
+
+  :root[data-theme='mapsi'] .sidebar .brand-panel {
+    order: 1;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: var(--mapsi-canvas);
+    border-bottom: 1px solid var(--mapsi-line);
+    border-radius: 0;
+    padding: 0.7rem 1rem;
+    margin: 0;
+  }
+
+  :root[data-theme='mapsi'] .content {
+    order: 2;
+    flex: 1;
+    /* Un item de flex no baja de su ancho de contenido salvo que se le diga.
+       Sin esto, la tabla mas ancha de adentro estira la pagina entera. */
+    min-width: 0;
+    /* Espacio para que la barra inferior fija no tape el ultimo bloque. */
+    padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px) + 1rem);
+  }
+
+  :root[data-theme='mapsi'] .sidebar .user-card { order: 3; }
+  :root[data-theme='mapsi'] .sidebar .install-card { order: 4; }
+
+  :root[data-theme='mapsi'] .sidebar .user-card,
+  :root[data-theme='mapsi'] .sidebar .install-card {
+    margin: 0 1rem 0.75rem;
+  }
+
+  :root[data-theme='mapsi'] .brand-panel h1 {
+    font-size: 1.05rem;
+  }
+
+  :root[data-theme='mapsi'] .sidebar .brand-panel .eyebrow,
+  :root[data-theme='mapsi'] .sidebar .brand-copy {
+    display: none;
+  }
+
+  /* Navegacion inferior fija, la gramatica mobile de Mapsi. Son siete
+     modulos, mas de los que entran de una: la tira se desliza en horizontal
+     y el activo queda pintado. */
+  :root[data-theme='mapsi'] .module-nav {
+    order: 5;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 30;
+    flex-direction: row;
+    overflow-x: auto;
+    gap: 0.35rem;
+    margin: 0;
+    /* El padding derecho mide lo mismo que el degradado: al llegar al final
+       de la tira lo que se desvanece es el margen, no el ultimo rotulo. */
+    padding: 0.4rem 28px calc(0.4rem + env(safe-area-inset-bottom, 0px)) 0.6rem;
+    background: var(--mapsi-canvas);
+    border-top: 1px solid var(--mapsi-line);
+    box-shadow: 0 -6px 20px rgba(61, 60, 63, 0.07);
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    /* Son siete modulos y entran cinco: el degradado del borde avisa que la
+       tira sigue, en vez de dejar un item cortado a la mitad sin explicacion. */
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent 100%);
+    mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent 100%);
+  }
+
+  :root[data-theme='mapsi'] .module-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* justify-content: flex-start y una caja de texto de alto fijo. Con
+     center, un rotulo de dos renglones ("Mapas y Territorios") empujaba su
+     icono 5px mas arriba que el de uno de un renglon, y la fila de iconos
+     quedaba en zigzag. */
+  :root[data-theme='mapsi'] .module-nav .module-link {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.28rem;
+    flex: 0 0 auto;
+    width: 74px;
+    padding: 0.45rem 0.25rem 0.4rem;
+    border-radius: 14px;
+    background: transparent;
+    color: var(--mapsi-muted);
+    text-align: center;
+  }
+
+  :root[data-theme='mapsi'] .module-nav .module-link .module-icon {
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    font-size: 0.7rem;
+    border-radius: 9px;
+    background: var(--mapsi-surface);
+    color: var(--mapsi-muted);
+  }
+
+  /* El resumen de cada modulo es una frase larga: no entra ni hace falta
+     en la barra. El titulo si, porque los iconos son numeros y solos no
+     dicen nada. */
+  :root[data-theme='mapsi'] .module-nav .module-link small {
+    display: none;
+  }
+
+  :root[data-theme='mapsi'] .module-nav .module-link strong {
+    font-size: 0.625rem;
+    font-weight: 500;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+    white-space: normal;
+    /* Se reservan siempre los dos renglones, ocupados o no: asi todos los
+       items miden lo mismo y la barra no cambia de alto al navegar. */
+    height: calc(2 * 1.2em);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  :root[data-theme='mapsi'] .module-nav .module-link.active {
+    background: var(--mapsi-secondary-soft, rgba(85, 84, 242, 0.1));
+    color: var(--mapsi-secondary);
+  }
+
+  :root[data-theme='mapsi'] .module-nav .module-link.active .module-icon {
+    background: var(--mapsi-secondary);
+    color: #fff;
+  }
+
+  /* La tarjeta de seguridad es texto informativo sin accion: se oculta
+     en pantalla angosta. Sesion e instalacion se conservan porque
+     contienen los botones de cerrar sesion e instalar la PWA. */
+  :root[data-theme='mapsi'] .sidebar .security-card {
+    display: none;
+  }
+
+  :root[data-theme='mapsi'] .user-card,
+  :root[data-theme='mapsi'] .install-card {
+    padding: 0.75rem 0.9rem;
+  }
+
+  :root[data-theme='mapsi'] .content {
+    padding: 1.5rem;
+  }
+
+  /* .module-hero es una grilla de dos columnas donde la segunda tiene un
+     minimo de 280px, y en index.css quedo fuera de todas las media queries.
+     En un contenedor de ~340px las metricas se llevan los 280 y a la copia
+     le quedan 3px de ancho, con el titulo desbordando la pagina. */
+  :root[data-theme='mapsi'] .module-hero {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* min(100%, 130px) evita que la pista sea mas ancha que el contenedor,
+     y el quiebre del eyebrow impide que una palabra larga en mayusculas
+     como "PENDIENTES" fuerce el ancho minimo de la tarjeta. */
+  :root[data-theme='mapsi'] .module-hero-stats,
+  :root[data-theme='mapsi'] .territory-hero-metrics {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 130px), 1fr));
+  }
+
+  :root[data-theme='mapsi'] .module-stat-card,
+  :root[data-theme='mapsi'] .territory-metric-card {
+    min-width: 0;
+  }
+
+  :root[data-theme='mapsi'] .module-stat-card .eyebrow,
+  :root[data-theme='mapsi'] .territory-metric-card span {
+    overflow-wrap: anywhere;
+  }
+
+  /* En una sola columna, la colocacion explicita del acceso se anula
+     para que todo vuelva a apilarse en orden natural. */
+  :root[data-theme='mapsi'] .auth-copy,
+  :root[data-theme='mapsi'] .auth-mode-tabs,
+  :root[data-theme='mapsi'] .auth-form,
+  :root[data-theme='mapsi'] .auth-card > .status-card {
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  :root[data-theme='mapsi'] .auth-mode-tabs,
+  :root[data-theme='mapsi'] .auth-card > .status-card {
+    margin: 1rem 1.25rem 0;
+  }
+}
+
+@media (max-width: 640px) {
+  :root[data-theme='mapsi'] .content {
+    padding: 1rem;
+  }
+
+  /* .module-table define columnas fijas de 180px + 220px, o sea 400px de
+     minimo en una pantalla de 375px, y en index.css no tiene ninguna regla
+     responsive. Eso desborda la pagina entera en Conductores y Grupos.
+     Apilada se lee bien y no hace falta scroll horizontal. */
+  :root[data-theme='mapsi'] .module-table,
+  :root[data-theme='mapsi'] .driver-availability-table {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.3rem;
+  }
+
+  /* Con las celdas apiladas, la fila de encabezados queda como una lista de
+     palabras sueltas sin relacion con los datos. */
+  :root[data-theme='mapsi'] .module-table-head {
+    display: none;
+  }
+
+  :root[data-theme='mapsi'] .module-table-row {
+    padding: 0.9rem 1rem;
+  }
+
+  :root[data-theme='mapsi'] .module-table-actions {
+    justify-content: flex-start;
+    margin-top: 0.35rem;
+  }
+
+  /* Grillas de casillas de 2 y 3 columnas: en pantalla angosta cada celda
+     queda tan corta que el texto se recorta ("Telefo..."). Se dejan pasar a
+     una sola columna cuando no entran dos comodas. */
+  :root[data-theme='mapsi'] .availability-turn-options,
+  :root[data-theme='mapsi'] .availability-check-grid,
+  :root[data-theme='mapsi'] .availability-check-grid.compact,
+  :root[data-theme='mapsi'] .admin-module-checks {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
+  }
+
+  /* Nombres largos como "Territorio personal" no entran en una celda de
+     154px: se dejan pasar a dos renglones en vez de recortarse. */
+  :root[data-theme='mapsi'] .availability-turn-options label,
+  :root[data-theme='mapsi'] .availability-check-grid label,
+  :root[data-theme='mapsi'] .admin-module-checks label {
+    align-items: flex-start;
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.3;
+  }
+
+  :root[data-theme='mapsi'] .hero-card {
+    padding: 1.25rem;
+    border-radius: var(--mapsi-radius-panel);
+  }
+
+  :root[data-theme='mapsi'] .module-link,
+  :root[data-theme='mapsi'] .territory-item,
+  :root[data-theme='mapsi'] .outing-slot-button {
+    min-height: 44px;
+  }
+
+  /* --- Tablas anchas de index.css que nunca tuvieron regla responsive ---
+
+     Las tres usan columnas de ancho fijo que suman mucho mas que 375px y
+     quedaron fuera de todas las media queries. En telefono desbordan la
+     pagina entera. Apiladas se leen bien y no hace falta scroll lateral. */
+
+  /* .territory-table: 140 + 130 + 150 + 120 = 540px minimos. Ademas
+     .territory-registry-actions pide 220px para la primera columna mas el
+     boton, que es lo que hace que /mapas mueva la pagina de costado. */
+  :root[data-theme='mapsi'] .territory-registry-actions,
+  :root[data-theme='mapsi'] .territory-table,
+  :root[data-theme='mapsi'] .territory-table-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  :root[data-theme='mapsi'] .territory-registry-actions {
+    gap: 0.6rem;
+  }
+
+  :root[data-theme='mapsi'] .territory-table-head {
+    display: none;
+  }
+
+  /* .outing-schedule-grid tiene min-width 1480px: en el telefono son cuatro
+     pantallas de scroll lateral para leer una salida. Cada salida pasa a ser
+     una tarjeta apilada, que es como se lee en la mano. */
+  :root[data-theme='mapsi'] .outing-schedule-shell {
+    overflow-x: visible;
+  }
+
+  :root[data-theme='mapsi'] .outing-schedule-grid {
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 0;
+    gap: 0.35rem;
+  }
+
+  :root[data-theme='mapsi'] .outing-schedule-head {
+    display: none;
+  }
+
+  :root[data-theme='mapsi'] .outing-schedule-entry {
+    padding: 0.9rem 1rem;
+  }
+
+  /* La barra de conductores y grupos es un flex de dos bloques sin envoltura:
+     el titulo y el buscador se pelean el ancho y se pasan unos pixeles. */
+  :root[data-theme='mapsi'] .module-registry-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+
+  /* La de territorios NO es flex sino grid, con una segunda columna de
+     minimo 340px. Sumada a la primera se lleva la pagina de costado: es la
+     causa del scroll lateral en /mapas. */
+  :root[data-theme='mapsi'] .territory-registry-toolbar,
+  :root[data-theme='mapsi'] .territory-prep-bar,
+  :root[data-theme='mapsi'] .hero-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  :root[data-theme='mapsi'] .module-registry-actions {
+    width: 100%;
+  }
+
+  :root[data-theme='mapsi'] .module-search-field,
+  :root[data-theme='mapsi'] .inline-filter {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  /* El mapa es la herramienta central del modulo y en telefono le quedaban
+     305px de ancho utiles, de los cuales la barra de dibujo se comia 52.
+     Se lo lleva de borde a borde: el panel pierde su margen lateral, no su
+     estructura. */
+  :root[data-theme='mapsi'] .territory-map-stage {
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  :root[data-theme='mapsi'] .territory-map-frame {
+    border-radius: 0;
+  }
+
+  /* La paleta de colores es una columna vertical de 7 circulos pegada al
+     borde izquierdo: sobre un mapa de 337px se come una franja entera y tapa
+     lo que se esta dibujando. En horizontal, abajo, no pisa el trabajo. */
+  :root[data-theme='mapsi'] .territory-map-sidecar {
+    top: auto;
+    bottom: 2.2rem;
+    left: 0.6rem;
+    right: 0.6rem;
+    flex-direction: row;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    padding: 0.45rem 0.6rem;
+    border-radius: 999px;
+  }
+
+  :root[data-theme='mapsi'] .territory-color-swatch {
+    width: 30px;
+    height: 30px;
+  }
+
+  /* Los rotulos de una y de dos lineas ("MANZANAS" contra "TOTAL GUARDADOS")
+     dejaban los numeros a distinta altura y las tarjetas de distinto alto.
+     Se reservan dos renglones para el rotulo y las cifras se alinean. */
+  :root[data-theme='mapsi'] .module-stat-card,
+  :root[data-theme='mapsi'] .territory-metric-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+
+  /* En estas tarjetas el rotulo es un <span> pelado, no un .eyebrow. */
+  :root[data-theme='mapsi'] .module-stat-card > :first-child,
+  :root[data-theme='mapsi'] .territory-metric-card > :first-child {
+    /* El alto minimo se calcula con el mismo line-height que se declara aca:
+       si se dejaba el heredado, dos renglones no median exactamente el doble
+       y las cifras quedaban 4px corridas entre tarjetas. */
+    line-height: 1.3;
+    min-height: calc(2 * 1.3em);
+    margin: 0;
+  }
+
+  :root[data-theme='mapsi'] .module-stat-card > :last-child,
+  :root[data-theme='mapsi'] .territory-metric-card > :last-child {
+    margin-top: auto;
+  }
+
+  /* Palabras largas en las tarjetas de metricas ("SUPERINTENDENTES") fuerzan
+     un ancho minimo mayor que la celda. */
+  :root[data-theme='mapsi'] .module-stat-card *,
+  :root[data-theme='mapsi'] .territory-metric-card * {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   15. Movimiento reducido
+   -------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-theme='mapsi'] *,
+  :root[data-theme='mapsi'] *::before,
+  :root[data-theme='mapsi'] *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

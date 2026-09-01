@@ -16,6 +16,89 @@
   </head>
   <body>
     <div id="root"></div>
+    <!--
+      Selector de tema. Aislado del arbol de React a proposito: no toca
+      componentes, rutas ni estado de la app.
+        ?theme=mapsi    activa la piel nueva
+        ?theme=classic  vuelve al tema original
+      La eleccion queda en localStorage. El boton flotante solo aparece
+      en desarrollo local, nunca en un build publicado.
+    -->
+    <script>
+      (function () {
+        var KEY = 'territorios:theme'
+        var THEMES = ['classic', 'mapsi']
+
+        function apply(theme) {
+          if (theme === 'mapsi') {
+            document.documentElement.setAttribute('data-theme', 'mapsi')
+          } else {
+            document.documentElement.removeAttribute('data-theme')
+          }
+        }
+
+        function read() {
+          var fromUrl = new URLSearchParams(window.location.search).get('theme')
+          if (THEMES.indexOf(fromUrl) !== -1) {
+            try {
+              localStorage.setItem(KEY, fromUrl)
+            } catch (e) {
+              /* modo privado: se usa igual, solo no persiste */
+            }
+            return fromUrl
+          }
+          try {
+            var saved = localStorage.getItem(KEY)
+            if (THEMES.indexOf(saved) !== -1) return saved
+          } catch (e) {
+            /* sin acceso a storage: cae al valor por defecto */
+          }
+          return 'mapsi'
+        }
+
+        var current = read()
+        apply(current)
+
+        window.__setTheme = function (theme) {
+          if (THEMES.indexOf(theme) === -1) return
+          current = theme
+          try {
+            localStorage.setItem(KEY, theme)
+          } catch (e) {
+            /* sin persistencia, el tema igual se aplica en esta sesion */
+          }
+          apply(theme)
+          var label = document.getElementById('theme-switch-label')
+          if (label) label.textContent = theme === 'mapsi' ? 'Mapsi' : 'Clasico'
+        }
+
+        var isLocal = ['localhost', '127.0.0.1', '::1'].indexOf(location.hostname) !== -1
+        if (!isLocal) return
+
+        window.addEventListener('DOMContentLoaded', function () {
+          var button = document.createElement('button')
+          button.type = 'button'
+          button.title = 'Alternar entre el tema Mapsi y el original'
+          button.style.cssText = [
+            'position:fixed', 'right:16px', 'bottom:16px', 'z-index:9999',
+            'display:flex', 'align-items:center', 'gap:8px',
+            'padding:10px 16px', 'border-radius:999px',
+            'border:1px solid rgba(61,60,63,.14)', 'background:#fff',
+            'color:#3d3c3f', 'font:500 13px/1 system-ui,sans-serif',
+            'cursor:pointer', 'box-shadow:0 8px 24px rgba(61,60,63,.16)',
+          ].join(';')
+          button.innerHTML =
+            '<span style="width:8px;height:8px;border-radius:50%;background:#407dfe"></span>' +
+            'Tema: <strong id="theme-switch-label" style="font-weight:600">' +
+            (current === 'mapsi' ? 'Mapsi' : 'Clasico') +
+            '</strong>'
+          button.addEventListener('click', function () {
+            window.__setTheme(current === 'mapsi' ? 'classic' : 'mapsi')
+          })
+          document.body.appendChild(button)
+        })
+      })()
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -33,3 +33,9 @@ temp_extract_frame.ps1
 *.njsproj
 *.sln
 *.sw?
+
+# Respaldos de la base: datos reales, nunca al repositorio
+respaldos/
+
+# Datos reales de la congregacion: nunca al repositorio
+public/datos/respaldo-actual.json
