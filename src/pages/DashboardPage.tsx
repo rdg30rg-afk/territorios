@@ -129,6 +129,7 @@ function UserAccessPanel() {
   const [draftDriverIds, setDraftDriverIds] = useState<Record<string, string>>({})
   const [drivers, setDrivers] = useState<DriverOption[]>([])
   const [isSavingUserId, setIsSavingUserId] = useState<string | null>(null)
+  const [isRefreshing, setIsRefreshing] = useState(false)
   const [feedback, setFeedback] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const pendingUsers = useMemo(
@@ -159,40 +160,45 @@ function UserAccessPanel() {
     void loadManagedUsers()
   }, [loadManagedUsers])
 
-  useEffect(() => {
+  const loadDrivers = async () => {
     if (!supabase || profile?.role !== 'admin') {
       setDrivers([])
       return
     }
 
-    const client = supabase
-    let isMounted = true
+    const { data, error: loadError } = await supabase
+      .from('conductores')
+      .select('id, full_name, status')
+      .order('full_name', { ascending: true })
 
-    const loadDrivers = async () => {
-      const { data, error: loadError } = await client
-        .from('conductores')
-        .select('id, full_name, status')
-        .order('full_name', { ascending: true })
-
-      if (!isMounted) {
-        return
-      }
-
-      if (loadError) {
-        setError(loadError.message)
-        setDrivers([])
-        return
-      }
-
-      setDrivers((data as DriverOption[]) ?? [])
+    if (loadError) {
+      setError(loadError.message)
+      setDrivers([])
+      return
     }
 
+    setDrivers((data as DriverOption[]) ?? [])
+  }
+
+  useEffect(() => {
     void loadDrivers()
-
-    return () => {
-      isMounted = false
-    }
   }, [profile?.role])
+
+  const refreshAccessPanel = async () => {
+    setError(null)
+    setFeedback(null)
+    setIsRefreshing(true)
+
+    await Promise.all([loadManagedUsers(), loadDrivers()])
+
+    setFeedback(
+      `Panel actualizado ${new Intl.DateTimeFormat('es-AR', {
+        hour: '2-digit',
+        minute: '2-digit',
+      }).format(new Date())}.`,
+    )
+    setIsRefreshing(false)
+  }
 
   const getDraftRole = (userId: string, fallback: ProfileRole) =>
     draftRoles[userId] ?? fallback
@@ -394,8 +400,13 @@ function UserAccessPanel() {
           <p className="eyebrow">Administracion</p>
           <h3>Altas, bajas y permisos de usuarios</h3>
         </div>
-        <button type="button" className="secondary-button" onClick={() => void loadManagedUsers()}>
-          Actualizar
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={() => void refreshAccessPanel()}
+          disabled={isRefreshing}
+        >
+          {isRefreshing ? 'Actualizando...' : 'Actualizar'}
         </button>
       </div>
 
