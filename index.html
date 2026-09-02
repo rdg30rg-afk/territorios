@@ -78,6 +78,9 @@
         window.addEventListener('DOMContentLoaded', function () {
           var button = document.createElement('button')
           button.type = 'button'
+          // Con id para que una pantalla que use el borde de abajo (la vista
+          // del hermano tiene ahi sus pestanias) pueda taparlo mientras vive.
+          button.id = 'theme-switch'
           button.title = 'Alternar entre el tema Mapsi y el original'
           button.style.cssText = [
             'position:fixed', 'right:16px', 'bottom:16px', 'z-index:9999',

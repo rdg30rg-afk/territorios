@@ -494,6 +494,19 @@ export function PredicacionPage() {
     [],
   )
 
+  // El conmutador de tema del entorno local vive fijo abajo a la derecha y
+  // se come la pestania "Mi territorio". Se esconde mientras esta pantalla
+  // esta a la vista, porque ese borde es suyo.
+  useEffect(() => {
+    const boton = document.getElementById('theme-switch')
+    if (!boton) return
+    const antes = boton.style.display
+    boton.style.display = 'none'
+    return () => {
+      boton.style.display = antes
+    }
+  }, [])
+
   const escala = { ['--step' as string]: paso.toFixed(2) } as React.CSSProperties
 
   // ------------------------------------------------------------ render
