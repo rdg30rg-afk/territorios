@@ -2,7 +2,16 @@
 //
 // Fuente: public/datos/manzanas-territorios.json (lo que hoy lee el mapa
 // del hermano desde un archivo estático, indexado por nombre de territorio).
-// Destino: territorio_manzanas.geometry_geojson + tabla manzana_lados.
+// Destino: territorio_manzanas + manzana_lados, por territorio completo.
+//
+// REEMPLAZA las manzanas del territorio, no las actualiza por letra. La
+// primera versión emparejaba por letra y estaba mal: de 508 coincidencias,
+// 412 (81%) tenían la forma de OTRA manzana, porque el archivo se generó
+// reasignando letras N→S / O→E y la base conserva las originales. Habría
+// escrito el polígono equivocado en cuatro de cada cinco filas, sin fallar.
+//
+// La función de la base se niega a reemplazar un territorio que ya tenga
+// cobertura informada.
 //
 // El cálculo de lados es UNA COPIA EXACTA del que hace vista-hermano.html.
 // Si los dos se separan, el cliente y la base dejan de hablar del mismo
@@ -97,6 +106,17 @@ const lineString = (puntos) => ({
   coordinates: puntos.map(([lat, lng]) => [lng, lat]),
 })
 
+// La base guarda lat/lng por manzana. Se deriva del polígono en vez de
+// heredarse de la fila vieja: la fila vieja puede ser otra manzana.
+function centroide (geom) {
+  const pts = anilloDe(geom)
+  const n = pts.length
+  return [
+    Number((pts.reduce((t, q) => t + q[0], 0) / n).toFixed(6)),
+    Number((pts.reduce((t, q) => t + q[1], 0) / n).toFixed(6)),
+  ]
+}
+
 // ------------------------------------------------------------- carga
 const formas = JSON.parse(
   await readFile(path.join(repoRoot, 'public/datos/manzanas-territorios.json'), 'utf8'),
@@ -116,131 +136,89 @@ if (!dryRun) {
   const base = `https://${ref}.supabase.co/rest/v1`
   const headers = { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }
   api = {
-    async get (ruta) {
-      const r = await fetch(`${base}/${ruta}`, { headers })
-      if (!r.ok) throw new Error(`GET ${ruta}: ${r.status} ${await r.text()}`)
-      return r.json()
-    },
-    async send (metodo, ruta, cuerpo) {
-      const r = await fetch(`${base}/${ruta}`, {
-        method: metodo,
-        headers: { ...headers, Prefer: 'return=minimal' },
+    async rpc (fn, cuerpo) {
+      const r = await fetch(`${base}/rpc/${fn}`, {
+        method: 'POST',
+        headers,
         body: JSON.stringify(cuerpo),
       })
-      if (!r.ok) throw new Error(`${metodo} ${ruta}: ${r.status} ${await r.text()}`)
+      const txt = await r.text()
+      if (!r.ok) {
+        // El mensaje de la excepción de plpgsql es lo único que importa.
+        try { throw new Error(JSON.parse(txt).message || txt) } catch (e) { throw e }
+      }
+      return JSON.parse(txt)
     },
   }
 }
 
-const territorios = api
-  ? await api.get('territorios?select=id,name')
-  : Object.keys(formas.territorios).map((name) => ({ id: `dry-${name}`, name }))
-
-const manzanasBd = api
-  ? await api.get('territorio_manzanas?select=id,territory_id,label')
-  : []
-
-const porNombre = new Map(territorios.map((t) => [t.name, t]))
-const porClave = new Map(manzanasBd.map((m) => [`${m.territory_id}|${m.label}`, m]))
-
-const resumen = {
-  territoriosEnArchivo: Object.keys(formas.territorios).length,
-  manzanasEnArchivo: 0,
-  sinTerritorio: [],
-  sinFilaEnBd: [],
-  actualizadas: 0,
-  lados: 0,
-  histograma: {},
-}
-
-const lotesManzanas = []
-const lotesLados = []
+const resumen = { territorios: 0, manzanas: 0, lados: 0, histograma: {} }
+const cargas = []
 
 for (const [nombre, lista] of Object.entries(formas.territorios)) {
-  const terr = porNombre.get(nombre)
-  if (!terr) {
-    resumen.sinTerritorio.push(nombre)
-    continue
-  }
-  for (const mz of lista) {
-    resumen.manzanasEnArchivo++
-    const fila = api ? porClave.get(`${terr.id}|${mz.letra}`) : { id: `dry-${nombre}-${mz.letra}` }
-    if (!fila) {
-      resumen.sinFilaEnBd.push(`${nombre}/${mz.letra}`)
-      continue
-    }
+  resumen.territorios++
+  const manzanas = lista.map((mz, orden) => {
     const lados = ladosDe(mz.geom)
-    resumen.actualizadas++
+    const [lat, lng] = centroide(mz.geom)
+    resumen.manzanas++
     resumen.lados += lados.length
     resumen.histograma[lados.length] = (resumen.histograma[lados.length] || 0) + 1
-
-    lotesManzanas.push({
-      id: fila.id,
-      geometry_geojson: mz.geom,
+    return {
+      label: mz.letra,
+      orden,
+      lat,
+      lng,
+      geom: mz.geom,
       area_m2: areaM2(mz.geom),
-    })
-    lados.forEach((lado, i) => {
-      lotesLados.push({
-        manzana_id: fila.id,
-        territory_id: terr.id,
+      lados: lados.map((lado, i) => ({
         orden: i,
-        geometry_geojson: lineString(lado.puntos),
+        geom: lineString(lado.puntos),
         largo_m: lado.largo_m,
         rumbo_grados: lado.rumbo_grados,
         medio_lat: Number(lado.medio[0].toFixed(6)),
         medio_lng: Number(lado.medio[1].toFixed(6)),
-      })
-    })
-  }
+      })),
+    }
+  })
+  cargas.push({ p_name: nombre, p_manzanas: manzanas })
 }
 
-console.log('Territorios en el archivo :', resumen.territoriosEnArchivo)
-console.log('Manzanas en el archivo    :', resumen.manzanasEnArchivo)
-console.log('Manzanas a actualizar     :', resumen.actualizadas)
-console.log('Lados a crear             :', resumen.lados)
+console.log('Territorios a cargar :', resumen.territorios)
+console.log('Manzanas             :', resumen.manzanas)
+console.log('Lados                :', resumen.lados)
 console.log(
-  'Lados por manzana         :',
-  Object.entries(resumen.histograma)
-    .sort((a, b) => a[0] - b[0])
-    .map(([k, v]) => `${k}:${v}`)
-    .join('  '),
+  'Lados por manzana    :',
+  Object.entries(resumen.histograma).sort((a, b) => a[0] - b[0]).map(([k, v]) => `${k}:${v}`).join('  '),
 )
-if (resumen.sinTerritorio.length) {
-  console.log('\nSin territorio en la base :', resumen.sinTerritorio.join(', '))
-}
-if (resumen.sinFilaEnBd.length) {
-  console.log(`\nSin fila en territorio_manzanas (${resumen.sinFilaEnBd.length}):`)
-  console.log('  ' + resumen.sinFilaEnBd.slice(0, 40).join(', ') + (resumen.sinFilaEnBd.length > 40 ? ' …' : ''))
-}
 
 if (dryRun) {
   console.log('\nEnsayo: no se escribió nada.')
   process.exit(0)
 }
 
-// Idempotente: se puede volver a correr. Cierra los lados vigentes de las
-// manzanas que toca y crea el juego nuevo, en vez de duplicar.
-const ahora = new Date().toISOString()
-const tocadas = [...new Set(lotesLados.map((l) => l.manzana_id))]
-
-for (let i = 0; i < tocadas.length; i += 50) {
-  const grupo = tocadas.slice(i, i + 50)
-  await api.send(
-    'PATCH',
-    `manzana_lados?vigente_hasta=is.null&manzana_id=in.(${grupo.join(',')})`,
-    { vigente_hasta: ahora },
-  )
+// Una llamada por territorio. Cada una corre entera en su transacción:
+// si falla, ese territorio queda como estaba y los anteriores ya están.
+// Volver a correr el script lo retoma sin duplicar.
+let hechos = 0
+const fallados = []
+for (const carga of cargas) {
+  try {
+    const r = await api.rpc('cargar_manzanas_de_territorio', carga)
+    hechos++
+    console.log(
+      `  ${carga.p_name.padStart(3)} · ${String(r.manzanas).padStart(3)} manzanas, ` +
+      `${String(r.lados).padStart(3)} lados` +
+      (r.manzanas_borradas ? `  (reemplaza ${r.manzanas_borradas})` : ''),
+    )
+  } catch (e) {
+    fallados.push(`${carga.p_name}: ${e.message}`)
+    console.log(`  ${carga.p_name.padStart(3)} · FALLÓ`)
+  }
 }
-console.log(`Lados anteriores cerrados para ${tocadas.length} manzanas.`)
 
-for (let i = 0; i < lotesManzanas.length; i += 200) {
-  const grupo = lotesManzanas.slice(i, i + 200)
-  await api.send('POST', 'territorio_manzanas?on_conflict=id', grupo.map((m) => ({ ...m, updated_at: ahora })))
+console.log(`\n${hechos} territorios cargados.`)
+if (fallados.length) {
+  console.log(`\n${fallados.length} fallaron y quedaron como estaban:`)
+  for (const f of fallados) console.log('  ' + f)
+  process.exit(1)
 }
-console.log(`Geometría cargada en ${lotesManzanas.length} manzanas.`)
-
-for (let i = 0; i < lotesLados.length; i += 500) {
-  await api.send('POST', 'manzana_lados', lotesLados.slice(i, i + 500))
-}
-console.log(`${lotesLados.length} lados creados.`)
-console.log('\nListo.')
