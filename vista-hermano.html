@@ -199,14 +199,19 @@ body {
    texto de los chips negros: 2,15 de contraste, ilegible. */
 .salida .donde > span { display: block; font-size: var(--t-label); color: var(--fg-2); margin-top: 2px; }
 
-.marcas { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.marcas { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+.marca-chip.priorizar { flex-basis: 100%; margin-top: 2px; }
 .marca-chip {
   display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px;
   border-radius: var(--r-pill); font-size: var(--t-label); font-weight: 600;
   background: var(--canvas); border: 1px solid var(--line); color: var(--fg-2);
 }
 .marca-chip.terr { background: var(--ink); border-color: var(--ink); color: #fff; }
-.marca-chip.priorizar { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn-fg); }
+.marca-chip.priorizar {
+  background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn-fg);
+  align-items: flex-start; padding: 9px 13px; line-height: 1.35;
+}
+.marca-chip.priorizar span { flex: 1; }
 .marca-chip.tel { background: var(--olive-bg); border-color: var(--olive-line); color: var(--olive-ink); }
 
 .nota {
@@ -554,7 +559,7 @@ function chipsDeSalida (s) {
       const letras = /^[A-Za-z](,[A-Za-z])*$/.test(s.priorizar)
         ? 'Priorizá las manzanas ' + s.priorizar.split(',').join(', ')
         : 'Priorizá ' + s.priorizar.replace(/^Manzanas /, 'las manzanas ')
-      c.push(`<span class="marca-chip priorizar">★ ${letras}</span>`)
+      c.push(`<span class="marca-chip priorizar"><b aria-hidden="true">★</b><span>${letras}</span></span>`)
     }
   }
   return c.join('')
@@ -608,7 +613,7 @@ function tarjetaSalida (s) {
     <span class="donde">
       <strong>${tituloSalida(s)}</strong>
       ${s.conductor ? `<span>Conduce ${s.conductor}</span>` : ''}
-      <span class="marcas" role="list">${chipsDeSalida(s)}</span>
+      <div class="marcas">${chipsDeSalida(s)}</div>
     </span>`
   // Solo se ofrece llegar a un lugar cuando hay un lugar.
   if (s.lugar) {
@@ -683,7 +688,7 @@ function tarjetaDestacada (s, esFutura) {
         <small>${s.barrio || 'San Juan'}${s.conductor ? ' · Conduce ' + s.conductor : ''}</small>
       </span>
     </div>
-    <span class="marcas">${chipsDeSalida(s)}</span>
+    <div class="marcas">${chipsDeSalida(s)}</div>
     <button class="boton principal" id="bComoLlegar">Cómo llegar →</button>`
   setTimeout(() => {
     const b = d.querySelector('#bComoLlegar')
