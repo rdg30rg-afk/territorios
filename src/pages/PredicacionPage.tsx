@@ -28,6 +28,34 @@ import '../styles/vista-hermano.css'
 
 const TESELAS = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
 
+// Las manzanas que hoy existen. Una manzana retirada por un redibujado
+// sigue en la tabla porque los eventos de cobertura apuntan a ella, pero
+// no se dibuja.
+//
+// El filtro puede no existir todavia (base sin la migracion de
+// redibujado): si la columna no esta se pide sin filtrar, en vez de
+// dejar el mapa vacio mientras el esquema y el cliente van en dos
+// entregas distintas.
+function manzanasVigentes(cliente: NonNullable<typeof supabase>, territoryId: string) {
+  const campos = 'id, label, lat, lng, geometry_geojson'
+  const orden = { ascending: true } as const
+  return cliente
+    .from('territorio_manzanas')
+    .select(campos)
+    .eq('territory_id', territoryId)
+    .is('vigente_hasta', null)
+    .order('label', orden)
+    .then((res) =>
+      res.error?.code === '42703'
+        ? cliente
+            .from('territorio_manzanas')
+            .select(campos)
+            .eq('territory_id', territoryId)
+            .order('label', orden)
+        : res,
+    )
+}
+
 const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado']
 const MESES = [
   'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
@@ -377,11 +405,7 @@ export function PredicacionPage() {
 
     void (async () => {
       const [mzRes, ldRes, cbRes] = await Promise.all([
-        supabase
-          .from('territorio_manzanas')
-          .select('id, label, lat, lng, geometry_geojson')
-          .eq('territory_id', miTerritorio.id)
-          .order('label', { ascending: true }),
+        manzanasVigentes(supabase, miTerritorio.id),
         supabase
           .from('manzana_lados')
           .select('id, manzana_id, orden, geometry_geojson, largo_m')
@@ -1422,10 +1446,7 @@ function HojaMapa({
         .limit(1)
       const id = (terr as { id: string }[] | null)?.[0]?.id
       if (!id) return
-      const { data } = await supabase
-        .from('territorio_manzanas')
-        .select('id, label, lat, lng, geometry_geojson')
-        .eq('territory_id', id)
+      const { data } = await manzanasVigentes(supabase, id)
       if (vivo) setFormas((data as Manzana[]) ?? [])
     })()
     return () => {

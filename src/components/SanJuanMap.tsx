@@ -1653,12 +1653,13 @@ export function SanJuanMap() {
         .from('territorios')
         .select('id, name, description, polygon_geojson, created_at')
           .order('created_at', { ascending: false }),
-        // La geometria puede no existir todavia (base sin la migracion de
-        // cobertura). Se pide, y si la columna no esta se reintenta sin ella
-        // en vez de dejar el mapa sin manzanas.
+        // La geometria y el versionado pueden no existir todavia (base sin
+        // la migracion de cobertura). Se piden, y si las columnas no estan
+        // se reintenta sin ellas en vez de dejar el mapa sin manzanas.
         client
           .from('territorio_manzanas')
           .select('id, territory_id, label, lat, lng, created_at, geometry_geojson')
+          .is('vigente_hasta', null)
           .order('label', { ascending: true })
           .then((res) =>
             res.error?.code === '42703'
@@ -2539,7 +2540,27 @@ export function SanJuanMap() {
       .eq('id', block.id)
 
     if (deleteBlockError) {
-      setError(deleteBlockError.message)
+      // 23503: la manzana tiene cobertura informada y la clave foranea la
+      // protege. Borrarla se llevaria puesto el trabajo de alguien que
+      // camino esa calle, asi que se retira: deja de estar vigente y lo
+      // informado sigue existiendo.
+      if (deleteBlockError.code !== '23503') {
+        setError(deleteBlockError.message)
+        return
+      }
+      const { error: retireError } = await client.rpc('retirar_manzana', {
+        p_manzana_id: block.id,
+      })
+      if (retireError) {
+        setError(retireError.message)
+        return
+      }
+      setTerritoryBlocks((current) => current.filter((item) => item.id !== block.id))
+      setMessage(
+        `Manzana ${block.label} retirada. Tenia trabajo informado, asi que no se borro: ` +
+          'deja de aparecer en el mapa y lo que se recorrio queda en el historial.',
+      )
+      setError(null)
       return
     }
 
