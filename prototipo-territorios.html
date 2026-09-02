@@ -221,6 +221,10 @@
           <button class="mini" id="bVincular">vincular archivo</button>
         </div>
         <button class="b pri" id="bTraer" style="width:100%;margin-bottom:8px">Traer del sistema actual</button>
+        <button class="b pri" id="bGuardarBD" style="width:100%;margin-bottom:8px">Guardar en la base</button>
+        <label class="archivo" style="cursor:pointer;margin-bottom:8px;width:100%;display:flex;align-items:center;gap:8px">
+          <input type="checkbox" id="cCaras"><span>ver las caras que van a salir</span>
+        </label>
         <button class="b sec" id="bExport">Exportar</button>
         <button class="b sec" id="bImport">Importar</button>
         <button class="b dan" id="bReset">Vaciar</button>
@@ -292,6 +296,7 @@ let activo = null               // id de territorio seleccionado
 let herramienta = 'ver'
 let vecinos = 0   // 0 = solo el territorio elegido
 let verLetras = true
+let verCaras = false     // el editor muestra las caras que va a guardar
 let paraFusionar = []
 let cortePuntos = []
 let historial = []
@@ -454,6 +459,7 @@ const capaCorte = L.layerGroup().addTo(mapa)
 const capaEdicion = L.layerGroup().addTo(mapa)
 const capaDibujo = L.layerGroup().addTo(mapa)
 const capaFoco = L.layerGroup().addTo(mapa)
+const capaCaras = L.layerGroup().addTo(mapa)
 // Cada nivel de zoom muestra lo suyo. A escala de ciudad las manzanas sueltas
 // no significan nada y solo ensucian: ahi se ven los territorios, no las manzanas.
 const ZOOM_MANZANAS = 15   // debajo de esto, las manzanas libres se ocultan
@@ -857,7 +863,7 @@ function reletrar (idTerr) {
 function sellarOrden (m) { if (m.orden == null) m.orden = ordenSiguiente++ }
 
 // ---------------------------------------------------------------- panel
-function refrescar () { cerrarBurbuja(); refrescarMapa(); refrescarPanel(); refrescarListaMz(); refrescarRevision(); guardar() }
+function refrescar () { cerrarBurbuja(); refrescarMapa(); refrescarPanel(); refrescarListaMz(); refrescarRevision(); pintarCaras(); guardar() }
 
 function refrescarRevision () {
   const panel = document.getElementById('panelRevision')
@@ -2004,6 +2010,252 @@ if (!territorios.size) {
 refrescar()
 if (!territorios.size) {
   avisar(`<b>${manzanas.size.toLocaleString('es-AR')} manzanas</b> en el área de la congregación.<br>Creá un territorio y hacé clic para sumarle manzanas.`)
+}
+
+/* ====================================================================
+   LAS CARAS
+   --------------------------------------------------------------------
+   Una cara es la tira de segmentos casi colineales que dan la vuelta a
+   una misma calle: lo que un hermano llama "una cuadra".
+
+   Hasta hoy las caras no existian en el editor. Se calculaban al cargar
+   el dibujo en la base y el que dibujaba nunca las veia: de 605
+   manzanas, 400 daban 4 caras y 205 daban otra cosa, sin forma de saber
+   cuales estaban mal ni de corregirlas.
+
+   Este calculo es UNA COPIA EXACTA del de scripts/cargar-geometrias-y-
+   lados.mjs y del de la vista del hermano. Si se separan, el editor
+   muestra una cosa y la base guarda otra, y la cobertura apunta a otra
+   calle. Cualquier cambio va en los tres.
+   ==================================================================== */
+
+const TOL_GRADOS = 25
+const LARGO_MINIMO = 12
+
+const mts = (a, b) =>
+  Math.hypot((b[1] - a[1]) * Math.cos((a[0] * Math.PI) / 180) * 111320, (b[0] - a[0]) * 110540)
+const rmb = (a, b) =>
+  (Math.atan2(b[0] - a[0], (b[1] - a[1]) * Math.cos((a[0] * Math.PI) / 180)) * 180) / Math.PI
+const difAng = (x, y) => Math.abs((((x - y) + 180) % 360) - 180)
+
+function anilloLatLng (geom) {
+  const anillo = geom.coordinates[0].map(([x, y]) => [y, x])
+  const cerrado = anillo[0][0] === anillo[anillo.length - 1][0] &&
+                  anillo[0][1] === anillo[anillo.length - 1][1]
+  return cerrado ? anillo.slice(0, -1) : anillo
+}
+
+function carasDe (geom) {
+  const pts = anilloLatLng(geom)
+  const n = pts.length
+  if (n < 3) return []
+  let grupos = [[pts[0], pts[1 % n]]]
+  for (let i = 1; i < n; i++) {
+    const a = pts[i]
+    const b = pts[(i + 1) % n]
+    const g = grupos[grupos.length - 1]
+    if (difAng(rmb(a, b), rmb(g[g.length - 2], g[g.length - 1])) <= TOL_GRADOS) g.push(b)
+    else grupos.push([a, b])
+  }
+  if (grupos.length > 2) {
+    const pri = grupos[0]
+    const ult = grupos[grupos.length - 1]
+    if (difAng(rmb(pri[0], pri[1]), rmb(ult[ult.length - 2], ult[ult.length - 1])) <= TOL_GRADOS) {
+      grupos[0] = ult.concat(pri.slice(1))
+      grupos.pop()
+    }
+  }
+  const largo = (g) => g.slice(1).reduce((t, q, i) => t + mts(g[i], q), 0)
+  const res = grupos.filter((g) => largo(g) >= LARGO_MINIMO)
+  return (res.length ? res : [grupos[0]]).map((g) => ({
+    puntos: g,
+    largo_m: Number(largo(g).toFixed(2)),
+    rumbo_grados: Number((((rmb(g[0], g[g.length - 1]) % 180) + 180) % 180).toFixed(2)),
+    medio: g[Math.floor(g.length / 2)],
+  }))
+}
+
+function areaM2De (geom) {
+  const pts = anilloLatLng(geom)
+  const lat0 = pts.reduce((t, q) => t + q[0], 0) / pts.length
+  const k = Math.cos((lat0 * Math.PI) / 180) * 111320
+  let acc = 0
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i]
+    const b = pts[(i + 1) % pts.length]
+    acc += (a[1] * k) * (b[0] * 110540) - (b[1] * k) * (a[0] * 110540)
+  }
+  return Number(Math.abs(acc / 2).toFixed(2))
+}
+
+function centroDe (geom) {
+  const pts = anilloLatLng(geom)
+  const n = pts.length
+  return [
+    Number((pts.reduce((t, q) => t + q[0], 0) / n).toFixed(6)),
+    Number((pts.reduce((t, q) => t + q[1], 0) / n).toFixed(6)),
+  ]
+}
+
+/* La cara se guarda sobre el borde real. Se dibuja corrida hacia adentro
+   para que la de esta manzana y la de la de enfrente no caigan encima. */
+function corridaAdentro (puntos, centro, metrosAdentro = 7) {
+  const [cLat, cLng] = centro
+  return puntos.map(([lat, lng]) => {
+    const dLat = cLat - lat
+    const dLngM = (cLng - lng) * Math.cos((lat * Math.PI) / 180)
+    const d = Math.hypot(dLat * 110540, dLngM * 111320) || 1
+    const f = metrosAdentro / d
+    return [lat + dLat * f, lng + (cLng - lng) * f]
+  })
+}
+
+
+function pintarCaras () {
+  capaCaras.clearLayers()
+  if (!verCaras || !activo) return
+  const propias = [...manzanas.values()].filter((m) => m.territorio === activo && m.geom)
+  for (const m of propias) {
+    let caras = []
+    try { caras = carasDe(m.geom) } catch (e) { continue }
+    const centro = centroDe(m.geom)
+    caras.forEach((cara, i) => {
+      L.polyline(corridaAdentro(cara.puntos, centro), {
+        color: '#0f6b47', weight: 4, opacity: 0.85, interactive: false,
+      }).addTo(capaCaras)
+      L.marker(cara.medio, {
+        interactive: false,
+        icon: L.divIcon({
+          className: '',
+          html: '<span style="background:#0f6b47;color:#fff;border-radius:9px;padding:0 5px;' +
+                'font:600 10px/16px system-ui;white-space:nowrap">' + (i + 1) + '</span>',
+          iconSize: [0, 0],
+        }),
+      }).addTo(capaCaras)
+    })
+  }
+}
+
+document.getElementById('cCaras').onchange = (e) => {
+  verCaras = e.target.checked
+  pintarCaras()
+  if (!verCaras || !activo) return
+  const propias = [...manzanas.values()].filter((m) => m.territorio === activo && m.geom)
+  const hist = {}
+  let total = 0
+  for (const m of propias) {
+    const n = carasDe(m.geom).length
+    total += n
+    hist[n] = (hist[n] || 0) + 1
+  }
+  avisar('<b>' + total + ' caras</b> en ' + propias.length + ' manzanas.<br>' +
+    Object.entries(hist).sort((a, b) => a[0] - b[0])
+      .map(([k, v]) => v + ' manzana' + (v === 1 ? '' : 's') + ' de ' + k).join(' · ') +
+    '<br><small>Lo que no dé 4 conviene mirarlo.</small>')
+}
+
+/* ====================================================================
+   GUARDAR EN LA BASE
+   --------------------------------------------------------------------
+   El editor vivia en el localStorage de un navegador. Ahora escribe
+   contra la misma base que la app, con la sesion que el usuario ya
+   inicio: se lee el token que supabase-js deja en este mismo origen.
+   Del otro lado, la funcion comprueba que sea admin.
+   ==================================================================== */
+
+const BD_URL = import.meta.env?.VITE_SUPABASE_URL
+const BD_KEY = import.meta.env?.VITE_SUPABASE_ANON_KEY
+
+function tokenDeSesion () {
+  if (!BD_URL) return null
+  const ref = BD_URL.replace(/^https?:\/\//, '').split('.')[0]
+  try {
+    const crudo = localStorage.getItem('sb-' + ref + '-auth-token')
+    if (!crudo) return null
+    return JSON.parse(crudo)?.access_token ?? null
+  } catch (e) { return null }
+}
+
+document.getElementById('bGuardarBD').onclick = async () => {
+  if (!BD_URL || !BD_KEY) {
+    await dialogo({ titulo: 'Sin conexión a la base',
+      cuerpo: 'Esta página no tiene configurada la base. Abrila desde el mismo servidor que la app.' })
+    return
+  }
+  const token = tokenDeSesion()
+  if (!token) {
+    await dialogo({ titulo: 'Falta iniciar sesión',
+      cuerpo: 'Entrá a la app en este mismo navegador, iniciá sesión como administrador y volvé.' })
+    return
+  }
+  if (!activo) {
+    await dialogo({ titulo: 'Elegí un territorio',
+      cuerpo: 'Se guarda un territorio por vez: el que tengas abierto.' })
+    return
+  }
+
+  const t = territorios.get(activo)
+  const propias = [...manzanas.values()]
+    .filter((m) => m.territorio === activo && m.geom)
+    .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0))
+
+  if (!propias.length) {
+    await dialogo({ titulo: 'No hay nada que guardar',
+      cuerpo: 'El territorio ' + t.numero + ' no tiene manzanas asignadas.' })
+    return
+  }
+
+  const caras = propias.reduce((n, m) => n + carasDe(m.geom).length, 0)
+  const ok = await dialogo({
+    titulo: 'Guardar el territorio ' + t.numero,
+    cuerpo: 'Se van a reemplazar sus manzanas en la base por las <b>' + propias.length +
+            '</b> que tenés dibujadas, con <b>' + caras + ' caras</b>.<br><br>' +
+            'Si ya había trabajo informado, el dibujo viejo no se borra: se retira y queda en el historial.',
+    aceptar: 'Guardar',
+  })
+  if (!ok) return
+
+  const cuerpo = propias.map((m, orden) => {
+    const centro = centroDe(m.geom)
+    return {
+      label: m.letra, orden, lat: centro[0], lng: centro[1],
+      geom: m.geom, area_m2: areaM2De(m.geom),
+      lados: carasDe(m.geom).map((c, i) => ({
+        orden: i,
+        geom: { type: 'LineString', coordinates: c.puntos.map(([la, ln]) => [ln, la]) },
+        largo_m: c.largo_m,
+        rumbo_grados: c.rumbo_grados,
+        medio_lat: Number(c.medio[0].toFixed(6)),
+        medio_lng: Number(c.medio[1].toFixed(6)),
+      })),
+    }
+  })
+
+  avisar('Guardando…')
+  try {
+    const r = await fetch(BD_URL + '/rest/v1/rpc/cargar_manzanas_de_territorio', {
+      method: 'POST',
+      headers: { apikey: BD_KEY, Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_name: String(t.numero), p_manzanas: cuerpo }),
+    })
+    const txt = await r.text()
+    if (!r.ok) {
+      let msg = txt
+      try { msg = JSON.parse(txt).message || txt } catch (e) { /* no era json */ }
+      throw new Error(msg)
+    }
+    const res = JSON.parse(txt)
+    avisar('Territorio <b>' + t.numero + '</b> guardado: ' + res.manzanas + ' manzanas, ' +
+      res.lados + ' caras.' +
+      (res.manzanas_retiradas
+        ? '<br>Se retiraron ' + res.manzanas_retiradas + ' manzanas del dibujo anterior.' : '') +
+      (res.lados_con_cobertura_retirados
+        ? '<br><b>Ojo:</b> ' + res.lados_con_cobertura_retirados +
+          ' caras con trabajo informado quedaron en el dibujo viejo.' : ''))
+  } catch (e) {
+    avisar('No se pudo guardar: ' + e.message)
+    await dialogo({ titulo: 'No se guardó', cuerpo: String(e.message) })
+  }
 }
 </script>
 </body>
