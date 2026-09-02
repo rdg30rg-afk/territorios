@@ -1,0 +1,39 @@
+{
+  "periodo": "Del 31 de agosto al 12 de septiembre de 2026",
+  "nota": "Cada superintendente de grupo coordina previamente las salidas de su grupo.",
+  "salidas": [
+    { "fecha": "2026-08-31", "hora": "09:30", "lugar": "Rastreador Calivar y Primera Entrada Bo. ATSA", "barrio": "Bo. ATSA IV", "terr": "43", "conductor": "Pablo Ramirez", "priorizar": "todo" },
+    { "fecha": "2026-08-31", "hora": "17:00", "lugar": "Av. Libertador y Rastreador Calivar", "barrio": "Bo. San Roberto", "terr": "45", "conductor": "Miguel Perez", "priorizar": "todo" },
+    { "fecha": "2026-08-31", "hora": "19:30", "tipo": "telefonica", "conductor": "Hugo Quiroga" },
+
+    { "fecha": "2026-09-01", "hora": "09:30", "lugar": "Esteban Echeverria y 9 de Julio", "barrio": "Bo. Jardin Municipal", "terr": "67", "conductor": "Francisco Criado", "priorizar": "todo" },
+    { "fecha": "2026-09-01", "hora": "17:00", "lugar": "Juana Manso y Angel de Rojas", "barrio": "Bo. Del Bono 2", "terr": "63", "conductor": "Ariel Riveros", "priorizar": "Manzanas por Angel de Rojas" },
+    { "fecha": "2026-09-01", "hora": "19:30", "tipo": "telefonica", "conductor": "Ariel Riveros" },
+
+    { "fecha": "2026-09-02", "hora": "09:30", "lugar": "Hipolito Yrigoyen y Reconquista", "barrio": "Bo. Ituzaingo", "terr": "16", "conductor": "Gabriel Sosa", "priorizar": "todo" },
+    { "fecha": "2026-09-02", "hora": "17:00", "lugar": "Hermogenes Ruiz y Santa Fe", "barrio": "Bo. Los Tilos", "terr": "64", "conductor": "Mario Campillay", "priorizar": "Manzanas hasta Rio Bamba" },
+
+    { "fecha": "2026-09-04", "hora": "09:30", "lugar": "Rastreador Calivar y Roberto Fontanarrosa", "barrio": "Bo. SOEVA 3", "terr": "61", "conductor": "Jose Caballero", "priorizar": "todo" },
+    { "fecha": "2026-09-04", "hora": "17:00", "lugar": "Manuel Zaballa y Talcahuano", "barrio": "Bo. 2 de agosto", "terr": "55", "conductor": "Fernando Pozo", "priorizar": "todo" },
+
+    { "fecha": "2026-09-05", "hora": "10:00", "tipo": "grupos" },
+    { "fecha": "2026-09-05", "hora": "17:00", "lugar": "Av. Libertador y Gral. Espejo", "terr": "53", "conductor": "Javier Zalazar", "priorizar": "A,B,C,D,I" },
+
+    { "fecha": "2026-09-07", "hora": "09:30", "lugar": "Av. Libertador y C. Saavedra", "barrio": "Bo. Puyuta", "terr": "57", "conductor": "Pablo Ramirez", "priorizar": "C,D,F" },
+    { "fecha": "2026-09-07", "hora": "17:00", "lugar": "Hipolito Yrigoyen y Juana Manso", "barrio": "Bo. Tulum", "terr": "6", "conductor": "Miguel Perez", "priorizar": "A,D,E,F,G" },
+    { "fecha": "2026-09-07", "hora": "19:30", "tipo": "telefonica", "conductor": "Hugo Quiroga" },
+
+    { "fecha": "2026-09-08", "hora": "09:30", "lugar": "Hipolito Yrigoyen y Reconquista", "barrio": "Va. Rodriguez Pinto", "terr": "15", "conductor": "Miguel Canario", "priorizar": "todo" },
+    { "fecha": "2026-09-08", "hora": "17:00", "lugar": "Justo Pacheco y Orlando Marino", "barrio": "Bo. 20 de Noviembre", "terr": "40", "conductor": "Gustavo Brizuela", "priorizar": "todo" },
+    { "fecha": "2026-09-08", "hora": "19:30", "tipo": "telefonica", "conductor": "Ariel Riveros" },
+
+    { "fecha": "2026-09-09", "hora": "09:30", "lugar": "Hipolito Yrigoyen y Comandante Cabot", "barrio": "Va. Flora", "terr": "11", "conductor": "Gabriel Sosa", "priorizar": "B,D,F" },
+    { "fecha": "2026-09-09", "hora": "17:00", "lugar": "Av. Jose I. de la Roza y Zonda", "barrio": "Bo. F. de Abogados", "terr": "13", "conductor": "Mario Campillay", "priorizar": "todo" },
+
+    { "fecha": "2026-09-11", "hora": "09:30", "lugar": "Juan Jose Paso y Fray Justo Sta. de Oro", "barrio": "Bo. Tulum", "terr": "4", "conductor": "Francisco Criado", "priorizar": "A,B,C,D,E,G" },
+    { "fecha": "2026-09-11", "hora": "17:00", "lugar": "S. Boggian y Sanidad Argentina", "barrio": "Bo. Por. de los Andes", "terr": "46", "conductor": "Daniel Marquez", "priorizar": "todo" },
+
+    { "fecha": "2026-09-12", "hora": "10:00", "tipo": "grupos" },
+    { "fecha": "2026-09-12", "hora": "17:00", "lugar": "Meglioli y Av. Jose I. de la Roza", "barrio": "Bo. CESAP", "terr": "22", "conductor": "Gustavo Brizuela", "priorizar": "A" }
+  ]
+}

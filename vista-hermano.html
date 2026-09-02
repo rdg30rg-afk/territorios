@@ -13,10 +13,17 @@
    VISTA DEL HERMANO · Territorios
 
    Quien entra: un publicador de 70 anios, parado en una esquina,
-   con sol de frente y el telefono en la mano. Viene a saber que
-   territorio tiene y que le falta recorrer.
+   con sol de frente y el telefono en la mano.
 
-   Accion principal, una sola: abrir el mapa de su territorio.
+   Viene a una de dos cosas, y no siempre a la misma:
+     - saber a donde y a que hora es la salida de hoy;
+     - saber que le falta de su territorio personal, si tiene uno.
+
+   Por eso la pantalla de inicio se llama HOY y muestra lo que pasa
+   hoy, no un menu. Las otras dos pestanias son el detalle.
+
+   Las pestanias van ABAJO: son tres, el pulgar llega, y es el gesto
+   que los hermanos ya tienen aprendido de JW Library.
 
    Tres reglas que gobiernan todo este archivo:
    1. Nada por debajo de 16px. Afuera y con sol, 14 no alcanza.
@@ -70,7 +77,7 @@ body {
   font: 400 var(--t-body)/1.5 Urbanist, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-feature-settings: "tnum";
   -webkit-font-smoothing: antialiased;
-  padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(150px + env(safe-area-inset-bottom, 0px));
 }
 
 :focus-visible { outline: 3px solid var(--olive); outline-offset: 3px; border-radius: 8px; }
@@ -96,7 +103,9 @@ body {
 
 /* -------------------------------------------------------- saludo */
 .saludo { margin: 26px 0 20px; font-size: var(--t-h2); font-weight: 600; line-height: 1.18; letter-spacing: -.02em; }
-.saludo span { display: block; color: var(--fg-3); font-weight: 500; }
+/* Solo la segunda linea es la gris. Antes la regla tomaba cualquier span
+   y partia "Buen dia, Mateo." en dos renglones de distinto color. */
+.saludo .sub { display: block; color: var(--fg-3); font-weight: 500; }
 
 /* ----------------------------------------------- tarjeta principal */
 /* Una sola tarjeta oscura en toda la pantalla: lo unico que importa hoy. */
@@ -165,12 +174,67 @@ body {
 .punto { width: 14px; height: 14px; border-radius: 5px; border: 1px solid var(--line); background: var(--canvas); }
 .punto.ok { background: var(--good-bg); border-color: var(--good-line); }
 
+/* --------------------------------------------------------- salidas */
+.horaGrande { font-size: var(--t-num); font-weight: 700; line-height: 1; letter-spacing: -.02em; }
+.salidaDia { margin: 26px 0 10px; font-size: var(--t-lead); font-weight: 600; }
+.salidaDia small { display: block; font-size: var(--t-label); font-weight: 500; color: var(--fg-3); }
+.salidaDia.esHoy { color: var(--olive); }
+
+.salida {
+  display: grid; grid-template-columns: 78px minmax(0, 1fr); gap: 14px; align-items: start;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 18px;
+  padding: 16px; margin-bottom: 10px; width: 100%; text-align: left; cursor: pointer;
+  font: inherit; color: inherit; min-height: var(--tap);
+}
+.salida.esHoy { border-color: var(--olive); border-width: 2px; background: var(--olive-bg); }
+.salida .cuando { font-size: var(--t-lead); font-weight: 700; }
+.salida .cuando small { display: block; font-size: var(--t-label); font-weight: 500; color: var(--fg-3); }
+.salida .donde strong { display: block; font-size: var(--t-body); font-weight: 600; line-height: 1.25; }
+.salida .donde span { display: block; font-size: var(--t-label); color: var(--fg-2); margin-top: 2px; }
+
+.marcas { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.marca-chip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px;
+  border-radius: var(--r-pill); font-size: var(--t-label); font-weight: 600;
+  background: var(--canvas); border: 1px solid var(--line); color: var(--fg-2);
+}
+.marca-chip.terr { background: var(--ink); border-color: var(--ink); color: #fff; }
+.marca-chip.priorizar { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn-fg); }
+.marca-chip.tel { background: var(--olive-bg); border-color: var(--olive-line, #d3e2a4); color: var(--olive); }
+
+.nota {
+  display: flex; gap: 12px; align-items: flex-start; margin-top: 22px; padding: 16px;
+  border-radius: 16px; background: var(--surface); border: 1px solid var(--line);
+  font-size: var(--t-label); color: var(--fg-2); line-height: 1.45;
+}
+
 /* ---------------------------------------------------------- mapa */
 #mapa { height: 340px; border-radius: 16px; border: 1px solid var(--line); margin-top: 4px; }
 .etiquetaMz {
   display: grid; place-items: center; font: 700 15px Urbanist, sans-serif;
   border-radius: 9999px; border: 2px solid #fff; color: #fff;
 }
+
+/* -------------------------------------------------------- pestanias */
+.pestanias {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  background: var(--surface); border-top: 1px solid var(--line);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.pestanias button {
+  min-height: 64px; border: 0; background: none; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  color: var(--fg-3); font: 600 var(--t-label)/1.1 Urbanist, sans-serif;
+}
+.pestanias button svg { width: 26px; height: 26px; }
+/* Activo: color + peso + subrayado. El color no viaja solo. */
+.pestanias button[aria-current='page'] { color: var(--olive); }
+.pestanias button[aria-current='page'] .marcaActiva { background: var(--olive); }
+.marcaActiva { width: 22px; height: 3px; border-radius: 2px; background: transparent; }
+
+.vista { display: none; }
+.vista.activa { display: block; }
 
 /* ----------------------------------------------- accion pegajosa */
 /* La accion principal no se pierde al bajar: siempre esta a mano. */
@@ -179,7 +243,7 @@ body {
   /* Solo aparece cuando el boton de la tarjeta se fue de pantalla: dos
      botones iguales a la vez es el mismo boton dicho dos veces. */
   transform: translateY(120%); transition: transform .2s ease; pointer-events: none;
-  padding: 12px var(--pad) calc(12px + env(safe-area-inset-bottom, 0px));
+  padding: 12px var(--pad) calc(76px + env(safe-area-inset-bottom, 0px));
   background: linear-gradient(to top, var(--canvas) 72%, rgba(246,244,238,0));
 }
 .pieFijo.visible { transform: none; pointer-events: auto; }
@@ -203,9 +267,28 @@ body {
 
 <main class="hoja">
 
+<!-- ============================ HOY ============================ -->
+<section class="vista activa" id="vHoy">
   <h1 class="saludo">
-    Buen día, Mateo.
-    <span id="estadoGeneral">Buscando tu territorio…</span>
+    <span id="saludoHora">Buen día</span>, Mateo.
+    <span class="sub" id="resumenHoy">Cargando…</span>
+  </h1>
+  <div id="hoyContenido"></div>
+</section>
+
+<!-- ========================== SALIDAS ========================== -->
+<section class="vista" id="vSalidas">
+  <h1 class="saludo">Salidas<span class="sub" id="periodoSalidas">Cargando…</span></h1>
+  <div id="listaSalidas"></div>
+  <p class="nota" id="notaSalidas"></p>
+</section>
+
+<!-- ======================= MI TERRITORIO ======================= -->
+<section class="vista" id="vTerritorio">
+
+  <h1 class="saludo">
+    Mi territorio
+    <span class="sub" id="estadoGeneral">Buscando tu territorio…</span>
   </h1>
 
   <!-- Lo único que importa hoy -->
@@ -257,6 +340,9 @@ body {
     </div>
   </section>
 
+</section>
+
+<!-- Estado vacío del territorio personal, dentro de su pestaña -->
   <!-- Estado vacío: la primera pantalla de alguien nuevo -->
   <section class="panel vacio oculto" id="vacio">
     <div class="marcoVacio">◇</div>
@@ -266,6 +352,21 @@ body {
   </section>
 
 </main>
+
+<nav class="pestanias" aria-label="Secciones">
+  <button data-vista="vHoy" aria-current="page">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>
+    Hoy<i class="marcaActiva"></i>
+  </button>
+  <button data-vista="vSalidas">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>
+    Salidas<i class="marcaActiva"></i>
+  </button>
+  <button data-vista="vTerritorio">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M9 4 3 6.5v13L9 17l6 3 6-2.5v-13L15 7 9 4Z"/><path d="M9 4v13M15 7v13"/></svg>
+    Mi territorio<i class="marcaActiva"></i>
+  </button>
+</nav>
 
 <div class="pieFijo">
   <div class="hoja">
@@ -321,6 +422,7 @@ function refrescar () {
 
   pintarRejilla()
   if (mapa) pintarMapa()
+  if (salidas.length || manzanas.length) pintarHoy()
 }
 
 function pintarRejilla () {
@@ -381,6 +483,7 @@ function abrirMapa () {
 
 // El pie fijo aparece recien cuando el boton de arriba deja de verse.
 const pie = document.querySelector('.pieFijo')
+pie.style.display = 'none'   // arranca en Hoy
 const observador = new IntersectionObserver(
   ([e]) => pie.classList.toggle('visible', !e.isIntersecting),
   // threshold 0: el pie aparece apenas el boton toca el borde. Con 0.6 el
@@ -411,11 +514,229 @@ document.getElementById('bDevolver').onclick = () => {
   alert('Listo. El siervo de tu grupo va a ver que lo terminaste.')
 }
 
+// ========================================================== salidas
+let salidas = []
+let periodo = ''
+let notaSalidas = ''
+
+const hoyISO = () => new Date().toLocaleDateString('sv-SE')   // AAAA-MM-DD local
+
+function fechaLarga (iso) {
+  const [a, m, d] = iso.split('-').map(Number)
+  const f = new Date(a, m - 1, d)
+  return `${DIAS[f.getDay()]} ${d} de ${MESES[m - 1]}`
+}
+
+// "Hoy" y "Mañana" se dicen con esas palabras: nadie mira el numero del dia
+// para saber si es hoy.
+function comoSeLlamaElDia (iso) {
+  const hoy = hoyISO()
+  if (iso === hoy) return 'Hoy'
+  const m = new Date(); m.setDate(m.getDate() + 1)
+  if (iso === m.toLocaleDateString('sv-SE')) return 'Mañana'
+  return null
+}
+
+function chipsDeSalida (s) {
+  const c = []
+  if (s.tipo === 'telefonica') c.push('<span class="marca-chip tel">☎ Por teléfono</span>')
+  else if (s.tipo === 'grupos') c.push('<span class="marca-chip tel">◆ Cada grupo por su lado</span>')
+  else {
+    if (s.terr) c.push(`<span class="marca-chip terr">Territorio ${s.terr}</span>`)
+    if (s.priorizar && s.priorizar !== 'todo') {
+      const letras = /^[A-Za-z](,[A-Za-z])*$/.test(s.priorizar)
+        ? 'Priorizá las manzanas ' + s.priorizar.split(',').join(', ')
+        : 'Priorizá ' + s.priorizar.replace(/^Manzanas /, 'las manzanas ')
+      c.push(`<span class="marca-chip priorizar">★ ${letras}</span>`)
+    }
+  }
+  return c.join('')
+}
+
+function tituloSalida (s) {
+  if (s.tipo === 'telefonica') return 'Predicación telefónica'
+  if (s.tipo === 'grupos') return 'Salidas de grupos'
+  return s.lugar
+}
+
+function pintarSalidas () {
+  const cont = document.getElementById('listaSalidas')
+  cont.innerHTML = ''
+  document.getElementById('periodoSalidas').textContent = periodo
+  document.getElementById('notaSalidas').innerHTML = `<span aria-hidden="true">◆</span><span>${notaSalidas}</span>`
+
+  const hoy = hoyISO()
+  const futuras = salidas.filter(s => s.fecha >= hoy)
+  const lista = futuras.length ? futuras : salidas
+
+  if (!futuras.length) {
+    const p = document.createElement('p')
+    p.className = 'nota'
+    p.innerHTML = '<span aria-hidden="true">◆</span><span>Estas salidas ya pasaron. Cuando llegue el programa nuevo lo vas a ver acá.</span>'
+    cont.appendChild(p)
+  }
+
+  let diaActual = null
+  for (const s of lista) {
+    if (s.fecha !== diaActual) {
+      diaActual = s.fecha
+      const apodo = comoSeLlamaElDia(s.fecha)
+      const h = document.createElement('p')
+      h.className = 'salidaDia' + (apodo === 'Hoy' ? ' esHoy' : '')
+      h.innerHTML = apodo
+        ? `${apodo}<small>${fechaLarga(s.fecha)}</small>`
+        : fechaLarga(s.fecha)
+      cont.appendChild(h)
+    }
+    cont.appendChild(tarjetaSalida(s))
+  }
+}
+
+function tarjetaSalida (s) {
+  const esHoy = s.fecha === hoyISO()
+  const b = document.createElement('button')
+  b.className = 'salida' + (esHoy ? ' esHoy' : '')
+  b.innerHTML = `
+    <span class="cuando">${s.hora}<small>${s.barrio || (s.tipo ? '' : '')}</small></span>
+    <span class="donde">
+      <strong>${tituloSalida(s)}</strong>
+      ${s.conductor ? `<span>Conduce ${s.conductor}</span>` : ''}
+      <span class="marcas">${chipsDeSalida(s)}</span>
+    </span>`
+  // Solo se ofrece llegar a un lugar cuando hay un lugar.
+  if (s.lugar) {
+    b.onclick = () => window.open(
+      'https://www.google.com/maps/search/?api=1&query=' +
+      encodeURIComponent(`${s.lugar}, San Juan, Argentina`), '_blank')
+  } else {
+    b.style.cursor = 'default'
+  }
+  return b
+}
+
+// ============================================================== hoy
+function pintarHoy () {
+  const hoy = hoyISO()
+  const deHoy = salidas.filter(s => s.fecha === hoy)
+  const proxima = salidas.find(s => s.fecha > hoy)
+  const cont = document.getElementById('hoyContenido')
+  const h = new Date().getHours()
+  document.getElementById('saludoHora').textContent =
+    h < 13 ? 'Buen día' : h < 20 ? 'Buenas tardes' : 'Buenas noches'
+
+  const faltan = manzanas.length - manzanas.filter(m => hechas.has(m.letra)).length
+  const resumen = document.getElementById('resumenHoy')
+  if (deHoy.length) {
+    const l = deHoy.filter(s => !s.tipo)
+    resumen.textContent = l.length === 1
+      ? `Hoy hay una salida, a las ${l[0].hora}.`
+      : l.length > 1
+        ? `Hoy hay ${l.length} salidas.`
+        : 'Hoy es predicación telefónica.'
+  } else {
+    resumen.textContent = proxima
+      ? `Hoy no hay salida. La próxima es el ${fechaLarga(proxima.fecha)}.`
+      : 'No hay salidas cargadas.'
+  }
+
+  cont.innerHTML = ''
+
+  // La tarjeta oscura es para lo que tiene hora y vence: la salida de hoy.
+  // Si hoy no hay ninguna, la ocupa el territorio personal.
+  const destacada = deHoy.find(s => !s.tipo) || proxima
+  if (destacada) cont.appendChild(tarjetaDestacada(destacada, !deHoy.length))
+
+  const otras = deHoy.filter(s => s !== destacada)
+  if (otras.length) {
+    const t = document.createElement('p')
+    t.className = 'salidaDia'
+    t.textContent = 'También hoy'
+    cont.appendChild(t)
+    otras.forEach(s => cont.appendChild(tarjetaSalida(s)))
+  }
+
+  cont.appendChild(resumenTerritorio(faltan))
+}
+
+function tarjetaDestacada (s, esFutura) {
+  const d = document.createElement('section')
+  d.className = 'tarjeta'
+  const apodo = comoSeLlamaElDia(s.fecha) || fechaLarga(s.fecha)
+  d.innerHTML = `
+    <p class="rotulo">${esFutura ? 'La próxima salida' : 'La salida de hoy'}</p>
+    <p class="numeroGrande">${s.hora} <small>${apodo}</small></p>
+    <div class="frase">
+      <span class="marco" aria-hidden="true">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 21s7-5.5 7-11a7 7 0 1 0-14 0c0 5.5 7 11 7 11Z"/><circle cx="12" cy="10" r="2.6"/>
+        </svg>
+      </span>
+      <span>
+        <strong>${s.lugar}</strong>
+        <small>${s.barrio || 'San Juan'}${s.conductor ? ' · Conduce ' + s.conductor : ''}</small>
+      </span>
+    </div>
+    <span class="marcas">${chipsDeSalida(s)}</span>
+    <button class="boton principal" id="bComoLlegar">Cómo llegar →</button>`
+  setTimeout(() => {
+    const b = d.querySelector('#bComoLlegar')
+    if (b) b.onclick = () => window.open(
+      'https://www.google.com/maps/search/?api=1&query=' +
+      encodeURIComponent(`${s.lugar}, San Juan, Argentina`), '_blank')
+  }, 0)
+  return d
+}
+
+function resumenTerritorio (faltan) {
+  const p = document.createElement('section')
+  p.className = 'panel'
+  if (!manzanas.length) {
+    p.innerHTML = `
+      <h2>Tu territorio</h2>
+      <p class="sub">Todavía no tenés uno asignado. Cuando el siervo de tu grupo te dé uno, lo vas a ver acá.</p>`
+    return p
+  }
+  const n = manzanas.length - faltan
+  p.innerHTML = `
+    <h2>Tu territorio</h2>
+    <p class="sub">Tenés el <strong>${NUMERO}</strong>. ${
+      faltan === 0 ? 'Ya lo recorriste entero.'
+        : faltan === 1 ? 'Te falta 1 manzana.' : `Te faltan ${faltan} manzanas.`}</p>
+    <div class="barraProgreso" style="background:var(--line)"><i style="width:${Math.round(n / manzanas.length * 100)}%;background:var(--lime-deep)"></i></div>
+    <p class="pieProgreso" style="color:var(--fg-2)">${n} de ${manzanas.length} recorridas</p>
+    <button class="boton principal" style="background:var(--ink);color:#fff" id="bIrTerritorio">Ver mi territorio →</button>`
+  setTimeout(() => {
+    const b = p.querySelector('#bIrTerritorio')
+    if (b) b.onclick = () => irA('vTerritorio')
+  }, 0)
+  return p
+}
+
+// ========================================================= pestanias
+function irA (id) {
+  document.querySelectorAll('.vista').forEach(v => v.classList.toggle('activa', v.id === id))
+  // El pie ofrece abrir el mapa del territorio: fuera de esa pestania no
+  // corresponde ofrecerlo.
+  pie.classList.remove('visible')
+  pie.style.display = id === 'vTerritorio' ? '' : 'none'
+  document.querySelectorAll('.pestanias button').forEach(b => {
+    if (b.dataset.vista === id) b.setAttribute('aria-current', 'page')
+    else b.removeAttribute('aria-current')
+  })
+  scrollTo(0, 0)
+  if (id === 'vTerritorio' && mapa) setTimeout(() => mapa.invalidateSize(), 120)
+}
+document.querySelectorAll('.pestanias button').forEach(b => { b.onclick = () => irA(b.dataset.vista) })
+
 // -------------------------------------------------------- arranque
-fetch('/datos/manzanas-territorios.json')
-  .then(r => r.json())
-  .then(d => {
-    manzanas = d.territorios[NUMERO] || []
+Promise.all([
+  fetch('/datos/salidas.json').then(r => r.json()).catch(() => null),
+  fetch('/datos/manzanas-territorios.json').then(r => r.json()).catch(() => null),
+])
+  .then(([sal, d]) => {
+    if (sal) { salidas = sal.salidas; periodo = sal.periodo; notaSalidas = sal.nota; pintarSalidas() }
+    manzanas = (d && d.territorios[NUMERO]) || []
+    pintarHoy()
     if (!manzanas.length) {
       document.getElementById('tarjeta').classList.add('oculto')
       document.querySelector('.pieFijo').classList.add('oculto')
@@ -423,9 +744,11 @@ fetch('/datos/manzanas-territorios.json')
       return
     }
     refrescar()
+    pintarHoy()
   })
   .catch(() => {
-    document.getElementById('estadoGeneral').textContent = 'No se pudo cargar tu territorio. Probá de nuevo en un rato.'
+    document.getElementById('resumenHoy').textContent = 'No se pudo cargar. Probá de nuevo en un rato.'
+    document.getElementById('estadoGeneral').textContent = 'No se pudo cargar tu territorio.'
   })
 </script>
 </body>
