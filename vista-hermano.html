@@ -40,6 +40,10 @@
   --lime-deep: #b4d63c;
   --olive: #5f7d0a;
   --olive-bg: #f0f6dd;
+  /* El oliva de marca da 4,28 sobre su propio fondo tenue: no llega.
+     Para texto sobre olive-bg va este, que da 5,82. */
+  --olive-ink: #516608;
+  --olive-line: #d3e2a4;
 
   --canvas: #f6f4ee;
   --surface: #ffffff;
@@ -190,7 +194,10 @@ body {
 .salida .cuando { font-size: var(--t-lead); font-weight: 700; }
 .salida .cuando small { display: block; font-size: var(--t-label); font-weight: 500; color: var(--fg-3); }
 .salida .donde strong { display: block; font-size: var(--t-body); font-weight: 600; line-height: 1.25; }
-.salida .donde span { display: block; font-size: var(--t-label); color: var(--fg-2); margin-top: 2px; }
+/* Combinador de hijo, no descendiente. Con ".salida .donde span" (0-2-1)
+   esta regla le ganaba a ".marca-chip.terr" (0-2-0) y pintaba de gris el
+   texto de los chips negros: 2,15 de contraste, ilegible. */
+.salida .donde > span { display: block; font-size: var(--t-label); color: var(--fg-2); margin-top: 2px; }
 
 .marcas { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .marca-chip {
@@ -200,7 +207,7 @@ body {
 }
 .marca-chip.terr { background: var(--ink); border-color: var(--ink); color: #fff; }
 .marca-chip.priorizar { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn-fg); }
-.marca-chip.tel { background: var(--olive-bg); border-color: var(--olive-line, #d3e2a4); color: var(--olive); }
+.marca-chip.tel { background: var(--olive-bg); border-color: var(--olive-line); color: var(--olive-ink); }
 
 .nota {
   display: flex; gap: 12px; align-items: flex-start; margin-top: 22px; padding: 16px;
@@ -601,7 +608,7 @@ function tarjetaSalida (s) {
     <span class="donde">
       <strong>${tituloSalida(s)}</strong>
       ${s.conductor ? `<span>Conduce ${s.conductor}</span>` : ''}
-      <span class="marcas">${chipsDeSalida(s)}</span>
+      <span class="marcas" role="list">${chipsDeSalida(s)}</span>
     </span>`
   // Solo se ofrece llegar a un lugar cuando hay un lugar.
   if (s.lugar) {
