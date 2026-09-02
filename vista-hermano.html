@@ -267,6 +267,12 @@ body {
 /* El mapa chico no se arrastra ni se hace zoom: adentro de una pagina que
    scrollea, un mapa que agarra el dedo es una trampa. Se toca y se abre
    grande, que es lo que la persona queria hacer. */
+/* Leaflet pone sus capas en z-index 400, 600, 650... dentro de un contenedor
+   que solo es "position: relative" y por lo tanto NO crea contexto de apilado.
+   Resultado: esos 400 compiten a nivel raiz y le ganan a la barra de abajo
+   (40) y al mapa a pantalla completa (60), que es la "imagen por delante".
+   El z-index: 0 encierra las capas de Leaflet adentro de su propia caja. */
+#mapa, .mapaMini { position: relative; z-index: 0; isolation: isolate; }
 .mapaMini { height: 190px; border-radius: 16px; overflow: hidden; margin-top: 16px; background: var(--line); cursor: pointer; }
 .tarjeta .mapaMini { border: 1px solid rgba(255,255,255,.16); }
 .mapaPie { display: flex; gap: 9px; align-items: flex-start; margin: 9px 2px 0; font-size: var(--t-label); color: var(--fg-3); line-height: 1.4; }
@@ -777,6 +783,19 @@ function pieDelMiniMapa (s) {
   return '<p class="mapaPie"><span class="llave" aria-hidden="true"></span><span>' + l.texto + '</span></p>'
 }
 
+// El encuadre se calcula de los datos, ANTES de crear el mapa. Un mapa de
+// Leaflet sin vista encola las capas y las suelta recien en el primer
+// setView: si ese setView es una animacion, los poligonos se pintan en el
+// encuadre viejo y quedan ahi, superpuestos al nuevo. Eso era la "imagen
+// por delante".
+function encuadreDe (terr) {
+  const lista = formasPorTerr[terr] || []
+  if (!lista.length) return null
+  const puntos = []
+  for (const mz of lista) for (const [x, y] of mz.geom.coordinates[0]) puntos.push([y, x])
+  return L.latLngBounds(puntos)
+}
+
 function dibujarTerritorio (m, terr, letras, conLetras) {
   const lista = formasPorTerr[terr] || []
   if (!lista.length) return null
@@ -804,14 +823,18 @@ function dibujarTerritorio (m, terr, letras, conLetras) {
 }
 
 function montarMiniMapa (caja, s) {
+  const b = encuadreDe(s.terr)
   const m = L.map(caja, {
     attributionControl: false, zoomControl: false, dragging: false, tap: false,
     scrollWheelZoom: false, doubleClickZoom: false, touchZoom: false, boxZoom: false, keyboard: false,
+    zoomAnimation: false, fadeAnimation: false,
   })
+  m.fitBounds(b.pad(0.15), { animate: false })
   L.tileLayer(TESELAS, { maxZoom: 19 }).addTo(m)
-  const b = dibujarTerritorio(m, s.terr, letrasPrioritarias(s.priorizar), false)
+  dibujarTerritorio(m, s.terr, letrasPrioritarias(s.priorizar), false)
   m.on('click', () => verMapaTerritorio(s))
-  setTimeout(() => { m.invalidateSize(); if (b) m.fitBounds(b.pad(0.15)) }, 60)
+  // Reencuadre sin animacion cuando la caja ya tiene su tamanio definitivo.
+  setTimeout(() => { m.invalidateSize({ animate: false, pan: false }); m.fitBounds(b.pad(0.15), { animate: false }) }, 60)
   return m
 }
 
@@ -822,6 +845,7 @@ function comoLlegar (s) {
 
 let mapaTerrInst = null
 function verMapaTerritorio (s) {
+  if (!hayMapaDe(s.terr)) return
   const sobre = document.getElementById('sobreMapa')
   sobre.hidden = false
   document.getElementById('sobreTitulo').innerHTML =
@@ -831,10 +855,20 @@ function verMapaTerritorio (s) {
     (l.llave ? '<span class="llave" aria-hidden="true"></span>' : '<span aria-hidden="true">◆</span>') +
     '<span>' + l.texto + '</span>'
   if (mapaTerrInst) { mapaTerrInst.remove(); mapaTerrInst = null }
-  mapaTerrInst = L.map('mapaTerr', { attributionControl: false })
+  // Por si un remove() anterior quedo a medias: dos mapas en la misma caja
+  // es exactamente lo que se ve como una capa fantasma.
+  document.getElementById('mapaTerr').innerHTML = ''
+  const b = encuadreDe(s.terr)
+  mapaTerrInst = L.map('mapaTerr', { attributionControl: false, zoomAnimation: false })
+  mapaTerrInst.fitBounds(b.pad(0.08), { animate: false })
   L.tileLayer(TESELAS, { maxZoom: 19 }).addTo(mapaTerrInst)
-  const b = dibujarTerritorio(mapaTerrInst, s.terr, letrasPrioritarias(s.priorizar), true)
-  setTimeout(() => { mapaTerrInst.invalidateSize(); if (b) mapaTerrInst.fitBounds(b.pad(0.08)) }, 60)
+  dibujarTerritorio(mapaTerrInst, s.terr, letrasPrioritarias(s.priorizar), true)
+  const m = mapaTerrInst
+  setTimeout(() => {
+    if (m !== mapaTerrInst) return
+    m.invalidateSize({ animate: false, pan: false })
+    m.fitBounds(b.pad(0.08), { animate: false })
+  }, 60)
   // Con el mapa a pantalla completa, la pagina de atras no scrollea: el dedo
   // arrastra el mapa, que es lo unico que hay.
   document.body.style.overflow = 'hidden'
