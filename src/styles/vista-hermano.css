@@ -351,7 +351,7 @@
 .vh #sobreModos:not(:empty) { padding: 12px var(--pad) 0; background: var(--surface); border-bottom: 1px solid var(--line); }
 .vh #sobreModos .modos { margin-bottom: 12px; }
 
-/* Empezada no es ni hecha ni sin tocar, y se dice: "2 de 4 lados". */
+/* Empezada no es ni hecha ni sin tocar, y se dice: "2 de 4 cuadras". */
 .vh .manzana.media { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn-fg); }
 .vh .manzana.media small { color: var(--warn-fg); }
 

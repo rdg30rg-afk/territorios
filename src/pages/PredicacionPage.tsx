@@ -823,7 +823,7 @@ export function PredicacionPage() {
               <p className="sub">
                 {editando ? (
                   <>
-                    Tocá una manzana para marcarla, o pasá a <strong>Por lado</strong> si hiciste
+                    Tocá una manzana para marcarla, o pasá a <strong>Por cuadra</strong> si hiciste
                     una sola calle.
                   </>
                 ) : puedeMarcar ? (
@@ -844,7 +844,7 @@ export function PredicacionPage() {
                       aria-pressed={modoMarcar === k}
                       onClick={() => setModoMarcar(k)}
                     >
-                      {k === 'manzana' ? 'Manzana entera' : 'Por lado'}
+                      {k === 'manzana' ? 'Manzana entera' : 'Por cuadra'}
                     </button>
                   ))}
                 </div>
@@ -876,7 +876,7 @@ export function PredicacionPage() {
                       onClick={() => marcarManzana(mz)}
                     >
                       {mz.label}
-                      <small>{completa ? '✓ hecha' : media ? `${n} de ${total} lados` : 'te falta'}</small>
+                      <small>{completa ? '✓ hecha' : media ? `${n} de ${total} cuadras` : 'te falta'}</small>
                     </button>
                   )
                 })}
@@ -1240,22 +1240,51 @@ function HojaHistorial({
     return [...m.values()]
   }, [delDia])
 
+  // Cada manzana tocada ese dia, con cuantas cuadras se hicieron y como
+  // quedo AL CIERRE: una manzana puede tener dos cuadras de hoy y dos de
+  // la semana pasada, y esta hecha igual.
   const porManzana = useMemo(() => {
-    const m = new Map<string, { letra: string; lados: number; quien: Set<string> }>()
+    const m = new Map<
+      string,
+      { letra: string; cuadras: number; total: number; completa: boolean; quien: Set<string> }
+    >()
     for (const e of cierreDelDia) {
       if (e.estado !== 'recorrido') continue
       const mz = manzanas.find((x) => x.id === e.manzana_id)
       if (!mz) continue
-      const fila = m.get(mz.id) ?? { letra: mz.label, lados: 0, quien: new Set<string>() }
-      fila.lados++
+      const suyas = ladosDe(mz)
+      const fila =
+        m.get(mz.id) ?? {
+          letra: mz.label,
+          cuadras: 0,
+          total: suyas.length,
+          completa: suyas.length > 0 && suyas.every((l) => hechosAl.has(l.id)),
+          quien: new Set<string>(),
+        }
+      fila.cuadras++
       fila.quien.add(e.informado_por ? (nombres[e.informado_por] ?? 'un hermano') : 'alguien')
       m.set(mz.id, fila)
     }
     return [...m.values()].sort((a, b) => a.letra.localeCompare(b.letra))
-  }, [cierreDelDia, manzanas, nombres])
+  }, [cierreDelDia, manzanas, ladosDe, hechosAl, nombres])
 
   const deshechos = cierreDelDia.filter((e) => e.estado !== 'recorrido').length
-  const total = manzanas.reduce((t, m) => t + ladosDe(m).length, 0)
+
+  // El resumen se cuenta en manzanas, que es como se habla del territorio.
+  // Una manzana sin cuadras cargadas no se cuenta como hecha ni como
+  // empezada: no hay con que decirlo.
+  const alCierre = useMemo(() => {
+    let completas = 0
+    let empezadas = 0
+    for (const mz of manzanas) {
+      const suyas = ladosDe(mz)
+      if (!suyas.length) continue
+      const n = suyas.filter((l) => hechosAl.has(l.id)).length
+      if (n === suyas.length) completas++
+      else if (n > 0) empezadas++
+    }
+    return { completas, empezadas }
+  }, [manzanas, ladosDe, hechosAl])
 
   return (
     <div className="sobre">
@@ -1313,9 +1342,14 @@ function HojaHistorial({
           <div className="histPie">
             <p className="histResumen">
               <strong>
-                {hechosAl.size} de {total} lados
+                {alCierre.completas} de {manzanas.length} manzanas
               </strong>{' '}
-              recorridos al cierre de ese día.
+              hechas al cierre de ese día
+              {alCierre.empezadas > 0 &&
+                (alCierre.empezadas === 1
+                  ? ', y 1 empezada.'
+                  : `, y ${alCierre.empezadas} empezadas.`)}
+              {alCierre.empezadas === 0 && '.'}
             </p>
             {porManzana.length === 0 && deshechos === 0 ? (
               <p className="histNada">Ese día no se marcó nada.</p>
@@ -1325,7 +1359,10 @@ function HojaHistorial({
                   <li key={f.letra}>
                     <b>{f.letra}</b>
                     <span>
-                      {f.lados} lado{f.lados > 1 ? 's' : ''} · {[...f.quien].join(', ')}
+                      {f.completa
+                        ? `${f.cuadras} cuadra${f.cuadras > 1 ? 's' : ''}, quedó hecha`
+                        : `${f.cuadras} de ${f.total} cuadras, quedó a medias`}{' '}
+                      · {[...f.quien].join(', ')}
                     </span>
                   </li>
                 ))}
@@ -1334,8 +1371,8 @@ function HojaHistorial({
                     <b>↺</b>
                     <span>
                       {deshechos === 1
-                        ? '1 lado que se había marcado y quedó sin recorrer'
-                        : `${deshechos} lados que se habían marcado y quedaron sin recorrer`}
+                        ? '1 cuadra que se había marcado y quedó sin recorrer'
+                        : `${deshechos} cuadras que se habían marcado y quedaron sin recorrer`}
                     </span>
                   </li>
                 )}
