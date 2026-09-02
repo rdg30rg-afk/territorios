@@ -150,6 +150,12 @@ export function PredicacionPage() {
   const [vista, setVista] = useState<'hoy' | 'salidas' | 'territorio'>('hoy')
   const [paso, setPaso] = useState(1)
   const [modoMarcar, setModoMarcar] = useState<'manzana' | 'lado'>('manzana')
+  // Se entra a marcar a proposito. Antes, un toque al pasar el dedo por el
+  // mapa cambiaba el estado de una manzana y se guardaba solo. Mirar tiene
+  // que ser lo que pasa cuando no pediste otra cosa.
+  const [marcando, setMarcando] = useState(false)
+  const [solicitando, setSolicitando] = useState(false)
+  const [solicitado, setSolicitado] = useState<string | null>(null)
 
   const [territorios, setTerritorios] = useState<Territorio[]>([])
   const [miTerritorio, setMiTerritorio] = useState<Territorio | null>(null)
@@ -163,8 +169,15 @@ export function PredicacionPage() {
   const [aviso, setAviso] = useState<string | null>(null)
   const [guardando, setGuardando] = useState(false)
 
+  // Solo se marca el territorio propio. Los demas se miran: la cobertura de
+  // un territorio ajeno no la informa quien pasa a ver como es.
   const [abierta, setAbierta] = useState<string | null>(null)
   const [hoja, setHoja] = useState<{ salida?: Salida; propio?: boolean } | null>(null)
+
+  // Solo se marca el territorio propio, y solo despues de pedirlo. Mirar es
+  // lo que pasa cuando no pediste otra cosa.
+  const puedeMarcar = asignado && Boolean(miTerritorio)
+  const editando = puedeMarcar && marcando
 
   // ------------------------------------------------------------ derivados
   const ladosPorManzana = useMemo(() => {
@@ -402,12 +415,12 @@ export function PredicacionPage() {
           weight: 2,
           fillColor: completa ? '#59c48f' : media ? '#f0c987' : '#cbd0d6',
           fillOpacity: completa ? 0.55 : media ? 0.45 : 0.3,
-          interactive: modoMarcar === 'manzana',
+          interactive: editando && modoMarcar === 'manzana',
         })
           .addTo(capa)
-          .on('click', () => modoMarcar === 'manzana' && marcarManzana(mz))
+          .on('click', () => editando && modoMarcar === 'manzana' && marcarManzana(mz))
 
-        if (modoMarcar === 'lado') {
+        if (editando && modoMarcar === 'lado') {
           const centro: [number, number] = [Number(mz.lat), Number(mz.lng)]
           for (const lado of propios) {
             const linea = lado.geometry_geojson.coordinates.map(
@@ -444,7 +457,7 @@ export function PredicacionPage() {
         }).addTo(capa)
       }
     },
-    [manzanas, ladosDe, hechosDe, hechos, modoMarcar, marcarManzana, marcarLado],
+    [manzanas, ladosDe, hechosDe, hechos, modoMarcar, editando, marcarManzana, marcarLado],
   )
 
   const encuadre = useMemo(() => {
@@ -506,6 +519,29 @@ export function PredicacionPage() {
       boton.style.display = antes
     }
   }, [])
+
+  const solicitarTerritorio = useCallback(async () => {
+    if (!supabase || !miTerritorio || !profile?.id) return
+    setSolicitando(true)
+    const { error } = await supabase.from('territorio_personal_reservas').insert({
+      territory_id: miTerritorio.id,
+      reserved_for: profile.full_name ?? 'Sin nombre',
+      status: 'solicitada',
+      requested_by: profile.id,
+      requested_at: new Date().toISOString(),
+    })
+    setSolicitando(false)
+    if (error) {
+      setAviso(
+        error.code === '23505'
+          ? 'Ya pediste este territorio. Está esperando respuesta.'
+          : 'No se pudo enviar el pedido. Probá de nuevo en un rato.',
+      )
+      return
+    }
+    setSolicitado(miTerritorio.id)
+    setAviso(null)
+  }, [miTerritorio, profile?.id, profile?.full_name])
 
   const escala = { ['--step' as string]: paso.toFixed(2) } as React.CSSProperties
 
@@ -653,7 +689,8 @@ export function PredicacionPage() {
           <section className="panel">
             <h2>Sin territorio asignado</h2>
             <p className="sub">
-              No figura ninguna reserva a tu nombre. Mientras tanto podés mirar cualquier territorio.
+              No figura ninguna reserva a tu nombre. Podés mirar cualquier territorio, pero{' '}
+              <strong>solo mirarlo</strong>: para marcar lo que recorriste tiene que ser tuyo.
             </p>
             <label className="sub" htmlFor="elegirTerr">
               Mirar el territorio
@@ -673,6 +710,24 @@ export function PredicacionPage() {
                 </option>
               ))}
             </select>
+            {miTerritorio &&
+              (solicitado === miTerritorio.id ? (
+                <p className="nota" style={{ marginTop: 16 }}>
+                  <span aria-hidden="true">✓</span>
+                  <span>
+                    Pediste el territorio {miTerritorio.name}. Cuando el siervo de tu grupo
+                    responda, lo vas a ver acá.
+                  </span>
+                </p>
+              ) : (
+                <button
+                  className="boton principal"
+                  disabled={solicitando}
+                  onClick={() => void solicitarTerritorio()}
+                >
+                  {solicitando ? 'Enviando…' : `Solicitar el territorio ${miTerritorio.name}`}
+                </button>
+              ))}
           </section>
         )}
 
@@ -706,32 +761,59 @@ export function PredicacionPage() {
               <button className="boton principal" onClick={() => setHoja({ propio: true })}>
                 Abrir el mapa en grande →
               </button>
+              {puedeMarcar && (
+                <button
+                  className={marcando ? 'boton principal' : 'boton secundario'}
+                  onClick={() => setMarcando((v) => !v)}
+                >
+                  {marcando ? '✓ Listo, terminé de marcar' : 'Marcar lo que recorrí'}
+                </button>
+              )}
             </section>
 
             <section className="panel">
               <h2>Dónde queda</h2>
               <p className="sub">
-                Las verdes ya las recorriste. Tocá una manzana para marcarla, o pasá a{' '}
-                <strong>Por lado</strong> si hiciste una sola calle.
+                {editando ? (
+                  <>
+                    Tocá una manzana para marcarla, o pasá a <strong>Por lado</strong> si hiciste
+                    una sola calle.
+                  </>
+                ) : puedeMarcar ? (
+                  <>
+                    Las verdes ya las recorriste. Para cambiar algo, tocá{' '}
+                    <strong>Marcar lo que recorrí</strong>.
+                  </>
+                ) : (
+                  <>Las verdes ya las recorriste. Este territorio es de mirar.</>
+                )}
               </p>
-              <div className="modos" role="group" aria-label="Cómo marcar">
-                {(['manzana', 'lado'] as const).map((k) => (
-                  <button
-                    key={k}
-                    className={modoMarcar === k ? 'modo activo' : 'modo'}
-                    aria-pressed={modoMarcar === k}
-                    onClick={() => setModoMarcar(k)}
-                  >
-                    {k === 'manzana' ? 'Manzana entera' : 'Por lado'}
-                  </button>
-                ))}
-              </div>
+              {editando && (
+                <div className="modos" role="group" aria-label="Cómo marcar">
+                  {(['manzana', 'lado'] as const).map((k) => (
+                    <button
+                      key={k}
+                      className="modo"
+                      aria-pressed={modoMarcar === k}
+                      onClick={() => setModoMarcar(k)}
+                    >
+                      {k === 'manzana' ? 'Manzana entera' : 'Por lado'}
+                    </button>
+                  ))}
+                </div>
+              )}
               <div id="mapa" ref={cajaMapa} />
             </section>
 
             <section className="panel">
-              <h2>Tus manzanas</h2>
-              <p className="sub">Tocá una cuando la termines. Si te equivocás, tocala de nuevo.</p>
+              <h2>{puedeMarcar ? 'Tus manzanas' : 'Las manzanas'}</h2>
+              <p className="sub">
+                {editando
+                  ? 'Tocá una cuando la termines. Si te equivocás, tocala de nuevo.'
+                  : puedeMarcar
+                    ? 'Para cambiar algo, tocá “Marcar lo que recorrí” arriba.'
+                    : 'Así está este territorio hoy.'}
+              </p>
               <div className="rejilla">
                 {manzanas.map((mz) => {
                   const total = ladosDe(mz).length
@@ -743,6 +825,7 @@ export function PredicacionPage() {
                       key={mz.id}
                       className={`manzana${completa ? ' hecha' : ''}${media ? ' media' : ''}`}
                       aria-pressed={completa}
+                      disabled={!editando}
                       onClick={() => marcarManzana(mz)}
                     >
                       {mz.label}
@@ -781,6 +864,7 @@ export function PredicacionPage() {
         <HojaMapa
           salida={hoja.salida}
           propio={hoja.propio}
+          editable={editando}
           territorio={miTerritorio}
           manzanas={manzanas}
           dibujarPropio={dibujarPropio}
@@ -973,6 +1057,7 @@ function ListaSalidas({
 function HojaMapa({
   salida,
   propio,
+  editable,
   territorio,
   manzanas,
   dibujarPropio,
@@ -980,6 +1065,7 @@ function HojaMapa({
 }: {
   salida?: Salida
   propio?: boolean
+  editable?: boolean
   territorio: Territorio | null
   manzanas: Manzana[]
   dibujarPropio: (capa: L.LayerGroup, conLetras: boolean) => void
@@ -1081,7 +1167,12 @@ function HojaMapa({
   }, [onCerrar])
 
   const leyenda = propio
-    ? { llave: true, texto: 'Las verdes ya las recorriste. Tocá una manzana para marcarla.' }
+    ? {
+        llave: true,
+        texto: editable
+          ? 'Las verdes ya las recorriste. Tocá una manzana para marcarla.'
+          : 'En verde, lo que ya se recorrió.',
+      }
     : salida
       ? leyendaDelMapa(salida)
       : { llave: false, texto: '' }

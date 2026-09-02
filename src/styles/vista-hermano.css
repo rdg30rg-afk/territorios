@@ -356,3 +356,8 @@
 .vh .manzana.media small { color: var(--warn-fg); }
 
 .vh .oculto { display: none !important; }
+
+/* Solo mirar: una manzana que no se puede cambiar no se muestra apagada
+   —su estado sigue siendo el dato— pero deja de invitar al dedo. */
+.vh .manzana:disabled { cursor: default; opacity: 1; }
+.vh .boton:disabled { opacity: .6; cursor: default; }
