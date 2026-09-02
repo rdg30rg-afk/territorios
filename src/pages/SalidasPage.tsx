@@ -1,7 +1,16 @@
-import { useEffect, useMemo, useState } from 'react'
-import { MeetingPointPickerMap } from '../components/MeetingPointPickerMap'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../context/useAuth'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
+
+const MeetingPointPickerMap = lazy(() =>
+  import('../components/MeetingPointPickerMap').then((module) => ({
+    default: module.MeetingPointPickerMap,
+  })),
+)
+
+function MapFallback() {
+  return <div className="status-card">Cargando mapa...</div>
+}
 
 type DriverRecord = {
   id: string
@@ -1597,17 +1606,19 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                               : 'Marca el punto de referencia dentro del territorio'}
                           </span>
                         </div>
-                        <MeetingPointPickerMap
-                          markerPosition={draft.meetingCoords}
-                          territoryGeometry={selectedRowTerritory.polygon_geojson ?? null}
-                          onPick={(coords) =>
-                            handlePlannerDraftFieldChange(row, {
-                              meetingCoords: coords,
-                              mapOpen: true,
-                            })
-                          }
-                          zoom={14}
-                        />
+                        <Suspense fallback={<MapFallback />}>
+                          <MeetingPointPickerMap
+                            markerPosition={draft.meetingCoords}
+                            territoryGeometry={selectedRowTerritory.polygon_geojson ?? null}
+                            onPick={(coords) =>
+                              handlePlannerDraftFieldChange(row, {
+                                meetingCoords: coords,
+                                mapOpen: true,
+                              })
+                            }
+                            zoom={14}
+                          />
+                        </Suspense>
                       </div>
                     ) : null}
                   </div>
@@ -1929,15 +1940,17 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                       : 'Haz clic sobre el mapa para fijar el punto'}
                   </span>
                 </div>
-                <MeetingPointPickerMap
-                  markerPosition={meetingCoords}
-                  territoryGeometry={selectedFormTerritory?.polygon_geojson ?? null}
-                  onPick={(coords) => {
-                    if (canManageOutings) {
-                      setMeetingCoords(coords)
-                    }
-                  }}
-                />
+                <Suspense fallback={<MapFallback />}>
+                  <MeetingPointPickerMap
+                    markerPosition={meetingCoords}
+                    territoryGeometry={selectedFormTerritory?.polygon_geojson ?? null}
+                    onPick={(coords) => {
+                      if (canManageOutings) {
+                        setMeetingCoords(coords)
+                      }
+                    }}
+                  />
+                </Suspense>
               </div>
 
               {error ? <div className="form-feedback error">{error}</div> : null}
@@ -2026,19 +2039,21 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                     <strong>Vista previa del punto</strong>
                     <span>Referencia visual del lugar de encuentro cargado.</span>
                   </div>
-                  <MeetingPointPickerMap
-                    markerPosition={[
-                      selectedOuting.meeting_point_lng,
-                      selectedOuting.meeting_point_lat,
-                    ]}
-                    territoryGeometry={
-                      territories.find(
-                        (territory) => territory.id === selectedOuting.territory_id,
-                      )?.polygon_geojson ?? null
-                    }
-                    readOnly
-                    zoom={14}
-                  />
+                  <Suspense fallback={<MapFallback />}>
+                    <MeetingPointPickerMap
+                      markerPosition={[
+                        selectedOuting.meeting_point_lng,
+                        selectedOuting.meeting_point_lat,
+                      ]}
+                      territoryGeometry={
+                        territories.find(
+                          (territory) => territory.id === selectedOuting.territory_id,
+                        )?.polygon_geojson ?? null
+                      }
+                      readOnly
+                      zoom={14}
+                    />
+                  </Suspense>
                 </div>
                 <a
                   href={`https://www.google.com/maps?q=${selectedOuting.meeting_point_lat},${selectedOuting.meeting_point_lng}`}

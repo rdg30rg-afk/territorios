@@ -6,19 +6,19 @@ import { supabase } from '../lib/supabase'
 const moduleStatus = [
   {
     name: 'Mapas y Territorios',
-    detail: 'Mapa inicial listo. Falta dibujo y guardado de poligonos.',
+    detail: 'Dibujo, edicion, guardado y exportacion de territorios.',
   },
   {
     name: 'Conductores',
-    detail: 'Vista modelo preparada para alta y listado.',
+    detail: 'Alta, edicion y administracion de conductores.',
   },
   {
     name: 'Grupos para el Servicio',
-    detail: 'Base para perfiles de superintendente y siervo.',
+    detail: 'Organizacion de grupos, integrantes y responsables.',
   },
   {
     name: 'Salidas',
-    detail: 'Modelo listo para usar puntos de encuentro geolocalizados.',
+    detail: 'Planificacion de salidas y puntos de encuentro geolocalizados.',
   },
   {
     name: 'Salidas Grupo de Servicio',
@@ -60,12 +60,11 @@ export function DashboardPage() {
     <div className="page">
       <section className="hero-card">
         <div>
-          <p className="eyebrow">MVP fase 1</p>
+          <p className="eyebrow">Gestion territorial</p>
           <h2>Sistema modular con foco en territorios y salidas</h2>
           <p className="lead">
-            Esta base ya esta preparada para crecer como web y APK, usando una
-            sola aplicacion conectada a una base de datos en la nube, y ahora
-            tambien puede instalarse como PWA.
+            Administra territorios, conductores, grupos y salidas desde una sola
+            aplicacion conectada a la nube, disponible como web, PWA y Android.
           </p>
         </div>
 
@@ -97,7 +96,7 @@ export function DashboardPage() {
         <div className="section-heading">
           <div>
             <p className="eyebrow">Modulos</p>
-            <h3>Estado inicial del producto</h3>
+            <h3>Funciones disponibles</h3>
           </div>
         </div>
 

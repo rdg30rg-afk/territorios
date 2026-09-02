@@ -2,6 +2,7 @@ import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../context/useAuth'
 import { modules } from '../data/modules'
 import { usePwaInstall } from '../hooks/usePwaInstall'
+import { isDevelopmentEnvironment } from '../lib/supabase'
 
 export function AppShell() {
   const { profile, user, signOut, canAccessModule, moduleAccess } = useAuth()
@@ -17,6 +18,16 @@ export function AppShell() {
   return (
     <div className="app-shell">
       <aside className="sidebar">
+        {isDevelopmentEnvironment && (
+          <section className="security-card development-environment-card">
+            <p className="eyebrow">Base de prueba</p>
+            <strong>Entorno de desarrollo</strong>
+            <p className="brand-copy">
+              Los cambios de esta UI no afectan la base de produccion.
+            </p>
+          </section>
+        )}
+
         <div className="brand-panel">
           <p className="eyebrow">Territorios</p>
           <h1>Gestor territorial</h1>
@@ -46,6 +57,16 @@ export function AppShell() {
             </NavLink>
           ))}
         </nav>
+
+        <NavLink to="/predicacion" className="module-link vista-hermano-link">
+          <span className="module-icon" aria-hidden="true">
+            ◆
+          </span>
+          <span>
+            <strong>Vista del hermano</strong>
+            <small>Lo que ve un publicador en el telefono.</small>
+          </span>
+        </NavLink>
 
         <section className="user-card">
           <p className="eyebrow">Sesion</p>

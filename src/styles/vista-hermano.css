@@ -1,0 +1,358 @@
+/* Estilos de la vista del hermano, movida a la app.
+   Cada selector va prefijado con .vh porque esta pantalla y el panel de
+   admin comparten nombres de clase (.panel, .boton, .chip, .nota) y se
+   pisarian. :root y body se convierten en .vh, que es el contenedor.
+   Generado desde vista-hermano.html; no editar a mano de un solo lado. */
+
+/* =============================================================
+   VISTA DEL HERMANO · Territorios
+
+   Quien entra: un publicador de 70 anios, parado en una esquina,
+   con sol de frente y el telefono en la mano.
+
+   Viene a una de dos cosas, y no siempre a la misma:
+     - saber a donde y a que hora es la salida de hoy;
+     - saber que le falta de su territorio personal, si tiene uno.
+
+   Por eso la pantalla de inicio se llama HOY y muestra lo que pasa
+   hoy, no un menu. Las otras dos pestanias son el detalle.
+
+   Las pestanias van ABAJO: son tres, el pulgar llega, y es el gesto
+   que los hermanos ya tienen aprendido de JW Library.
+
+   Tres reglas que gobiernan todo este archivo:
+   1. Nada por debajo de 16px. Afuera y con sol, 14 no alcanza.
+   2. Todo lo que se toca mide 56px de alto como minimo.
+   3. El color nunca es el unico portador de significado:
+      siempre va con un icono y con una palabra.
+   ============================================================= */
+
+.vh {
+  /* Tinta y papel. El lima es el unico tono vivo y vive como
+     relleno; para texto esta el oliva, que si llega a contraste. */
+  --ink: #16191d;
+  --lime: #cbea5b;
+  --lime-deep: #b4d63c;
+  --olive: #5f7d0a;
+  --olive-bg: #f0f6dd;
+  /* El oliva de marca da 4,28 sobre su propio fondo tenue: no llega.
+     Para texto sobre olive-bg va este, que da 5,82. */
+  --olive-ink: #516608;
+  --olive-line: #d3e2a4;
+
+  --canvas: #f6f4ee;
+  --surface: #ffffff;
+  --line: #e5e0d4;
+
+  --fg: #16191d;
+  --fg-2: #4b4f57;
+  --fg-3: #6a6e77;
+
+  /* Estado. Si aparecen, algo esta pasando de verdad. */
+  --good-fg: #0f6b47;  --good-bg: #e3f2e9;  --good-line: #aed6c1;
+  --warn-fg: #955408;  --warn-bg: #fbeed7;  --warn-line: #ebd2a3;
+
+  /* Escala. Una sola perilla: --step. */
+  --step: 1;
+  --t-label: calc(16px * var(--step));
+  --t-body:  calc(18px * var(--step));
+  --t-lead:  calc(21px * var(--step));
+  --t-h2:    calc(29px * var(--step));
+  --t-num:   calc(44px * var(--step));
+  --t-big:   calc(56px * var(--step));
+
+  --tap: 56px;
+  --pad: 20px;
+  --r-card: 22px;
+  --r-pill: 9999px;
+}
+
+.vh * { box-sizing: border-box; }
+
+.vh {
+  margin: 0;
+  background: var(--canvas);
+  color: var(--fg);
+  font: 400 var(--t-body)/1.5 Urbanist, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-feature-settings: "tnum";
+  -webkit-font-smoothing: antialiased;
+  padding-bottom: calc(150px + env(safe-area-inset-bottom, 0px));
+}
+
+.vh :focus-visible { outline: 3px solid var(--olive); outline-offset: 3px; border-radius: 8px; }
+.vh ::selection { background: var(--lime); color: var(--ink); }
+
+.vh .hoja { max-width: 520px; margin: 0 auto; padding: 0 var(--pad); }
+
+/* ---------------------------------------------------- encabezado */
+.vh .barra {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 14px var(--pad); position: sticky; top: 0; z-index: 20;
+  background: var(--canvas); border-bottom: 1px solid var(--line);
+}
+.vh .marca { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: var(--t-label); }
+.vh .marca .logo {
+  width: 36px; height: 36px; border-radius: 11px; background: var(--ink); color: var(--lime);
+  display: grid; place-items: center; font-size: 19px;
+}
+.vh .btnIcono {
+  width: var(--tap); height: var(--tap); border-radius: 16px; border: 1px solid var(--line);
+  background: var(--surface); display: grid; place-items: center; font-size: 21px; cursor: pointer;
+}
+
+/* -------------------------------------------------------- saludo */
+.vh .saludo { margin: 26px 0 20px; font-size: var(--t-h2); font-weight: 600; line-height: 1.18; letter-spacing: -.02em; }
+/* Solo la segunda linea es la gris. Antes la regla tomaba cualquier span
+   y partia "Buen dia, Mateo." en dos renglones de distinto color. */
+.vh .saludo .sub { display: block; color: var(--fg-3); font-weight: 500; }
+
+/* ----------------------------------------------- tarjeta principal */
+/* Una sola tarjeta oscura en toda la pantalla: lo unico que importa hoy. */
+.vh .tarjeta {
+  background: var(--ink); color: #fff; border-radius: var(--r-card);
+  padding: 24px 22px; margin-bottom: 18px;
+}
+.vh .tarjeta .rotulo { font-size: var(--t-label); color: #a4a8b0; font-weight: 500; }
+.vh .numeroGrande {
+  font-size: var(--t-big); font-weight: 700; line-height: 1; letter-spacing: -.03em;
+  margin: 4px 0 14px; display: flex; align-items: baseline; gap: 12px;
+}
+.vh .numeroGrande small { font-size: var(--t-lead); font-weight: 500; color: #a4a8b0; letter-spacing: 0; }
+
+.vh .chip {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 40px;
+  padding: 0 16px; border-radius: var(--r-pill); font-size: var(--t-label); font-weight: 600;
+}
+.vh .chip.tuyo { background: rgba(203,234,91,.16); color: var(--lime); border: 1px solid rgba(203,234,91,.35); }
+
+/* Frase con icono: el dato dicho como se lo dirias a la persona. */
+.vh .frase {
+  display: flex; align-items: center; gap: 14px; margin: 18px 0;
+  background: rgba(255,255,255,.06); border-radius: 16px; padding: 14px 16px;
+}
+.vh .frase .marco { width: 46px; height: 46px; border-radius: 13px; background: var(--lime); color: var(--ink); display: grid; place-items: center; flex: 0 0 auto; }
+.vh .frase strong { display: block; font-size: var(--t-lead); font-weight: 600; }
+.vh .frase small { display: block; font-size: var(--t-label); color: #a4a8b0; }
+
+.vh .cifras { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; margin: 18px 0 14px; }
+.vh .cifras div span { display: block; font-size: var(--t-label); color: #a4a8b0; }
+.vh .cifras div strong { display: block; font-size: var(--t-num); font-weight: 700; line-height: 1.05; letter-spacing: -.02em; }
+
+.vh .barraProgreso { height: 12px; border-radius: var(--r-pill); background: rgba(255,255,255,.14); overflow: hidden; }
+.vh .barraProgreso i { display: block; height: 100%; background: var(--lime); border-radius: var(--r-pill); }
+.vh .pieProgreso { font-size: var(--t-label); color: #a4a8b0; margin-top: 8px; }
+
+/* -------------------------------------------------------- botones */
+.vh .boton {
+  display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%;
+  min-height: var(--tap); border-radius: 16px; border: 0; cursor: pointer;
+  font: 600 var(--t-lead)/1 Urbanist, sans-serif;
+}
+.vh .boton.principal { background: var(--lime); color: var(--ink); margin-top: 18px; }
+.vh .boton.principal:active { background: var(--lime-deep); }
+.vh .boton.secundario { background: transparent; color: #fff; border: 1px solid rgba(255,255,255,.28); margin-top: 10px; }
+/* "Chico" es de peso, no de altura: sigue midiendo 56px porque la regla 2
+   no se negocia. Lo que baja es el cuerpo de la letra y el relleno. */
+.vh .boton.chico { background: transparent; border: 1px solid var(--line); color: var(--fg); font-size: var(--t-body); font-weight: 600; margin-top: 10px; }
+.vh .tarjeta .boton.chico { border-color: rgba(255,255,255,.28); color: #fff; }
+
+/* ------------------------------------------------------ manzanas */
+.vh .panel { scroll-margin-top: 84px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); padding: 22px 20px; margin-bottom: 18px; }
+.vh .panel h2 { margin: 0 0 4px; font-size: var(--t-h2); font-weight: 600; letter-spacing: -.02em; }
+.vh .panel p.sub { margin: 0 0 18px; color: var(--fg-2); font-size: var(--t-body); }
+
+.vh .rejilla { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 10px; }
+.vh .manzana {
+  min-height: 72px; border-radius: 16px; border: 1px solid var(--line); background: var(--canvas);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  cursor: pointer; font: 700 26px/1 Urbanist, sans-serif; color: var(--fg); text-transform: uppercase;
+}
+.vh .manzana small { font-size: var(--t-label); font-weight: 600; text-transform: none; color: var(--fg-3); }
+/* Hecha: color + icono + palabra. Nunca solo el color. */
+.vh .manzana.hecha { background: var(--good-bg); border-color: var(--good-line); color: var(--good-fg); }
+.vh .manzana.hecha small { color: var(--good-fg); }
+
+.vh .leyenda { display: flex; gap: 18px; margin-top: 16px; font-size: var(--t-label); color: var(--fg-2); }
+.vh .leyenda span { display: flex; align-items: center; gap: 7px; }
+.vh .punto { width: 14px; height: 14px; border-radius: 5px; border: 1px solid var(--line); background: var(--canvas); }
+.vh .punto.ok { background: var(--good-bg); border-color: var(--good-line); }
+
+/* --------------------------------------------------------- salidas */
+.vh .horaGrande { font-size: var(--t-num); font-weight: 700; line-height: 1; letter-spacing: -.02em; }
+.vh .salidaDia { margin: 26px 0 10px; font-size: var(--t-lead); font-weight: 600; }
+.vh .salidaDia small { display: block; font-size: var(--t-label); font-weight: 500; color: var(--fg-3); }
+.vh .salidaDia.esHoy { color: var(--olive); }
+
+/* La columna de la hora se ajusta a su contenido: fijarla en 78px partia
+   los barrios al medio ("Bo. Los / Tilos"). Y el barrio se fue de aca: es
+   parte del donde, no del cuando. */
+.vh .salida {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 16px; align-items: start;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 18px;
+  padding: 16px; margin-bottom: 10px; width: 100%; text-align: left; cursor: pointer;
+  font: inherit; color: inherit; min-height: var(--tap);
+}
+.vh .salida.esHoy { border-color: var(--olive); border-width: 2px; background: var(--olive-bg); }
+/* Una salida que ya empezo no se muestra igual que una que viene. Se
+   atenua y lo dice con palabras, no solo bajandole el color. */
+.vh .salida.pasada { opacity: .58; }
+.vh .salida.pasada .cuando { font-weight: 500; }
+.vh .yaPaso { font-size: var(--t-label); font-weight: 600; color: var(--fg-3); }
+.vh .salida .cuando { font-size: var(--t-lead); font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.vh .salida .donde strong { display: block; font-size: var(--t-body); font-weight: 600; line-height: 1.3; }
+/* Combinador de hijo, no descendiente. Con ".salida .donde span" (0-2-1)
+   esta regla le ganaba a ".marca-chip.terr" (0-2-0) y pintaba de gris el
+   texto de los chips negros: 2,15 de contraste, ilegible. */
+.vh .salida .donde > span { display: block; font-size: var(--t-label); color: var(--fg-2); margin-top: 2px; }
+
+/* La fila se abre en su lugar. Antes tocarla saltaba a Google Maps sin
+   avisar: irse de la app tiene que ser una decision, no un accidente. */
+.vh .salidaBloque { margin-bottom: 10px; }
+.vh .salidaBloque .salida { margin-bottom: 0; }
+.vh .salida .flecha { align-self: center; font-size: 24px; line-height: 1; color: var(--fg-3); transition: transform .15s ease; }
+.vh .salida[aria-expanded='true'] .flecha { transform: rotate(180deg); }
+.vh .salida[aria-expanded='true'] { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.vh .salidaDetalle {
+  background: var(--surface); border: 1px solid var(--line); border-top: 0;
+  border-radius: 0 0 18px 18px; padding: 0 16px 16px;
+}
+.vh .salidaDetalle .mapaMini { margin-top: 0; }
+
+.vh .marcas { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 14px; }
+.vh .marca-chip.priorizar { flex-basis: 100%; margin-top: 4px; }
+.vh .marca-chip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px;
+  border-radius: var(--r-pill); font-size: var(--t-label); font-weight: 600;
+  background: var(--canvas); border: 1px solid var(--line); color: var(--fg-2);
+}
+/* El territorio pesa por cuerpo, no por superficie: en una lista de 19
+   salidas, 19 pastillas negras son mucho negro y la lista se vuelve dura.
+   La superficie llena queda reservada para la tarjeta destacada de Hoy. */
+.vh .marca-chip.terr {
+  background: none; border: 0; padding: 0; color: var(--fg);
+  font-size: calc(25px * var(--step)); font-weight: 700; letter-spacing: -.02em;
+  align-items: baseline; gap: 7px; line-height: 1;
+}
+.vh .marca-chip.terr b {
+  font-weight: 500; font-size: var(--t-label); color: var(--fg-3);
+  letter-spacing: .02em; text-transform: uppercase;
+}
+/* En la tarjeta oscura de Hoy si va llena: ahi es la unica y destaca. */
+.vh .tarjeta .marca-chip.terr { color: #fff; }
+.vh .tarjeta .marca-chip.terr b { color: #a4a8b0; }
+/* Priorizar es una nota sobre el territorio, no otra etiqueta del mismo
+   rango. Sin superficie llena, no le compite al numero. El ambar queda
+   solo en la estrella, que es lo que llama la atencion. */
+.vh .marca-chip.priorizar {
+  background: none; border: 0; padding: 0; color: var(--fg-2);
+  font-weight: 500; align-items: flex-start; line-height: 1.35;
+}
+.vh .marca-chip.priorizar b { color: var(--warn-fg); font-size: var(--t-lead); line-height: 1.1; }
+.vh .marca-chip.priorizar span { flex: 1; }
+.vh .marca-chip.tel { background: var(--olive-bg); border-color: var(--olive-line); color: var(--olive-ink); }
+
+.vh .nota {
+  display: flex; gap: 12px; align-items: flex-start; margin-top: 22px; padding: 16px;
+  border-radius: 16px; background: var(--surface); border: 1px solid var(--line);
+  font-size: var(--t-label); color: var(--fg-2); line-height: 1.45;
+}
+
+/* ---------------------------------------------------------- mapa */
+.vh #mapa { height: 340px; border-radius: 16px; border: 1px solid var(--line); margin-top: 4px; }
+/* El mapa chico no se arrastra ni se hace zoom: adentro de una pagina que
+   scrollea, un mapa que agarra el dedo es una trampa. Se toca y se abre
+   grande, que es lo que la persona queria hacer. */
+/* Leaflet pone sus capas en z-index 400, 600, 650... dentro de un contenedor
+   que solo es "position: relative" y por lo tanto NO crea contexto de apilado.
+   Resultado: esos 400 compiten a nivel raiz y le ganan a la barra de abajo
+   (40) y al mapa a pantalla completa (60), que es la "imagen por delante".
+   El z-index: 0 encierra las capas de Leaflet adentro de su propia caja. */
+.vh #mapa,
+.vh .mapaMini { position: relative; z-index: 0; isolation: isolate; }
+.vh .mapaMini { height: 190px; border-radius: 16px; overflow: hidden; margin-top: 16px; background: var(--line); cursor: pointer; }
+.vh .tarjeta .mapaMini { border: 1px solid rgba(255,255,255,.16); }
+.vh .mapaPie { display: flex; gap: 9px; align-items: flex-start; margin: 9px 2px 0; font-size: var(--t-label); color: var(--fg-3); line-height: 1.4; }
+.vh .mapaPie .llave { width: 15px; height: 15px; border-radius: 4px; background: var(--lime); border: 2px solid var(--ink); flex: 0 0 auto; margin-top: 3px; }
+.vh .tarjeta .mapaPie .llave { border-color: #fff; }
+.vh .tarjeta .mapaPie { color: #a4a8b0; }
+.vh .etiquetaMz {
+  display: grid; place-items: center; font: 700 15px Urbanist, sans-serif;
+  border-radius: 9999px; border: 2px solid #fff; color: #fff;
+}
+
+/* -------------------------------------------------------- pestanias */
+.vh .pestanias {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  background: var(--surface); border-top: 1px solid var(--line);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.vh .pestanias button {
+  min-height: 64px; border: 0; background: none; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  color: var(--fg-3); font: 600 var(--t-label)/1.1 Urbanist, sans-serif;
+}
+.vh .pestanias button svg { width: 26px; height: 26px; }
+/* Activo: color + peso + subrayado. El color no viaja solo. */
+.vh .pestanias button[aria-current='page'] { color: var(--olive); }
+.vh .pestanias button[aria-current='page'] .marcaActiva { background: var(--olive); }
+.vh .marcaActiva { width: 22px; height: 3px; border-radius: 2px; background: transparent; }
+
+.vh .vista { display: none; }
+.vh .vista.activa { display: block; }
+
+/* ----------------------------------------------- accion pegajosa */
+/* La accion principal no se pierde al bajar: siempre esta a mano. */
+.vh .pieFijo {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+  /* Solo aparece cuando el boton de la tarjeta se fue de pantalla: dos
+     botones iguales a la vez es el mismo boton dicho dos veces. */
+  transform: translateY(120%); transition: transform .2s ease; pointer-events: none;
+  padding: 12px var(--pad) calc(76px + env(safe-area-inset-bottom, 0px));
+  background: linear-gradient(to top, var(--canvas) 72%, rgba(246,244,238,0));
+}
+.vh .pieFijo.visible { transform: none; pointer-events: auto; }
+.vh .pieFijo .hoja { padding: 0 var(--pad); }
+
+/* --------------------------------------------------- sin territorio */
+.vh .vacio { text-align: center; padding: 34px 20px; }
+.vh .vacio .marcoVacio { width: 84px; height: 84px; border-radius: 26px; background: var(--olive-bg); color: var(--olive); display: grid; place-items: center; font-size: 38px; margin: 0 auto 18px; }
+.vh .vacio h2 { margin: 0 0 8px; font-size: var(--t-h2); font-weight: 600; }
+.vh .vacio p { margin: 0 0 22px; color: var(--fg-2); }
+
+/* ------------------------------------------- mapa a pantalla completa */
+.vh .sobre { position: fixed; inset: 0; z-index: 60; background: var(--canvas); display: flex; flex-direction: column; }
+.vh .sobre[hidden] { display: none; }
+.vh .sobreBarra { display: flex; align-items: center; gap: 14px; padding: 12px var(--pad); background: var(--surface); border-bottom: 1px solid var(--line); }
+.vh .sobreBarra h2 { flex: 1; min-width: 0; margin: 0; font-size: var(--t-lead); font-weight: 600; letter-spacing: -.02em; }
+.vh .sobreBarra h2 small { display: block; font-size: var(--t-label); font-weight: 500; color: var(--fg-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vh .sobreCuerpo { position: relative; flex: 1; min-height: 0; }
+.vh #mapaTerr { position: absolute; inset: 0; }
+.vh .sobrePie {
+  display: flex; gap: 10px; align-items: flex-start; margin: 0;
+  padding: 15px var(--pad) calc(15px + env(safe-area-inset-bottom, 0px));
+  background: var(--surface); border-top: 1px solid var(--line);
+  font-size: var(--t-label); color: var(--fg-2); line-height: 1.45;
+}
+.vh .sobrePie .llave { width: 17px; height: 17px; border-radius: 5px; background: var(--lime); border: 2px solid var(--ink); flex: 0 0 auto; margin-top: 3px; }
+.vh .sobrePie .llave.hecha { background: #59c48f; border-color: var(--good-fg); }
+.vh .sobrePie .llave.lado { width: 22px; height: 7px; border-radius: 4px; background: var(--good-fg); border: 0; margin-top: 8px; }
+
+/* Dos maneras de marcar, dichas con palabras enteras. La activa lleva
+   tilde ademas del color: el color nunca viaja solo. */
+.vh .modos { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin: 0 0 16px; }
+.vh .modo {
+  min-height: var(--tap); border-radius: 15px; border: 1px solid var(--line);
+  background: var(--surface); cursor: pointer; color: var(--fg-2);
+  font: 600 var(--t-body)/1.2 Urbanist, sans-serif;
+}
+.vh .modo[aria-pressed='true'] { background: var(--olive-bg); border-color: var(--olive); color: var(--olive-ink); }
+.vh .modo[aria-pressed='true']::before { content: '✓ '; }
+.vh #sobreModos:not(:empty) { padding: 12px var(--pad) 0; background: var(--surface); border-bottom: 1px solid var(--line); }
+.vh #sobreModos .modos { margin-bottom: 12px; }
+
+/* Empezada no es ni hecha ni sin tocar, y se dice: "2 de 4 lados". */
+.vh .manzana.media { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn-fg); }
+.vh .manzana.media small { color: var(--warn-fg); }
+
+.vh .oculto { display: none !important; }

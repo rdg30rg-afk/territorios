@@ -1,40 +1,88 @@
+import { lazy, Suspense, type ReactNode } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { AppShell } from './components/AppShell'
 import { AuthGuard } from './components/AuthGuard'
 import { ModuleGuard } from './components/ModuleGuard'
-import { ConductoresPage } from './pages/ConductoresPage'
-import { DashboardPage } from './pages/DashboardPage'
-import { GruposPage } from './pages/GruposPage'
 import { LoginPage } from './pages/LoginPage'
-import { MapasPage } from './pages/MapasPage'
-import { SalidasGrupoPage } from './pages/SalidasGrupoPage'
-import { SalidasPage } from './pages/SalidasPage'
-import { TerritorioPersonalPage } from './pages/TerritorioPersonalPage'
+
+const ConductoresPage = lazy(() =>
+  import('./pages/ConductoresPage').then((module) => ({
+    default: module.ConductoresPage,
+  })),
+)
+const DashboardPage = lazy(() =>
+  import('./pages/DashboardPage').then((module) => ({
+    default: module.DashboardPage,
+  })),
+)
+const GruposPage = lazy(() =>
+  import('./pages/GruposPage').then((module) => ({
+    default: module.GruposPage,
+  })),
+)
+const MapasPage = lazy(() =>
+  import('./pages/MapasPage').then((module) => ({ default: module.MapasPage })),
+)
+const SalidasGrupoPage = lazy(() =>
+  import('./pages/SalidasGrupoPage').then((module) => ({
+    default: module.SalidasGrupoPage,
+  })),
+)
+const SalidasPage = lazy(() =>
+  import('./pages/SalidasPage').then((module) => ({ default: module.SalidasPage })),
+)
+const PredicacionPage = lazy(() =>
+  import('./pages/PredicacionPage').then((module) => ({
+    default: module.PredicacionPage,
+  })),
+)
+const TerritorioPersonalPage = lazy(() =>
+  import('./pages/TerritorioPersonalPage').then((module) => ({
+    default: module.TerritorioPersonalPage,
+  })),
+)
+
+function loadRoute(element: ReactNode) {
+  return (
+    <Suspense fallback={<div className="status-card">Cargando modulo...</div>}>
+      {element}
+    </Suspense>
+  )
+}
 
 function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route element={<AuthGuard />}>
+        {/* Fuera del AppShell a proposito: la vista del hermano tiene sus
+            propias pestanias abajo, y dos navegaciones a la vez no son
+            navegacion. Sin ModuleGuard: es la pantalla de cualquier
+            publicador, y cada seccion muestra su estado vacio si RLS no le
+            deja leer esos datos. */}
+        <Route path="predicacion" element={loadRoute(<PredicacionPage />)} />
         <Route element={<AppShell />}>
-          <Route index element={<DashboardPage />} />
+          <Route index element={loadRoute(<DashboardPage />)} />
           <Route element={<ModuleGuard moduleKey="mapas" />}>
-            <Route path="mapas" element={<MapasPage />} />
+            <Route path="mapas" element={loadRoute(<MapasPage />)} />
           </Route>
           <Route element={<ModuleGuard moduleKey="conductores" />}>
-            <Route path="conductores" element={<ConductoresPage />} />
+            <Route path="conductores" element={loadRoute(<ConductoresPage />)} />
           </Route>
           <Route element={<ModuleGuard moduleKey="grupos" />}>
-            <Route path="grupos" element={<GruposPage />} />
+            <Route path="grupos" element={loadRoute(<GruposPage />)} />
           </Route>
           <Route element={<ModuleGuard moduleKey="salidas" />}>
-            <Route path="salidas" element={<SalidasPage />} />
+            <Route path="salidas" element={loadRoute(<SalidasPage />)} />
           </Route>
           <Route element={<ModuleGuard moduleKey="salidas_grupo" />}>
-            <Route path="salidas-grupo" element={<SalidasGrupoPage />} />
+            <Route path="salidas-grupo" element={loadRoute(<SalidasGrupoPage />)} />
           </Route>
           <Route element={<ModuleGuard moduleKey="territorio_personal" />}>
-            <Route path="territorio-personal" element={<TerritorioPersonalPage />} />
+            <Route
+              path="territorio-personal"
+              element={loadRoute(<TerritorioPersonalPage />)}
+            />
           </Route>
         </Route>
       </Route>

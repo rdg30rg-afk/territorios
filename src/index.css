@@ -189,6 +189,16 @@ button {
   background: rgba(255, 255, 255, 0.06);
 }
 
+.development-environment-card {
+  border-color: rgba(253, 186, 116, 0.7);
+  background: rgba(194, 65, 12, 0.28);
+}
+
+.development-environment-card strong {
+  display: block;
+  color: #fff7ed;
+}
+
 .install-card {
   padding: 1.25rem;
   background: rgba(248, 188, 156, 0.12);

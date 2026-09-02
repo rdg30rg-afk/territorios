@@ -1,0 +1,287 @@
+{
+  "version": 8,
+  "name": "Mapsi - Territorios",
+  "metadata": {
+    "origen": "Colores muestreados de docs/ui-madre-mapsi/assets/03-module-03.webp",
+    "tiles": "OpenFreeMap - vectoriales, gratuitas, sin API key",
+    "esquema": "OpenMapTiles"
+  },
+  "glyphs": "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf",
+  "sources": {
+    "openmaptiles": {
+      "type": "vector",
+      "url": "https://tiles.openfreemap.org/planet"
+    }
+  },
+  "layers": [
+    {
+      "id": "fondo",
+      "type": "background",
+      "paint": {
+        "background-color": "#EFF5E6"
+      }
+    },
+    {
+      "id": "terreno-verde",
+      "type": "fill",
+      "source": "openmaptiles",
+      "source-layer": "landcover",
+      "filter": [
+        "in",
+        "class",
+        "grass",
+        "wood",
+        "scrub",
+        "farmland"
+      ],
+      "paint": {
+        "fill-color": "#CBECA3",
+        "fill-opacity": 0.85
+      }
+    },
+    {
+      "id": "parques",
+      "type": "fill",
+      "source": "openmaptiles",
+      "source-layer": "park",
+      "paint": {
+        "fill-color": "#CBECA3",
+        "fill-opacity": 0.9
+      }
+    },
+    {
+      "id": "uso-residencial",
+      "type": "fill",
+      "source": "openmaptiles",
+      "source-layer": "landuse",
+      "filter": [
+        "in",
+        "class",
+        "residential",
+        "suburb",
+        "neighbourhood"
+      ],
+      "paint": {
+        "fill-color": "#E4EFD6",
+        "fill-opacity": 0.75
+      }
+    },
+    {
+      "id": "agua",
+      "type": "fill",
+      "source": "openmaptiles",
+      "source-layer": "water",
+      "paint": {
+        "fill-color": "#95C4FF"
+      }
+    },
+    {
+      "id": "cursos-de-agua",
+      "type": "line",
+      "source": "openmaptiles",
+      "source-layer": "waterway",
+      "paint": {
+        "line-color": "#95C4FF",
+        "line-width": 1.6
+      }
+    },
+    {
+      "id": "edificios",
+      "type": "fill",
+      "source": "openmaptiles",
+      "source-layer": "building",
+      "minzoom": 13,
+      "paint": {
+        "fill-color": "#DCEAFD",
+        "fill-outline-color": "#C3D9F5",
+        "fill-opacity": 0.9
+      }
+    },
+    {
+      "id": "calles-contorno",
+      "type": "line",
+      "source": "openmaptiles",
+      "source-layer": "transportation",
+      "filter": [
+        "!in",
+        "class",
+        "ferry",
+        "rail"
+      ],
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
+      },
+      "paint": {
+        "line-color": "#DDE6F0",
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          10,
+          1.4,
+          14,
+          4.5,
+          18,
+          16
+        ]
+      }
+    },
+    {
+      "id": "calles",
+      "type": "line",
+      "source": "openmaptiles",
+      "source-layer": "transportation",
+      "filter": [
+        "!in",
+        "class",
+        "ferry",
+        "rail"
+      ],
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
+      },
+      "paint": {
+        "line-color": "#FFFFFF",
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          10,
+          0.6,
+          14,
+          3,
+          18,
+          13
+        ]
+      }
+    },
+    {
+      "id": "avenidas",
+      "type": "line",
+      "source": "openmaptiles",
+      "source-layer": "transportation",
+      "filter": [
+        "in",
+        "class",
+        "motorway",
+        "trunk",
+        "primary"
+      ],
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
+      },
+      "paint": {
+        "line-color": "#FFFFFF",
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          10,
+          1.6,
+          14,
+          5,
+          18,
+          20
+        ]
+      }
+    },
+    {
+      "id": "limites",
+      "type": "line",
+      "source": "openmaptiles",
+      "source-layer": "boundary",
+      "filter": [
+        "<=",
+        "admin_level",
+        6
+      ],
+      "paint": {
+        "line-color": "#CECFD3",
+        "line-width": 1,
+        "line-dasharray": [
+          3,
+          2
+        ]
+      }
+    },
+    {
+      "id": "nombres-de-calle",
+      "type": "symbol",
+      "source": "openmaptiles",
+      "source-layer": "transportation_name",
+      "minzoom": 14,
+      "layout": {
+        "text-field": [
+          "get",
+          "name"
+        ],
+        "text-font": [
+          "Noto Sans Regular"
+        ],
+        "text-size": 11,
+        "symbol-placement": "line"
+      },
+      "paint": {
+        "text-color": "#888A8B",
+        "text-halo-color": "#FFFFFF",
+        "text-halo-width": 1.5
+      }
+    },
+    {
+      "id": "lugares",
+      "type": "symbol",
+      "source": "openmaptiles",
+      "source-layer": "place",
+      "filter": [
+        "in",
+        "class",
+        "city",
+        "town",
+        "village",
+        "suburb"
+      ],
+      "layout": {
+        "text-field": [
+          "get",
+          "name"
+        ],
+        "text-font": [
+          "Noto Sans Bold"
+        ],
+        "text-size": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          8,
+          11,
+          14,
+          15
+        ]
+      },
+      "paint": {
+        "text-color": "#3D3C3F",
+        "text-halo-color": "#FFFFFF",
+        "text-halo-width": 2
+      }
+    }
+  ]
+}

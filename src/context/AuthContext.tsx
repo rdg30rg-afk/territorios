@@ -16,9 +16,6 @@ import {
   type ProfileRole,
 } from './AuthTypes'
 
-const PRIMARY_LOGIN_ALIAS = 'Blade30$'
-const PRIMARY_LOGIN_EMAIL = 'blade30@territorios.app'
-
 type PendingUserRow = {
   id: string
   full_name: string | null
@@ -118,23 +115,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let email = trimmedLogin
 
     if (!trimmedLogin.includes('@')) {
-      if (trimmedLogin.toLowerCase() === PRIMARY_LOGIN_ALIAS.toLowerCase()) {
-        email = PRIMARY_LOGIN_EMAIL
-      } else {
-        const { data, error } = await supabase.rpc('resolve_login_email', {
-          login_identifier: trimmedLogin,
-        })
+      const { data, error } = await supabase.rpc('resolve_login_email', {
+        login_identifier: trimmedLogin,
+      })
 
-        if (error) {
-          return { error: 'Usuario no encontrado.' }
-        }
-
-        if (!data) {
-          return { error: 'Usuario no encontrado.' }
-        }
-
-        email = data
+      if (error || !data) {
+        return { error: 'Usuario no encontrado.' }
       }
+
+      email = data
     }
 
     const { error } = await supabase.auth.signInWithPassword({
@@ -288,22 +277,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (error) {
       return { error: error.message }
-    }
-
-    const { error: pendingError } = await supabase.from('pending_users').upsert(
-      {
-        full_name: fullName.trim(),
-        email: normalizedEmail,
-        username: normalizedUsername,
-      },
-      { onConflict: 'email' },
-    )
-
-    if (pendingError) {
-      return {
-        error:
-          'El usuario se creo en Supabase, pero no se pudo guardar la solicitud pendiente. Ejecuta el SQL de reparacion y prueba otra vez.',
-      }
     }
 
     await supabase.auth.signOut()

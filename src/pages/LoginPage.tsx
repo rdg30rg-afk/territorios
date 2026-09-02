@@ -116,7 +116,7 @@ export function LoginPage() {
                   <input
                     value={login}
                     onChange={(event) => setLogin(event.target.value)}
-                    placeholder="Blade30$ o nombre@ejemplo.com"
+                    placeholder="usuario o nombre@ejemplo.com"
                     required
                   />
                 </label>
