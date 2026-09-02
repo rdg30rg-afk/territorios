@@ -340,6 +340,24 @@ body {
 }
 .sobrePie .llave { width: 17px; height: 17px; border-radius: 5px; background: var(--lime); border: 2px solid var(--ink); flex: 0 0 auto; margin-top: 3px; }
 .sobrePie .llave.hecha { background: #59c48f; border-color: var(--good-fg); }
+.sobrePie .llave.lado { width: 22px; height: 7px; border-radius: 4px; background: var(--good-fg); border: 0; margin-top: 8px; }
+
+/* Dos maneras de marcar, dichas con palabras enteras. La activa lleva
+   tilde ademas del color: el color nunca viaja solo. */
+.modos { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin: 0 0 16px; }
+.modo {
+  min-height: var(--tap); border-radius: 15px; border: 1px solid var(--line);
+  background: var(--surface); cursor: pointer; color: var(--fg-2);
+  font: 600 var(--t-body)/1.2 Urbanist, sans-serif;
+}
+.modo[aria-pressed='true'] { background: var(--olive-bg); border-color: var(--olive); color: var(--olive-ink); }
+.modo[aria-pressed='true']::before { content: '✓ '; }
+#sobreModos:not(:empty) { padding: 12px var(--pad) 0; background: var(--surface); border-bottom: 1px solid var(--line); }
+#sobreModos .modos { margin-bottom: 12px; }
+
+/* Empezada no es ni hecha ni sin tocar, y se dice: "2 de 4 lados". */
+.manzana.media { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn-fg); }
+.manzana.media small { color: var(--warn-fg); }
 
 .oculto { display: none !important; }
 </style>
@@ -412,7 +430,11 @@ body {
   <!-- El mapa esta siempre a la vista: es la pantalla, no un anexo. -->
   <section class="panel" id="panelMapa">
     <h2>Dónde queda</h2>
-    <p class="sub">Las verdes ya las recorriste. Tocá una manzana para marcarla.</p>
+    <p class="sub">Las verdes ya las recorriste. Tocá una manzana para marcarla, o pasá a <strong>Por lado</strong> si hiciste una sola calle.</p>
+    <div class="modos" role="group" aria-label="Cómo marcar">
+      <button class="modo" data-modo="manzana" aria-pressed="true">Manzana entera</button>
+      <button class="modo" data-modo="lado" aria-pressed="false">Por lado</button>
+    </div>
     <div id="mapa"></div>
   </section>
 
@@ -466,6 +488,7 @@ body {
     <button class="btnIcono" id="cerrarSobre" aria-label="Cerrar el mapa">&#10005;</button>
     <h2 id="sobreTitulo"></h2>
   </div>
+  <div id="sobreModos"></div>
   <div class="sobreCuerpo"><div id="mapaTerr"></div></div>
   <p class="sobrePie" id="sobrePie"></p>
 </div>
@@ -475,7 +498,12 @@ body {
 const NUMERO = '20'
 const VENCE = new Date(2026, 8, 14)   // domingo 14 de septiembre de 2026
 let manzanas = []
-let hechas = new Set(['a','b','c','d','e','f','g','h','i'])
+// Una manzana se recorre por lados: un lado del poligono es una fila de
+// casas sobre una calle, que es como se predica de verdad. El estado ya no
+// es "hecha si/no" sino que lados estan hechos.
+let progreso = new Map()   // letra -> Set de indices de lado
+let modoMarcar = 'manzana' // 'manzana' | 'lado'
+const HECHAS_DEMO = ['a','b','c','d','e','f','g','h','i']
 let mapa = null
 // Las formas de TODOS los territorios, no solo el mio: la salida de hoy
 // puede caer en cualquiera de los 69.
@@ -496,17 +524,96 @@ function frasePlazo () {
   return { cuanto, cuando, vencido: dias < 0 }
 }
 
+// ------------------------------------------------- lados de una manzana
+// Los poligonos dibujados a mano tienen de 4 a 59 vertices. Un "lado" no es
+// un segmento: es la tira de segmentos casi colineales que dan la vuelta a
+// una misma calle. Con 25 grados de tolerancia, 413 de las 605 manzanas dan
+// exactamente 4 lados.
+const TOL_GRADOS = 25
+const LARGO_MINIMO = 12   // metros: por debajo de eso es un recorte, no una calle
+
+function metros (a, b) {
+  return Math.hypot((b[1] - a[1]) * Math.cos(a[0] * Math.PI / 180) * 111320, (b[0] - a[0]) * 110540)
+}
+function rumbo (a, b) {
+  return Math.atan2(b[0] - a[0], (b[1] - a[1]) * Math.cos(a[0] * Math.PI / 180)) * 180 / Math.PI
+}
+const difAngulo = (x, y) => Math.abs(((x - y) + 180) % 360 - 180)
+
+const cacheLados = new Map()
+function ladosDe (mz) {
+  if (cacheLados.has(mz)) return cacheLados.get(mz)
+  const anillo = mz.geom.coordinates[0].map(([x, y]) => [y, x])
+  const pts = (anillo[0][0] === anillo[anillo.length - 1][0] && anillo[0][1] === anillo[anillo.length - 1][1])
+    ? anillo.slice(0, -1) : anillo
+  const n = pts.length
+  const centro = pts.reduce((a, q) => [a[0] + q[0] / n, a[1] + q[1] / n], [0, 0])
+  let grupos = [[pts[0], pts[1 % n]]]
+  for (let i = 1; i < n; i++) {
+    const a = pts[i], b = pts[(i + 1) % n]
+    const g = grupos[grupos.length - 1]
+    if (difAngulo(rumbo(a, b), rumbo(g[g.length - 2], g[g.length - 1])) <= TOL_GRADOS) g.push(b)
+    else grupos.push([a, b])
+  }
+  // El anillo cierra: si el ultimo tramo sigue la linea del primero, son uno.
+  if (grupos.length > 2) {
+    const pri = grupos[0], ult = grupos[grupos.length - 1]
+    if (difAngulo(rumbo(pri[0], pri[1]), rumbo(ult[ult.length - 2], ult[ult.length - 1])) <= TOL_GRADOS) {
+      grupos[0] = ult.concat(pri.slice(1)); grupos.pop()
+    }
+  }
+  const largo = (g) => g.slice(1).reduce((t, q, i) => t + metros(g[i], q), 0)
+  // Los lados se dibujan corridos hacia adentro: si se dibujaran sobre el
+  // borde real, el lado de esta manzana y el de la de enfrente caerian casi
+  // encima y el dedo no podria elegir.
+  const haciaAdentro = (q) => {
+    const d = metros(q, centro)
+    const k = d ? Math.min(9 / d, 0.35) : 0
+    return [q[0] + (centro[0] - q[0]) * k, q[1] + (centro[1] - q[1]) * k]
+  }
+  const res = grupos.filter(g => largo(g) >= LARGO_MINIMO).map(g => g.map(haciaAdentro))
+  const salida = res.length ? res : [grupos[0].map(haciaAdentro)]
+  cacheLados.set(mz, salida)
+  return salida
+}
+
+const hechosDe = (letra) => progreso.get(letra) || new Set()
+const estaCompleta = (mz) => hechosDe(mz.letra).size >= ladosDe(mz).length
+const estaEmpezada = (mz) => { const h = hechosDe(mz.letra).size; return h > 0 && h < ladosDe(mz).length }
+
+function marcarManzana (mz) {
+  const total = ladosDe(mz).length
+  // Tocar una manzana entera es todo o nada: si algo estaba hecho, se
+  // completa; recien tocandola de nuevo se borra.
+  progreso.set(mz.letra, hechosDe(mz.letra).size >= total
+    ? new Set()
+    : new Set(Array.from({ length: total }, (_, i) => i)))
+  refrescar()
+}
+function marcarLado (mz, i) {
+  const h = new Set(hechosDe(mz.letra))
+  if (h.has(i)) h.delete(i); else h.add(i)
+  progreso.set(mz.letra, h)
+  refrescar()
+}
+
 function refrescar () {
   const total = manzanas.length
-  const n = manzanas.filter(m => hechas.has(m.letra)).length
+  const n = manzanas.filter(estaCompleta).length
+  const empezadas = manzanas.filter(estaEmpezada).length
   const faltan = total - n
-  const pct = total ? Math.round(n / total * 100) : 0
+  // El avance se mide en lados, no en manzanas: media manzana hecha es
+  // medio avance, y la barra tiene que decir la verdad.
+  const ladosTot = manzanas.reduce((t, m) => t + ladosDe(m).length, 0)
+  const ladosOk = manzanas.reduce((t, m) => t + hechosDe(m.letra).size, 0)
+  const pct = ladosTot ? Math.round(ladosOk / ladosTot * 100) : 0
 
   document.getElementById('cTotal').textContent = total
   document.getElementById('cHechas').textContent = n
   document.getElementById('cFaltan').textContent = faltan
   document.getElementById('barra').style.width = pct + '%'
-  document.getElementById('pieProgreso').textContent = `${n} de ${total} recorridas · ${pct}%`
+  document.getElementById('pieProgreso').textContent =
+    `${n} de ${total} recorridas${empezadas ? ` · ${empezadas} empezada${empezadas > 1 ? 's' : ''}` : ''} · ${pct}%`
 
   const est = document.getElementById('estadoGeneral')
   est.textContent = faltan === 0
@@ -531,16 +638,15 @@ function pintarRejilla () {
   const cont = document.getElementById('rejilla')
   cont.innerHTML = ''
   for (const m of manzanas) {
-    const ok = hechas.has(m.letra)
+    const ok = estaCompleta(m)
+    const media = estaEmpezada(m)
     const b = document.createElement('button')
-    b.className = 'manzana' + (ok ? ' hecha' : '')
+    b.className = 'manzana' + (ok ? ' hecha' : media ? ' media' : '')
     // Color, icono y palabra: los tres. Nunca el color solo.
-    b.innerHTML = `${m.letra}<small>${ok ? '✓ hecha' : 'te falta'}</small>`
+    b.innerHTML = `${m.letra}<small>${ok ? '✓ hecha'
+      : media ? `${hechosDe(m.letra).size} de ${ladosDe(m).length} lados` : 'te falta'}</small>`
     b.setAttribute('aria-pressed', ok ? 'true' : 'false')
-    b.onclick = () => {
-      if (ok) hechas.delete(m.letra); else hechas.add(m.letra)
-      refrescar()
-    }
+    b.onclick = () => marcarManzana(m)
     cont.appendChild(b)
   }
 }
@@ -550,17 +656,38 @@ function pintarMapa () {
   pintarMisManzanas(mapa.__capa)
 }
 
+const VERDE = '#0f6b47', VERDE_SUAVE = '#59c48f', GRIS = '#8d939b'
+
 function pintarMisManzanas (destino) {
+  const porLado = modoMarcar === 'lado'
   for (const m of manzanas) {
-    const ok = hechas.has(m.letra)
+    const ok = estaCompleta(m)
+    const media = estaEmpezada(m)
     const anillo = m.geom.coordinates[0].map(([x, y]) => [y, x])
-    const color = ok ? '#0f6b47' : '#16191d'
-    L.polygon(anillo, {
-      color, weight: 2, fillColor: ok ? '#59c48f' : '#cbd0d6', fillOpacity: ok ? .55 : .35,
-    }).addTo(destino).on('click', () => {
-      if (ok) hechas.delete(m.letra); else hechas.add(m.letra)
-      refrescar()
-    })
+    const color = ok ? VERDE : '#16191d'
+    const forma = L.polygon(anillo, {
+      color, weight: 2,
+      fillColor: ok ? VERDE_SUAVE : '#cbd0d6',
+      fillOpacity: ok ? .55 : media ? .18 : .35,
+      interactive: !porLado,
+    }).addTo(destino)
+    if (!porLado) forma.on('click', () => marcarManzana(m))
+
+    if (porLado) {
+      const hechos = hechosDe(m.letra)
+      ladosDe(m).forEach((linea, i) => {
+        const listo = hechos.has(i)
+        // Linea gorda invisible debajo: el dedo tiene 24px, la calle 4.
+        L.polyline(linea, { color: '#000', opacity: 0, weight: 26 })
+          .addTo(destino).on('click', () => marcarLado(m, i))
+        L.polyline(linea, {
+          color: listo ? VERDE : GRIS, weight: listo ? 7 : 5,
+          opacity: listo ? 1 : .85, dashArray: listo ? null : '2 9', lineCap: 'round',
+          interactive: false,
+        }).addTo(destino)
+      })
+    }
+
     const c = anillo.reduce((a, [la, ln]) => [a[0] + la / anillo.length, a[1] + ln / anillo.length], [0, 0])
     L.marker(c, {
       interactive: false,
@@ -594,7 +721,8 @@ function abrirMapa () {
     subtitulo: 'El tuyo',
     bounds: encuadreDe(NUMERO),
     pintar: pintarMisManzanas,
-    leyenda: '<span class="llave hecha" aria-hidden="true"></span><span>Las verdes ya las recorriste. Tocá una manzana para marcarla.</span>',
+    modos: true,
+    leyenda: leyendaPropia(),
   })
 }
 
@@ -622,7 +750,7 @@ document.getElementById('bTexto').onclick = () => {
 }
 
 document.getElementById('bDevolver').onclick = () => {
-  const faltan = manzanas.length - manzanas.filter(m => hechas.has(m.letra)).length
+  const faltan = manzanas.length - manzanas.filter(estaCompleta).length
   // Avisar, no bloquear: la decision es suya y puede no haberse dado cuenta.
   if (faltan > 0) {
     alert(`Te quedan ${faltan} manzanas sin marcar. Podés devolverlo igual, pero fijate primero.`)
@@ -857,6 +985,12 @@ function montarMiniMapa (caja, s) {
   return m
 }
 
+function leyendaPropia () {
+  return modoMarcar === 'lado'
+    ? '<span class="llave lado" aria-hidden="true"></span><span>Cada línea es una calle de la manzana. Tocá la que hiciste.</span>'
+    : '<span class="llave hecha" aria-hidden="true"></span><span>Las verdes ya las recorriste. Tocá una manzana para marcarla.</span>'
+}
+
 function comoLlegar (s) {
   window.open('https://www.google.com/maps/search/?api=1&query=' +
     encodeURIComponent(s.lugar + ', San Juan, Argentina'), '_blank')
@@ -868,9 +1002,11 @@ function comoLlegar (s) {
 let mapaTerrInst = null
 let repintarSobre = null
 
-function abrirSobre ({ titulo, subtitulo, bounds, pintar, leyenda }) {
+function abrirSobre ({ titulo, subtitulo, bounds, pintar, leyenda, modos }) {
   if (!bounds) return
   document.getElementById('sobreMapa').hidden = false
+  // El selector de modo solo aparece donde se marca: en el territorio propio.
+  document.getElementById('sobreModos').innerHTML = modos ? plantillaModos() : ''
   document.getElementById('sobreTitulo').innerHTML =
     titulo + (subtitulo ? '<small>' + subtitulo + '</small>' : '')
   document.getElementById('sobrePie').innerHTML = leyenda
@@ -909,7 +1045,27 @@ function verMapaTerritorio (s) {
   })
 }
 
+function plantillaModos () {
+  return ['manzana', 'lado'].map(k =>
+    `<button class="modo" data-modo="${k}" aria-pressed="${modoMarcar === k}">` +
+    (k === 'manzana' ? 'Manzana entera' : 'Por lado') + '</button>').join('')
+}
+
+// Un solo lugar decide el modo, aunque el selector este en dos pantallas.
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('.modo')
+  if (!b || modoMarcar === b.dataset.modo) return
+  modoMarcar = b.dataset.modo
+  document.querySelectorAll('.modo').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.modo === modoMarcar)))
+  if (mapa) pintarMapa()
+  if (mapaTerrInst && repintarSobre) {
+    mapaTerrInst.__capa.clearLayers(); repintarSobre(mapaTerrInst.__capa)
+    if (repintarSobre === pintarMisManzanas) document.getElementById('sobrePie').innerHTML = leyendaPropia()
+  }
+})
+
 function cerrarSobre () {
+  document.getElementById('sobreModos').innerHTML = ''
   document.body.style.overflow = ''
   document.getElementById('sobreMapa').hidden = true
   if (mapaTerrInst) { mapaTerrInst.remove(); mapaTerrInst = null }
@@ -928,7 +1084,7 @@ function pintarHoy () {
   document.getElementById('saludoHora').textContent =
     h < 13 ? 'Buen día' : h < 20 ? 'Buenas tardes' : 'Buenas noches'
 
-  const faltan = manzanas.length - manzanas.filter(m => hechas.has(m.letra)).length
+  const faltan = manzanas.length - manzanas.filter(estaCompleta).length
   const resumen = document.getElementById('resumenHoy')
   if (deHoy.length) {
     const l = deHoy.filter(s => !s.tipo)
@@ -1054,6 +1210,9 @@ Promise.all([
     if (sal) { salidas = sal.salidas; periodo = sal.periodo; notaSalidas = sal.nota; pintarSalidas() }
     formasPorTerr = (d && d.territorios) || {}
     manzanas = formasPorTerr[NUMERO] || []
+    for (const m of manzanas) {
+      if (HECHAS_DEMO.includes(m.letra)) progreso.set(m.letra, new Set(ladosDe(m).map((_, i) => i)))
+    }
     pintarHoy()
     if (!manzanas.length) {
       document.getElementById('tarjeta').classList.add('oculto')
