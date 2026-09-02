@@ -248,6 +248,7 @@
       <button data-h="editar">◇ Editar vértices <span class="k">5</span></button>
       <button data-h="marcar">✛ Marcar manzanas <span class="k">6</span></button>
       <button data-h="borrar" class="quita">🗑 Borrar manzana <span class="k">7</span></button>
+      <button data-h="caras">▤ Arreglar caras <span class="k">8</span></button>
     </div>
 
     <div class="flot ctx">
@@ -323,6 +324,9 @@ function guardar () {
     asignacion: [...manzanas.values()].filter(m => m.territorio).map(m => [m.id, m.territorio, m.orden ?? null]),
     // Solo se guardan las manzanas modificadas: el resto se regenera del archivo.
     editadas: [...manzanas.values()].filter(m => m.editada).map(m => ({ id: m.id, geom: m.geom })),
+    // Las caras corregidas a mano: por indice de vertice, con el largo del
+    // anillo para saber si siguen valiendo.
+    caras: [...manzanas.values()].filter(m => m.caras).map(m => [m.id, m.caras, m.carasN]),
     descartadas: [...descartadas],
     revisadas: [...revisadas],
   }
@@ -361,6 +365,9 @@ function datosGuardables () {
     territorios: [...territorios.values()],
     asignacion: [...manzanas.values()].filter(m => m.territorio).map(m => [m.id, m.territorio, m.orden ?? null]),
     editadas: [...manzanas.values()].filter(m => m.editada).map(m => ({ id: m.id, geom: m.geom })),
+    // Las caras corregidas a mano: por indice de vertice, con el largo del
+    // anillo para saber si siguen valiendo.
+    caras: [...manzanas.values()].filter(m => m.caras).map(m => [m.id, m.caras, m.carasN]),
     descartadas: [...descartadas],
     revisadas: [...revisadas],
   }
@@ -1786,8 +1793,10 @@ document.querySelectorAll('.herr button').forEach(b => {
       editar: 'Hacé clic en una manzana para <b>mover sus vértices</b>. Los puntos claros agregan uno nuevo; clic derecho borra. <b>Esc</b> termina.',
       dibujar: '<b>Dibujar manzana:</b> hacé clic para poner los puntos. Con el <b>imán</b> se pegan a las esquinas de las manzanas vecinas.',
       borrar: 'Hacé clic en una manzana para <b>borrarla</b> del prototipo. <b>Cmd+Z</b> la devuelve.',
+      caras: 'Cada manzana muestra sus <b>caras</b>. Los puntos <b>llenos</b> son las uniones: tocá uno para <b>unir</b> las dos caras. Los <b>huecos</b> parten la cara ahí. <b>Cmd+Z</b> vuelve atrás.',
     }
-    avisar(ayuda[herramienta])
+    avisar(herramienta === 'caras' && activo ? ayuda.caras + '<br>' + resumenCaras() : ayuda[herramienta])
+    pintarCaras()
     cerrarBurbuja()
     // El iman necesita los vecinos ya pasados a pixeles antes del primer clic.
     prepararIman()
@@ -1913,7 +1922,7 @@ addEventListener('keydown', (e) => {
   }
 
   // Cambio de herramienta. No con Cmd/Ctrl: eso es un atajo del navegador.
-  const map = { 1: 'dibujar', 2: 'dividir', 3: 'fusionar', 4: 'mover', 5: 'editar', 6: 'marcar', 7: 'borrar' }
+  const map = { 1: 'dibujar', 2: 'dividir', 3: 'fusionar', 4: 'mover', 5: 'editar', 6: 'marcar', 7: 'borrar', 8: 'caras' }
   if (map[e.key] && !conMando) document.querySelector(`.herr button[data-h="${map[e.key]}"]`).click()
 })
 
@@ -1988,6 +1997,10 @@ try {
     for (const { id, geom } of g.editadas || []) {
       manzanas.set(id, { id, geom, territorio: null, editada: true })
     }
+    for (const [idM, caras, carasN] of g.caras || []) {
+      const m = manzanas.get(idM); if (!m) continue
+      m.caras = caras; m.carasN = carasN
+    }
     for (const [idM, idT, orden] of g.asignacion || []) {
       const m = manzanas.get(idM); if (!m) continue
       m.territorio = idT
@@ -2045,34 +2058,69 @@ function anilloLatLng (geom) {
   return cerrado ? anillo.slice(0, -1) : anillo
 }
 
-function carasDe (geom) {
+/* Las caras salen de agrupar segmentos casi colineales. Se calculan en
+   INDICES del anillo, no en puntos: un tramo es [i, i+1, ...] y dos
+   tramos vecinos comparten el vertice del medio. Guardar la correccion
+   de una persona necesita poder nombrar el corte, y un punto suelto no
+   sirve para eso.
+
+   Dos tramos vecinos se unen concatenando; un tramo se parte en
+   cualquiera de sus vertices interiores. Eso es todo lo que hace falta
+   para arreglar a mano lo que el umbral de 25 grados saca mal. */
+function tramosAutomaticos (geom) {
   const pts = anilloLatLng(geom)
   const n = pts.length
   if (n < 3) return []
-  let grupos = [[pts[0], pts[1 % n]]]
+  const rum = (i, j) => rmb(pts[i], pts[j])
+  let grupos = [[0, 1 % n]]
   for (let i = 1; i < n; i++) {
-    const a = pts[i]
-    const b = pts[(i + 1) % n]
+    const b = (i + 1) % n
     const g = grupos[grupos.length - 1]
-    if (difAng(rmb(a, b), rmb(g[g.length - 2], g[g.length - 1])) <= TOL_GRADOS) g.push(b)
-    else grupos.push([a, b])
+    if (difAng(rum(i, b), rum(g[g.length - 2], g[g.length - 1])) <= TOL_GRADOS) g.push(b)
+    else grupos.push([i, b])
   }
   if (grupos.length > 2) {
     const pri = grupos[0]
     const ult = grupos[grupos.length - 1]
-    if (difAng(rmb(pri[0], pri[1]), rmb(ult[ult.length - 2], ult[ult.length - 1])) <= TOL_GRADOS) {
+    if (difAng(rum(pri[0], pri[1]), rum(ult[ult.length - 2], ult[ult.length - 1])) <= TOL_GRADOS) {
       grupos[0] = ult.concat(pri.slice(1))
       grupos.pop()
     }
   }
-  const largo = (g) => g.slice(1).reduce((t, q, i) => t + mts(g[i], q), 0)
-  const res = grupos.filter((g) => largo(g) >= LARGO_MINIMO)
-  return (res.length ? res : [grupos[0]]).map((g) => ({
-    puntos: g,
-    largo_m: Number(largo(g).toFixed(2)),
-    rumbo_grados: Number((((rmb(g[0], g[g.length - 1]) % 180) + 180) % 180).toFixed(2)),
-    medio: g[Math.floor(g.length / 2)],
-  }))
+  const res = grupos.filter((g) => largoDe(pts, g) >= LARGO_MINIMO)
+  return res.length ? res : [grupos[0]]
+}
+
+function largoDe (pts, g) {
+  let t = 0
+  for (let i = 1; i < g.length; i++) t += mts(pts[g[i - 1]], pts[g[i]])
+  return t
+}
+
+function caraDe (pts, g) {
+  const puntos = g.map((i) => pts[i])
+  return {
+    indices: g,
+    puntos,
+    largo_m: Number(largoDe(pts, g).toFixed(2)),
+    rumbo_grados: Number((((rmb(puntos[0], puntos[puntos.length - 1]) % 180) + 180) % 180).toFixed(2)),
+    medio: puntos[Math.floor(puntos.length / 2)],
+  }
+}
+
+/* Los tramos corregidos a mano se guardan por indice de vertice. Si
+   despues se editan los vertices de la manzana, esos indices dejan de
+   significar lo mismo: se vuelve al automatico en vez de dibujar
+   cualquier cosa. */
+function tramosDe (m) {
+  const pts = anilloLatLng(m.geom)
+  if (m.caras && m.carasN === pts.length) return m.caras
+  return tramosAutomaticos(m.geom)
+}
+
+function carasDeMz (m) {
+  const pts = anilloLatLng(m.geom)
+  return tramosDe(m).map((g) => caraDe(pts, g))
 }
 
 function areaM2De (geom) {
@@ -2113,45 +2161,127 @@ function corridaAdentro (puntos, centro, metrosAdentro = 7) {
 
 function pintarCaras () {
   capaCaras.clearLayers()
-  if (!verCaras || !activo) return
+  const editando = herramienta === 'caras'
+  if ((!verCaras && !editando) || !activo) return
   const propias = [...manzanas.values()].filter((m) => m.territorio === activo && m.geom)
+
   for (const m of propias) {
-    let caras = []
-    try { caras = carasDe(m.geom) } catch (e) { continue }
+    let pts, tramos
+    try { pts = anilloLatLng(m.geom); tramos = tramosDe(m) } catch (e) { continue }
     const centro = centroDe(m.geom)
-    caras.forEach((cara, i) => {
+    const aMano = Boolean(m.caras && m.carasN === pts.length)
+
+    tramos.forEach((g, i) => {
+      const cara = caraDe(pts, g)
       L.polyline(corridaAdentro(cara.puntos, centro), {
-        color: '#0f6b47', weight: 4, opacity: 0.85, interactive: false,
+        color: aMano ? '#7c3aed' : '#0f6b47',
+        weight: 4, opacity: 0.85, interactive: false,
       }).addTo(capaCaras)
       L.marker(cara.medio, {
         interactive: false,
         icon: L.divIcon({
           className: '',
-          html: '<span style="background:#0f6b47;color:#fff;border-radius:9px;padding:0 5px;' +
-                'font:600 10px/16px system-ui;white-space:nowrap">' + (i + 1) + '</span>',
+          html: '<span style="background:' + (aMano ? '#7c3aed' : '#0f6b47') + ';color:#fff;' +
+                'border-radius:9px;padding:0 5px;font:600 10px/16px system-ui;white-space:nowrap">' +
+                (i + 1) + '</span>',
           iconSize: [0, 0],
         }),
       }).addTo(capaCaras)
     })
+
+    if (!editando) continue
+
+    // Punto LLENO en la union de dos caras: une. Solo donde las dos
+    // comparten el vertice; con el filtro de largo minimo puede haber
+    // tramos que no se tocan, y ahi no hay nada que unir.
+    tramos.forEach((g, i) => {
+      const sig = tramos[(i + 1) % tramos.length]
+      if (tramos.length < 2 || g[g.length - 1] !== sig[0]) return
+      const v = pts[g[g.length - 1]]
+      L.circleMarker(v, { radius: 6, color: '#0f6b47', weight: 2, fillColor: '#0f6b47', fillOpacity: 1 })
+        .addTo(capaCaras)
+        .on('click', (ev) => { L.DomEvent.stop(ev); unirCaras(m, i) })
+        .on('contextmenu', (ev) => { L.DomEvent.stop(ev); volverAutomatico(m) })
+        .bindTooltip('Unir estas dos caras')
+    })
+
+    // Punto HUECO en cada vertice interior: parte la cara ahi.
+    tramos.forEach((g, i) => {
+      for (let k = 1; k < g.length - 1; k++) {
+        L.circleMarker(pts[g[k]], { radius: 5, color: '#0f6b47', weight: 2, fillColor: '#fff', fillOpacity: 1 })
+          .addTo(capaCaras)
+          .on('click', (ev) => { L.DomEvent.stop(ev); partirCara(m, i, k) })
+          .on('contextmenu', (ev) => { L.DomEvent.stop(ev); volverAutomatico(m) })
+          .bindTooltip('Partir la cara acá')
+      }
+    })
   }
+}
+
+// Las tres escriben SIEMPRE un array nuevo. El historial copia las
+// manzanas en superficie, asi que mutar el array en su lugar dejaria a
+// todas las fotos anteriores apuntando al mismo, y el Cmd+Z no volveria.
+function guardarTramos (m, tramos, mensaje) {
+  instantanea()
+  m.caras = tramos
+  m.carasN = anilloLatLng(m.geom).length
+  refrescar()
+  avisar(mensaje + ' <b>Cmd+Z</b> vuelve atrás.')
+}
+
+function unirCaras (m, i) {
+  const tramos = tramosDe(m)
+  if (tramos.length < 2) return avisar('Esa manzana tiene una sola cara.')
+  const j = (i + 1) % tramos.length
+  const unido = tramos[i].concat(tramos[j].slice(1))
+  const nuevos = tramos
+    .map((g, k) => (k === i ? unido : g))
+    .filter((_, k) => k !== j)
+  guardarTramos(m, nuevos, 'Caras unidas: la manzana <b>' + (m.letra || '').toUpperCase() +
+    '</b> queda con <b>' + nuevos.length + '</b>.')
+}
+
+function partirCara (m, i, k) {
+  const tramos = tramosDe(m)
+  const g = tramos[i]
+  const nuevos = tramos.flatMap((t, idx) => (idx === i ? [g.slice(0, k + 1), g.slice(k)] : [t]))
+  guardarTramos(m, nuevos, 'Cara partida: la manzana <b>' + (m.letra || '').toUpperCase() +
+    '</b> queda con <b>' + nuevos.length + '</b>.')
+}
+
+function volverAutomatico (m) {
+  if (!m.caras) return avisar('Esa manzana ya está en automático.')
+  instantanea()
+  delete m.caras
+  delete m.carasN
+  refrescar()
+  avisar('Manzana <b>' + (m.letra || '').toUpperCase() + '</b> vuelta al cálculo automático: <b>' +
+    carasDeMz(m).length + '</b> caras.')
+}
+
+function resumenCaras () {
+  const propias = [...manzanas.values()].filter((m) => m.territorio === activo && m.geom)
+  if (!propias.length) return ''
+  const hist = {}
+  let total = 0
+  let aMano = 0
+  for (const m of propias) {
+    const n = carasDeMz(m).length
+    total += n
+    hist[n] = (hist[n] || 0) + 1
+    if (m.caras && m.carasN === anilloLatLng(m.geom).length) aMano++
+  }
+  return '<b>' + total + ' caras</b> en ' + propias.length + ' manzanas.<br>' +
+    Object.entries(hist).sort((a, b) => a[0] - b[0])
+      .map(([k, v]) => v + ' manzana' + (v === 1 ? '' : 's') + ' de ' + k).join(' · ') +
+    (aMano ? '<br>' + aMano + ' corregida' + (aMano === 1 ? '' : 's') + ' a mano (en violeta).' : '') +
+    '<br><small>Lo que no dé 4 conviene mirarlo.</small>'
 }
 
 document.getElementById('cCaras').onchange = (e) => {
   verCaras = e.target.checked
   pintarCaras()
-  if (!verCaras || !activo) return
-  const propias = [...manzanas.values()].filter((m) => m.territorio === activo && m.geom)
-  const hist = {}
-  let total = 0
-  for (const m of propias) {
-    const n = carasDe(m.geom).length
-    total += n
-    hist[n] = (hist[n] || 0) + 1
-  }
-  avisar('<b>' + total + ' caras</b> en ' + propias.length + ' manzanas.<br>' +
-    Object.entries(hist).sort((a, b) => a[0] - b[0])
-      .map(([k, v]) => v + ' manzana' + (v === 1 ? '' : 's') + ' de ' + k).join(' · ') +
-    '<br><small>Lo que no dé 4 conviene mirarlo.</small>')
+  if (verCaras && activo) avisar(resumenCaras())
 }
 
 /* ====================================================================
@@ -2205,7 +2335,7 @@ document.getElementById('bGuardarBD').onclick = async () => {
     return
   }
 
-  const caras = propias.reduce((n, m) => n + carasDe(m.geom).length, 0)
+  const caras = propias.reduce((n, m) => n + carasDeMz(m).length, 0)
   const ok = await dialogo({
     titulo: 'Guardar el territorio ' + t.numero,
     cuerpo: 'Se van a reemplazar sus manzanas en la base por las <b>' + propias.length +
@@ -2220,7 +2350,7 @@ document.getElementById('bGuardarBD').onclick = async () => {
     return {
       label: m.letra, orden, lat: centro[0], lng: centro[1],
       geom: m.geom, area_m2: areaM2De(m.geom),
-      lados: carasDe(m.geom).map((c, i) => ({
+      lados: carasDeMz(m).map((c, i) => ({
         orden: i,
         geom: { type: 'LineString', coordinates: c.puntos.map(([la, ln]) => [ln, la]) },
         largo_m: c.largo_m,
