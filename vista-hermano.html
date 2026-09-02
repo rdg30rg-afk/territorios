@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Tu territorio · Territorios</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Urbanist:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+/* =============================================================
+   VISTA DEL HERMANO · Territorios
+
+   Quien entra: un publicador de 70 anios, parado en una esquina,
+   con sol de frente y el telefono en la mano. Viene a saber que
+   territorio tiene y que le falta recorrer.
+
+   Accion principal, una sola: abrir el mapa de su territorio.
+
+   Tres reglas que gobiernan todo este archivo:
+   1. Nada por debajo de 16px. Afuera y con sol, 14 no alcanza.
+   2. Todo lo que se toca mide 56px de alto como minimo.
+   3. El color nunca es el unico portador de significado:
+      siempre va con un icono y con una palabra.
+   ============================================================= */
+
+:root {
+  /* Tinta y papel. El lima es el unico tono vivo y vive como
+     relleno; para texto esta el oliva, que si llega a contraste. */
+  --ink: #16191d;
+  --lime: #cbea5b;
+  --lime-deep: #b4d63c;
+  --olive: #5f7d0a;
+  --olive-bg: #f0f6dd;
+
+  --canvas: #f6f4ee;
+  --surface: #ffffff;
+  --line: #e5e0d4;
+
+  --fg: #16191d;
+  --fg-2: #4b4f57;
+  --fg-3: #6a6e77;
+
+  /* Estado. Si aparecen, algo esta pasando de verdad. */
+  --good-fg: #0f6b47;  --good-bg: #e3f2e9;  --good-line: #aed6c1;
+  --warn-fg: #955408;  --warn-bg: #fbeed7;  --warn-line: #ebd2a3;
+
+  /* Escala. Una sola perilla: --step. */
+  --step: 1;
+  --t-label: calc(16px * var(--step));
+  --t-body:  calc(18px * var(--step));
+  --t-lead:  calc(21px * var(--step));
+  --t-h2:    calc(29px * var(--step));
+  --t-num:   calc(44px * var(--step));
+  --t-big:   calc(56px * var(--step));
+
+  --tap: 56px;
+  --pad: 20px;
+  --r-card: 22px;
+  --r-pill: 9999px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--canvas);
+  color: var(--fg);
+  font: 400 var(--t-body)/1.5 Urbanist, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-feature-settings: "tnum";
+  -webkit-font-smoothing: antialiased;
+  padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+}
+
+:focus-visible { outline: 3px solid var(--olive); outline-offset: 3px; border-radius: 8px; }
+::selection { background: var(--lime); color: var(--ink); }
+
+.hoja { max-width: 520px; margin: 0 auto; padding: 0 var(--pad); }
+
+/* ---------------------------------------------------- encabezado */
+.barra {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 14px var(--pad); position: sticky; top: 0; z-index: 20;
+  background: var(--canvas); border-bottom: 1px solid var(--line);
+}
+.marca { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: var(--t-label); }
+.marca .logo {
+  width: 36px; height: 36px; border-radius: 11px; background: var(--ink); color: var(--lime);
+  display: grid; place-items: center; font-size: 19px;
+}
+.btnIcono {
+  width: var(--tap); height: var(--tap); border-radius: 16px; border: 1px solid var(--line);
+  background: var(--surface); display: grid; place-items: center; font-size: 21px; cursor: pointer;
+}
+
+/* -------------------------------------------------------- saludo */
+.saludo { margin: 26px 0 20px; font-size: var(--t-h2); font-weight: 600; line-height: 1.18; letter-spacing: -.02em; }
+.saludo span { display: block; color: var(--fg-3); font-weight: 500; }
+
+/* ----------------------------------------------- tarjeta principal */
+/* Una sola tarjeta oscura en toda la pantalla: lo unico que importa hoy. */
+.tarjeta {
+  background: var(--ink); color: #fff; border-radius: var(--r-card);
+  padding: 24px 22px; margin-bottom: 18px;
+}
+.tarjeta .rotulo { font-size: var(--t-label); color: #a4a8b0; font-weight: 500; }
+.numeroGrande {
+  font-size: var(--t-big); font-weight: 700; line-height: 1; letter-spacing: -.03em;
+  margin: 4px 0 14px; display: flex; align-items: baseline; gap: 12px;
+}
+.numeroGrande small { font-size: var(--t-lead); font-weight: 500; color: #a4a8b0; letter-spacing: 0; }
+
+.chip {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 40px;
+  padding: 0 16px; border-radius: var(--r-pill); font-size: var(--t-label); font-weight: 600;
+}
+.chip.tuyo { background: rgba(203,234,91,.16); color: var(--lime); border: 1px solid rgba(203,234,91,.35); }
+
+/* Frase con icono: el dato dicho como se lo dirias a la persona. */
+.frase {
+  display: flex; align-items: center; gap: 14px; margin: 18px 0;
+  background: rgba(255,255,255,.06); border-radius: 16px; padding: 14px 16px;
+}
+.frase .marco { width: 46px; height: 46px; border-radius: 13px; background: var(--lime); color: var(--ink); display: grid; place-items: center; flex: 0 0 auto; }
+.frase strong { display: block; font-size: var(--t-lead); font-weight: 600; }
+.frase small { display: block; font-size: var(--t-label); color: #a4a8b0; }
+
+.cifras { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; margin: 18px 0 14px; }
+.cifras div span { display: block; font-size: var(--t-label); color: #a4a8b0; }
+.cifras div strong { display: block; font-size: var(--t-num); font-weight: 700; line-height: 1.05; letter-spacing: -.02em; }
+
+.barraProgreso { height: 12px; border-radius: var(--r-pill); background: rgba(255,255,255,.14); overflow: hidden; }
+.barraProgreso i { display: block; height: 100%; background: var(--lime); border-radius: var(--r-pill); }
+.pieProgreso { font-size: var(--t-label); color: #a4a8b0; margin-top: 8px; }
+
+/* -------------------------------------------------------- botones */
+.boton {
+  display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%;
+  min-height: var(--tap); border-radius: 16px; border: 0; cursor: pointer;
+  font: 600 var(--t-lead)/1 Urbanist, sans-serif;
+}
+.boton.principal { background: var(--lime); color: var(--ink); margin-top: 18px; }
+.boton.principal:active { background: var(--lime-deep); }
+.boton.secundario { background: transparent; color: #fff; border: 1px solid rgba(255,255,255,.28); margin-top: 10px; }
+
+/* ------------------------------------------------------ manzanas */
+.panel { scroll-margin-top: 84px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); padding: 22px 20px; margin-bottom: 18px; }
+.panel h2 { margin: 0 0 4px; font-size: var(--t-h2); font-weight: 600; letter-spacing: -.02em; }
+.panel p.sub { margin: 0 0 18px; color: var(--fg-2); font-size: var(--t-body); }
+
+.rejilla { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 10px; }
+.manzana {
+  min-height: 72px; border-radius: 16px; border: 1px solid var(--line); background: var(--canvas);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  cursor: pointer; font: 700 26px/1 Urbanist, sans-serif; color: var(--fg); text-transform: uppercase;
+}
+.manzana small { font-size: var(--t-label); font-weight: 600; text-transform: none; color: var(--fg-3); }
+/* Hecha: color + icono + palabra. Nunca solo el color. */
+.manzana.hecha { background: var(--good-bg); border-color: var(--good-line); color: var(--good-fg); }
+.manzana.hecha small { color: var(--good-fg); }
+
+.leyenda { display: flex; gap: 18px; margin-top: 16px; font-size: var(--t-label); color: var(--fg-2); }
+.leyenda span { display: flex; align-items: center; gap: 7px; }
+.punto { width: 14px; height: 14px; border-radius: 5px; border: 1px solid var(--line); background: var(--canvas); }
+.punto.ok { background: var(--good-bg); border-color: var(--good-line); }
+
+/* ---------------------------------------------------------- mapa */
+#mapa { height: 340px; border-radius: 16px; border: 1px solid var(--line); margin-top: 4px; }
+.etiquetaMz {
+  display: grid; place-items: center; font: 700 15px Urbanist, sans-serif;
+  border-radius: 9999px; border: 2px solid #fff; color: #fff;
+}
+
+/* ----------------------------------------------- accion pegajosa */
+/* La accion principal no se pierde al bajar: siempre esta a mano. */
+.pieFijo {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+  /* Solo aparece cuando el boton de la tarjeta se fue de pantalla: dos
+     botones iguales a la vez es el mismo boton dicho dos veces. */
+  transform: translateY(120%); transition: transform .2s ease; pointer-events: none;
+  padding: 12px var(--pad) calc(12px + env(safe-area-inset-bottom, 0px));
+  background: linear-gradient(to top, var(--canvas) 72%, rgba(246,244,238,0));
+}
+.pieFijo.visible { transform: none; pointer-events: auto; }
+.pieFijo .hoja { padding: 0 var(--pad); }
+
+/* --------------------------------------------------- sin territorio */
+.vacio { text-align: center; padding: 34px 20px; }
+.vacio .marcoVacio { width: 84px; height: 84px; border-radius: 26px; background: var(--olive-bg); color: var(--olive); display: grid; place-items: center; font-size: 38px; margin: 0 auto 18px; }
+.vacio h2 { margin: 0 0 8px; font-size: var(--t-h2); font-weight: 600; }
+.vacio p { margin: 0 0 22px; color: var(--fg-2); }
+
+.oculto { display: none !important; }
+</style>
+</head>
+<body>
+
+<header class="barra">
+  <span class="marca"><span class="logo">◆</span> Territorios</span>
+  <button class="btnIcono" id="bTexto" aria-label="Agrandar el texto">A+</button>
+</header>
+
+<main class="hoja">
+
+  <h1 class="saludo">
+    Buen día, Mateo.
+    <span id="estadoGeneral">Buscando tu territorio…</span>
+  </h1>
+
+  <!-- Lo único que importa hoy -->
+  <section class="tarjeta" id="tarjeta">
+    <p class="rotulo">Tu territorio</p>
+    <p class="numeroGrande">20 <small>Sector I</small></p>
+
+    <span class="chip tuyo">✓ Lo tenés vos</span>
+
+    <div class="frase">
+      <span class="marco" aria-hidden="true">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <rect x="3" y="5" width="18" height="16" rx="3"/><path d="M8 3v4M16 3v4M3 10h18"/>
+        </svg>
+      </span>
+      <span>
+        <strong id="cuantoFalta">…</strong>
+        <small id="cuandoVence">Cargando</small>
+      </span>
+    </div>
+
+    <div class="cifras">
+      <div><span>Manzanas</span><strong id="cTotal">24</strong></div>
+      <div><span>Recorridas</span><strong id="cHechas">9</strong></div>
+      <div><span>Te faltan</span><strong id="cFaltan">15</strong></div>
+    </div>
+
+    <div class="barraProgreso"><i id="barra" style="width:38%"></i></div>
+    <p class="pieProgreso" id="pieProgreso">9 de 24 recorridas · 38%</p>
+
+    <button class="boton principal" id="bMapa">Abrir el mapa →</button>
+    <button class="boton secundario" id="bDevolver">Ya lo terminé</button>
+  </section>
+
+  <!-- El mapa, abierto desde el botón -->
+  <section class="panel oculto" id="panelMapa">
+    <h2>Dónde queda</h2>
+    <p class="sub">Las verdes ya las recorriste. Tocá una manzana para marcarla.</p>
+    <div id="mapa"></div>
+  </section>
+
+  <section class="panel">
+    <h2>Tus manzanas</h2>
+    <p class="sub">Tocá una cuando la termines. Si te equivocás, tocala de nuevo.</p>
+    <div class="rejilla" id="rejilla"></div>
+    <div class="leyenda">
+      <span><i class="punto ok"></i> ✓ Recorrida</span>
+      <span><i class="punto"></i> Te falta</span>
+    </div>
+  </section>
+
+  <!-- Estado vacío: la primera pantalla de alguien nuevo -->
+  <section class="panel vacio oculto" id="vacio">
+    <div class="marcoVacio">◇</div>
+    <h2>Todavía no tenés territorio</h2>
+    <p>Cuando el siervo de tu grupo te asigne uno, lo vas a ver acá.</p>
+    <button class="boton principal" style="background:var(--ink);color:#fff">Pedir un territorio</button>
+  </section>
+
+</main>
+
+<div class="pieFijo">
+  <div class="hoja">
+    <button class="boton principal" style="margin:0" id="bPie">Abrir el mapa →</button>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const NUMERO = '20'
+const VENCE = new Date(2026, 8, 14)   // domingo 14 de septiembre de 2026
+let manzanas = []
+let hechas = new Set(['a','b','c','d','e','f','g','h','i'])
+let mapa = null
+
+const DIAS = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado']
+const MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre']
+
+// Frases, no registros: el dato dicho como se lo dirias a la persona.
+function frasePlazo () {
+  const hoy = new Date()
+  const dias = Math.ceil((VENCE - hoy) / 86400000)
+  const cuando = `Lo devolvés el ${DIAS[VENCE.getDay()]} ${VENCE.getDate()} de ${MESES[VENCE.getMonth()]}`
+  let cuanto = `Te quedan ${dias} días`
+  if (dias === 1) cuanto = 'Lo devolvés mañana'
+  if (dias === 0) cuanto = 'Lo devolvés hoy'
+  if (dias < 0) cuanto = `Se pasó por ${Math.abs(dias)} días`
+  return { cuanto, cuando, vencido: dias < 0 }
+}
+
+function refrescar () {
+  const total = manzanas.length
+  const n = manzanas.filter(m => hechas.has(m.letra)).length
+  const faltan = total - n
+  const pct = total ? Math.round(n / total * 100) : 0
+
+  document.getElementById('cTotal').textContent = total
+  document.getElementById('cHechas').textContent = n
+  document.getElementById('cFaltan').textContent = faltan
+  document.getElementById('barra').style.width = pct + '%'
+  document.getElementById('pieProgreso').textContent = `${n} de ${total} recorridas · ${pct}%`
+
+  const est = document.getElementById('estadoGeneral')
+  est.textContent = faltan === 0
+    ? `Terminaste el territorio ${NUMERO}.`
+    : faltan === 1
+      ? `Te falta 1 manzana del territorio ${NUMERO}.`
+      : `Te faltan ${faltan} manzanas del territorio ${NUMERO}.`
+
+  const p = frasePlazo()
+  document.getElementById('cuantoFalta').textContent = p.cuanto
+  document.getElementById('cuandoVence').textContent = p.cuando
+
+  pintarRejilla()
+  if (mapa) pintarMapa()
+}
+
+function pintarRejilla () {
+  const cont = document.getElementById('rejilla')
+  cont.innerHTML = ''
+  for (const m of manzanas) {
+    const ok = hechas.has(m.letra)
+    const b = document.createElement('button')
+    b.className = 'manzana' + (ok ? ' hecha' : '')
+    // Color, icono y palabra: los tres. Nunca el color solo.
+    b.innerHTML = `${m.letra}<small>${ok ? '✓ hecha' : 'te falta'}</small>`
+    b.setAttribute('aria-pressed', ok ? 'true' : 'false')
+    b.onclick = () => {
+      if (ok) hechas.delete(m.letra); else hechas.add(m.letra)
+      refrescar()
+    }
+    cont.appendChild(b)
+  }
+}
+
+function pintarMapa () {
+  mapa.__capa.clearLayers()
+  for (const m of manzanas) {
+    const ok = hechas.has(m.letra)
+    const anillo = m.geom.coordinates[0].map(([x, y]) => [y, x])
+    const color = ok ? '#0f6b47' : '#16191d'
+    L.polygon(anillo, {
+      color, weight: 2, fillColor: ok ? '#59c48f' : '#cbd0d6', fillOpacity: ok ? .55 : .35,
+    }).addTo(mapa.__capa).on('click', () => {
+      if (ok) hechas.delete(m.letra); else hechas.add(m.letra)
+      refrescar()
+    })
+    const c = anillo.reduce((a, [la, ln]) => [a[0] + la / anillo.length, a[1] + ln / anillo.length], [0, 0])
+    L.marker(c, {
+      interactive: false,
+      icon: L.divIcon({ className: '', iconSize: [30, 30], iconAnchor: [15, 15],
+        html: `<div class="etiquetaMz" style="width:30px;height:30px;background:${color}">${m.letra}</div>` }),
+    }).addTo(mapa.__capa)
+  }
+}
+
+function abrirMapa () {
+  const panel = document.getElementById('panelMapa')
+  panel.classList.remove('oculto')
+  // El pie ofrecia abrir el mapa: con el mapa abierto eso ya no es cierto.
+  observador.disconnect()
+  pie.classList.remove('visible')
+  if (!mapa) {
+    mapa = L.map('mapa', { attributionControl: false, zoomControl: true })
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(mapa)
+    mapa.__capa = L.layerGroup().addTo(mapa)
+    const pts = manzanas.flatMap(m => m.geom.coordinates[0].map(([x, y]) => [y, x]))
+    mapa.fitBounds(L.latLngBounds(pts).pad(0.08))
+    pintarMapa()
+  }
+  setTimeout(() => { mapa.invalidateSize(); panel.scrollIntoView({ behavior: 'smooth', block: 'start' }) }, 60)
+}
+
+// El pie fijo aparece recien cuando el boton de arriba deja de verse.
+const pie = document.querySelector('.pieFijo')
+const observador = new IntersectionObserver(
+  ([e]) => pie.classList.toggle('visible', !e.isIntersecting),
+  // threshold 0: el pie aparece apenas el boton toca el borde. Con 0.6 el
+  // observador no volvia a disparar al salir de pantalla de un scroll largo.
+  { threshold: 0 },
+)
+observador.observe(document.getElementById('bMapa'))
+
+document.getElementById('bMapa').onclick = abrirMapa
+document.getElementById('bPie').onclick = abrirMapa
+
+// Una sola perilla agranda todo, para quien ve poco.
+let paso = 1
+document.getElementById('bTexto').onclick = () => {
+  paso = paso >= 1.3 ? 1 : paso + 0.15
+  document.documentElement.style.setProperty('--step', paso.toFixed(2))
+  document.getElementById('bTexto').textContent = paso > 1 ? 'A−' : 'A+'
+  if (mapa) setTimeout(() => mapa.invalidateSize(), 200)
+}
+
+document.getElementById('bDevolver').onclick = () => {
+  const faltan = manzanas.length - manzanas.filter(m => hechas.has(m.letra)).length
+  // Avisar, no bloquear: la decision es suya y puede no haberse dado cuenta.
+  if (faltan > 0) {
+    alert(`Te quedan ${faltan} manzanas sin marcar. Podés devolverlo igual, pero fijate primero.`)
+    return
+  }
+  alert('Listo. El siervo de tu grupo va a ver que lo terminaste.')
+}
+
+// -------------------------------------------------------- arranque
+fetch('/datos/manzanas-territorios.json')
+  .then(r => r.json())
+  .then(d => {
+    manzanas = d.territorios[NUMERO] || []
+    if (!manzanas.length) {
+      document.getElementById('tarjeta').classList.add('oculto')
+      document.querySelector('.pieFijo').classList.add('oculto')
+      document.getElementById('vacio').classList.remove('oculto')
+      return
+    }
+    refrescar()
+  })
+  .catch(() => {
+    document.getElementById('estadoGeneral').textContent = 'No se pudo cargar tu territorio. Probá de nuevo en un rato.'
+  })
+</script>
+</body>
+</html>
