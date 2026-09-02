@@ -1360,8 +1360,8 @@ function HojaHistorial({
                     <b>{f.letra}</b>
                     <span>
                       {f.completa
-                        ? `${f.cuadras} cuadra${f.cuadras > 1 ? 's' : ''}, quedó hecha`
-                        : `${f.cuadras} de ${f.total} cuadras, quedó a medias`}{' '}
+                        ? 'se hizo completa'
+                        : `se hicieron ${f.cuadras} de ${f.total} cuadras`}{' '}
                       · {[...f.quien].join(', ')}
                     </span>
                   </li>

@@ -67,14 +67,15 @@ values
 
 Con eso, el frontend ya mostrara solo los modulos habilitados para cada usuario.
 
-## Acceso inicial preparado
+## Acceso inicial
 
-- Usuario visible: `Blade30$`
-- La app lo vincula por ahora al correo interno `blade30@territorios.app`
-- Contraseña solicitada: `Cong$ur07179`
+No guardes usuarios ni contraseñas en el repositorio. Crea la cuenta desde
+`Solicitar acceso` o desde `Authentication > Users` en Supabase y promuevela
+con el procedimiento anterior.
 
-Esto deja el acceso funcionando de inmediato mientras preparamos una
-administracion de usuarios completa desde la propia app.
+Si alguna credencial real fue publicada anteriormente, eliminarla del archivo
+no es suficiente: hay que rotarla en Supabase y considerar limpiar el historial
+del repositorio.
 
 ## Nota de migracion
 

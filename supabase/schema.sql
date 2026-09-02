@@ -8,6 +8,41 @@ create table if not exists pending_users (
   requested_at timestamptz not null default now()
 );
 
+create table if not exists profiles (
+  id uuid primary key references auth.users (id) on delete cascade,
+  full_name text,
+  username text unique,
+  auth_email text unique,
+  role text not null default 'viewer' check (role in ('admin', 'superintendente', 'siervo', 'conductor', 'viewer')),
+  access_status text not null default 'pending' check (access_status in ('pending', 'active', 'inactive')),
+  created_at timestamptz not null default now()
+);
+
+alter table profiles add column if not exists username text;
+alter table profiles add column if not exists auth_email text;
+alter table profiles
+  add column if not exists access_status text not null default 'pending'
+  check (access_status in ('pending', 'active', 'inactive'));
+
+create unique index if not exists profiles_username_unique_idx
+  on profiles (lower(username))
+  where username is not null;
+
+create unique index if not exists profiles_auth_email_unique_idx
+  on profiles (lower(auth_email))
+  where auth_email is not null;
+
+update public.profiles as p
+set auth_email = u.email
+from auth.users as u
+where p.id = u.id
+  and (p.auth_email is null or p.auth_email = '');
+
+update public.profiles
+set username = coalesce(username, split_part(auth_email, '@', 1))
+where auth_email is not null
+  and username is null;
+
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -44,57 +79,6 @@ as $$
   );
 $$;
 
-create or replace function public.can_access_module(module_name text)
-returns boolean
-language sql
-security definer
-set search_path = public
-stable
-as $$
-  select public.is_admin(auth.uid())
-    or exists (
-      select 1
-      from public.user_module_access
-      where user_id = auth.uid()
-        and module_key = module_name
-    );
-$$;
-
-create table if not exists profiles (
-  id uuid primary key references auth.users (id) on delete cascade,
-  full_name text,
-  username text unique,
-  auth_email text unique,
-  role text not null default 'viewer' check (role in ('admin', 'superintendente', 'siervo', 'conductor', 'viewer')),
-  access_status text not null default 'pending' check (access_status in ('pending', 'active', 'inactive')),
-  created_at timestamptz not null default now()
-);
-
-alter table profiles add column if not exists username text;
-alter table profiles add column if not exists auth_email text;
-alter table profiles
-  add column if not exists access_status text not null default 'pending'
-  check (access_status in ('pending', 'active', 'inactive'));
-
-create unique index if not exists profiles_username_unique_idx
-  on profiles (lower(username))
-  where username is not null;
-
-create unique index if not exists profiles_auth_email_unique_idx
-  on profiles (lower(auth_email))
-  where auth_email is not null;
-
-update public.profiles as p
-set auth_email = u.email
-from auth.users as u
-where p.id = u.id
-  and (p.auth_email is null or p.auth_email = '');
-
-update public.profiles
-set username = coalesce(username, split_part(auth_email, '@', 1))
-where auth_email is not null
-  and username is null;
-
 create or replace function public.resolve_login_email(login_identifier text)
 returns text
 language sql
@@ -116,6 +100,22 @@ create table if not exists user_module_access (
   granted_at timestamptz not null default now(),
   unique (user_id, module_key)
 );
+
+create or replace function public.can_access_module(module_name text)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select public.is_admin(auth.uid())
+    or exists (
+      select 1
+      from public.user_module_access
+      where user_id = auth.uid()
+        and module_key = module_name
+    );
+$$;
 
 create table if not exists territorios (
   id uuid primary key default gen_random_uuid(),
@@ -215,11 +215,11 @@ alter table grupos_servicio enable row level security;
 alter table salidas enable row level security;
 
 drop policy if exists "Anyone can request access" on pending_users;
-create policy "Anyone can request access"
-on pending_users
-for insert
-to anon, authenticated
-with check (true);
+revoke insert on table public.pending_users from anon;
+
+-- Las solicitudes nuevas se representan con profiles.access_status = 'pending'.
+-- El trigger sobre auth.users crea el perfil; no se aceptan escrituras anonimas
+-- directas sobre pending_users.
 
 drop policy if exists "Admins can manage pending users" on pending_users;
 create policy "Admins can manage pending users"

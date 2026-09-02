@@ -86,11 +86,10 @@ where profile.id = users.id
 alter table public.pending_users enable row level security;
 
 drop policy if exists "Anyone can request access" on public.pending_users;
-create policy "Anyone can request access"
-on public.pending_users
-for insert
-to anon, authenticated
-with check (true);
+revoke insert on table public.pending_users from anon;
+
+-- Las altas nuevas se registran mediante auth.users y handle_new_user().
+-- pending_users queda solo para compatibilidad y gestion administrativa.
 
 drop policy if exists "Admins can manage pending users" on public.pending_users;
 create policy "Admins can manage pending users"
