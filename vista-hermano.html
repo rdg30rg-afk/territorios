@@ -184,35 +184,50 @@ body {
 .salidaDia small { display: block; font-size: var(--t-label); font-weight: 500; color: var(--fg-3); }
 .salidaDia.esHoy { color: var(--olive); }
 
+/* La columna de la hora se ajusta a su contenido: fijarla en 78px partia
+   los barrios al medio ("Bo. Los / Tilos"). Y el barrio se fue de aca: es
+   parte del donde, no del cuando. */
 .salida {
-  display: grid; grid-template-columns: 78px minmax(0, 1fr); gap: 14px; align-items: start;
+  display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 16px; align-items: start;
   background: var(--surface); border: 1px solid var(--line); border-radius: 18px;
   padding: 16px; margin-bottom: 10px; width: 100%; text-align: left; cursor: pointer;
   font: inherit; color: inherit; min-height: var(--tap);
 }
 .salida.esHoy { border-color: var(--olive); border-width: 2px; background: var(--olive-bg); }
-.salida .cuando { font-size: var(--t-lead); font-weight: 700; }
-.salida .cuando small { display: block; font-size: var(--t-label); font-weight: 500; color: var(--fg-3); }
-.salida .donde strong { display: block; font-size: var(--t-body); font-weight: 600; line-height: 1.25; }
+/* Una salida que ya empezo no se muestra igual que una que viene. Se
+   atenua y lo dice con palabras, no solo bajandole el color. */
+.salida.pasada { opacity: .58; }
+.salida.pasada .cuando { font-weight: 500; }
+.yaPaso { font-size: var(--t-label); font-weight: 600; color: var(--fg-3); }
+.salida .cuando { font-size: var(--t-lead); font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.salida .donde strong { display: block; font-size: var(--t-body); font-weight: 600; line-height: 1.3; }
 /* Combinador de hijo, no descendiente. Con ".salida .donde span" (0-2-1)
    esta regla le ganaba a ".marca-chip.terr" (0-2-0) y pintaba de gris el
    texto de los chips negros: 2,15 de contraste, ilegible. */
 .salida .donde > span { display: block; font-size: var(--t-label); color: var(--fg-2); margin-top: 2px; }
 
-.marcas { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
-.marca-chip.priorizar { flex-basis: 100%; margin-top: 2px; }
+.marcas { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 14px; }
+.marca-chip.priorizar { flex-basis: 100%; margin-top: 4px; }
 .marca-chip {
   display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px;
   border-radius: var(--r-pill); font-size: var(--t-label); font-weight: 600;
   background: var(--canvas); border: 1px solid var(--line); color: var(--fg-2);
 }
-/* El territorio es el dato principal de la salida: el cuerpo mas grande
-   de los rotulos y el unico con superficie llena. */
+/* El territorio pesa por cuerpo, no por superficie: en una lista de 19
+   salidas, 19 pastillas negras son mucho negro y la lista se vuelve dura.
+   La superficie llena queda reservada para la tarjeta destacada de Hoy. */
 .marca-chip.terr {
-  background: var(--ink); border-color: var(--ink); color: #fff;
-  font-size: var(--t-lead); font-weight: 700; padding: 7px 16px; letter-spacing: -.01em;
+  background: none; border: 0; padding: 0; color: var(--fg);
+  font-size: calc(25px * var(--step)); font-weight: 700; letter-spacing: -.02em;
+  align-items: baseline; gap: 7px; line-height: 1;
 }
-.marca-chip.terr b { font-weight: 500; font-size: var(--t-label); opacity: .74; }
+.marca-chip.terr b {
+  font-weight: 500; font-size: var(--t-label); color: var(--fg-3);
+  letter-spacing: .02em; text-transform: uppercase;
+}
+/* En la tarjeta oscura de Hoy si va llena: ahi es la unica y destaca. */
+.tarjeta .marca-chip.terr { color: #fff; }
+.tarjeta .marca-chip.terr b { color: #a4a8b0; }
 /* Priorizar es una nota sobre el territorio, no otra etiqueta del mismo
    rango. Sin superficie llena, no le compite al numero. El ambar queda
    solo en la estrella, que es lo que llama la atencion. */
@@ -614,14 +629,25 @@ function pintarSalidas () {
   }
 }
 
+// Una salida "de hoy" a las 09:30 vista a las 11:46 ya paso. Decirlo es
+// la diferencia entre un programa y un horario.
+function yaEmpezo (s) {
+  if (s.fecha !== hoyISO()) return false
+  const [h, m] = s.hora.split(':').map(Number)
+  const ahora = new Date()
+  return ahora.getHours() * 60 + ahora.getMinutes() > h * 60 + m
+}
+
 function tarjetaSalida (s) {
   const esHoy = s.fecha === hoyISO()
+  const paso = yaEmpezo(s)
   const b = document.createElement('button')
-  b.className = 'salida' + (esHoy ? ' esHoy' : '')
+  b.className = 'salida' + (esHoy ? ' esHoy' : '') + (paso ? ' pasada' : '')
   b.innerHTML = `
-    <span class="cuando">${s.hora}<small>${s.barrio || (s.tipo ? '' : '')}</small></span>
+    <span class="cuando">${s.hora}${paso ? '<span class="yaPaso" style="display:block">ya pasó</span>' : ''}</span>
     <span class="donde">
       <strong>${tituloSalida(s)}</strong>
+      ${s.barrio ? `<span>${s.barrio}</span>` : ''}
       ${s.conductor ? `<span>Conduce ${s.conductor}</span>` : ''}
       <div class="marcas">${chipsDeSalida(s)}</div>
     </span>`
@@ -650,11 +676,14 @@ function pintarHoy () {
   const resumen = document.getElementById('resumenHoy')
   if (deHoy.length) {
     const l = deHoy.filter(s => !s.tipo)
-    resumen.textContent = l.length === 1
-      ? `Hoy hay una salida, a las ${l[0].hora}.`
-      : l.length > 1
-        ? `Hoy hay ${l.length} salidas.`
-        : 'Hoy es predicación telefónica.'
+    const quedan = l.filter(s => !yaEmpezo(s))
+    resumen.textContent = !l.length
+      ? 'Hoy es predicación telefónica.'
+      : quedan.length === 1
+        ? `Te queda la salida de las ${quedan[0].hora}.`
+        : quedan.length > 1
+          ? `Hoy quedan ${quedan.length} salidas.`
+          : 'Las salidas de hoy ya pasaron.'
   } else {
     resumen.textContent = proxima
       ? `Hoy no hay salida. La próxima es el ${fechaLarga(proxima.fecha)}.`
@@ -665,7 +694,7 @@ function pintarHoy () {
 
   // La tarjeta oscura es para lo que tiene hora y vence: la salida de hoy.
   // Si hoy no hay ninguna, la ocupa el territorio personal.
-  const destacada = deHoy.find(s => !s.tipo) || proxima
+  const destacada = deHoy.find(s => !s.tipo && !yaEmpezo(s)) || deHoy.find(s => !s.tipo) || proxima
   if (destacada) cont.appendChild(tarjetaDestacada(destacada, !deHoy.length))
 
   const otras = deHoy.filter(s => s !== destacada)
