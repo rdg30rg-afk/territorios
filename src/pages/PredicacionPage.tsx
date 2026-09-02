@@ -127,6 +127,71 @@ function comoLlegar(s: Salida) {
 
 const anilloDe = (g: Poligono) => g.coordinates[0].map(([x, y]) => [y, x] as [number, number])
 
+// Un solo lugar decide los colores de una manzana. Si el mapa vivo y el del
+// historial se pintaran distinto, el mismo dato contaria dos historias.
+function pinta(hechos: number, total: number) {
+  const completa = total > 0 && hechos === total
+  const media = hechos > 0 && !completa
+  return {
+    completa,
+    media,
+    color: completa ? '#0f6b47' : media ? '#955408' : '#16191d',
+    relleno: completa ? '#59c48f' : media ? '#f0c987' : '#cbd0d6',
+    opacidad: completa ? 0.55 : media ? 0.45 : 0.3,
+  }
+}
+
+// Dibuja las manzanas con un estado dado. Lo usan el mapa de la pestania y
+// el del historial; el segundo nunca es interactivo.
+function pintarManzanas(
+  capa: L.LayerGroup,
+  manzanas: Manzana[],
+  ladosDe: (mz: Manzana) => Lado[],
+  hechos: Set<string>,
+  alTocar?: (mz: Manzana) => void,
+) {
+  for (const mz of manzanas) {
+    if (!mz.geometry_geojson) continue
+    const anillo = anilloDe(mz.geometry_geojson)
+    const propios = ladosDe(mz)
+    const n = propios.filter((l) => hechos.has(l.id)).length
+    const c = pinta(n, propios.length)
+    L.polygon(anillo, {
+      color: c.color,
+      weight: 2,
+      fillColor: c.relleno,
+      fillOpacity: c.opacidad,
+      interactive: Boolean(alTocar),
+    })
+      .addTo(capa)
+      .on('click', () => alTocar?.(mz))
+    const centro = anillo.reduce(
+      (a, [la, ln]) => [a[0] + la / anillo.length, a[1] + ln / anillo.length],
+      [0, 0],
+    ) as [number, number]
+    L.marker(centro, {
+      interactive: false,
+      icon: L.divIcon({
+        className: '',
+        iconSize: [30, 30],
+        iconAnchor: [15, 15],
+        html: `<div class="etiquetaMz" style="width:30px;height:30px;background:${c.color}">${mz.label}</div>`,
+      }),
+    }).addTo(capa)
+  }
+}
+
+type Evento = {
+  id: string
+  lado_id: string
+  manzana_id: string
+  estado: string
+  informado_at: string
+  informado_por: string | null
+}
+
+const soloDia = (iso: string) => new Date(iso).toLocaleDateString('sv-SE')
+
 // Los lados se guardan sobre el borde real. Se dibujan corridos hacia adentro:
 // si no, el lado de esta manzana y el de la de enfrente caerian casi encima y
 // el dedo no podria elegir.
@@ -173,6 +238,7 @@ export function PredicacionPage() {
   // un territorio ajeno no la informa quien pasa a ver como es.
   const [abierta, setAbierta] = useState<string | null>(null)
   const [hoja, setHoja] = useState<{ salida?: Salida; propio?: boolean } | null>(null)
+  const [historial, setHistorial] = useState(false)
 
   // Solo se marca el territorio propio, y solo despues de pedirlo. Mirar es
   // lo que pasa cuando no pediste otra cosa.
@@ -400,31 +466,24 @@ export function PredicacionPage() {
 
   // ----------------------------------------------------------- mapas
   const dibujarPropio = useCallback(
-    (capa: L.LayerGroup, conLetras: boolean) => {
+    (capa: L.LayerGroup) => {
+      pintarManzanas(
+        capa,
+        manzanas,
+        ladosDe,
+        hechos,
+        editando && modoMarcar === 'manzana' ? marcarManzana : undefined,
+      )
+
+      if (!editando || modoMarcar !== 'lado') return
+
       for (const mz of manzanas) {
         if (!mz.geometry_geojson) continue
-        const anillo = anilloDe(mz.geometry_geojson)
-        const propios = ladosDe(mz)
-        const n = hechosDe(mz)
-        const completa = propios.length > 0 && n === propios.length
-        const media = n > 0 && !completa
-        const color = completa ? '#0f6b47' : media ? '#955408' : '#16191d'
-
-        L.polygon(anillo, {
-          color,
-          weight: 2,
-          fillColor: completa ? '#59c48f' : media ? '#f0c987' : '#cbd0d6',
-          fillOpacity: completa ? 0.55 : media ? 0.45 : 0.3,
-          interactive: editando && modoMarcar === 'manzana',
-        })
-          .addTo(capa)
-          .on('click', () => editando && modoMarcar === 'manzana' && marcarManzana(mz))
-
-        if (editando && modoMarcar === 'lado') {
+        {
           const centro: [number, number] = [Number(mz.lat), Number(mz.lng)]
-          for (const lado of propios) {
-            const linea = lado.geometry_geojson.coordinates.map(
-              ([x, y]) => haciaAdentro([y, x], centro),
+          for (const lado of ladosDe(mz)) {
+            const linea = lado.geometry_geojson.coordinates.map(([x, y]: [number, number]) =>
+              haciaAdentro([y, x], centro),
             )
             const ok = hechos.has(lado.id)
             // Debajo de cada linea va otra invisible y gruesa: el dedo mide
@@ -440,24 +499,9 @@ export function PredicacionPage() {
             }).addTo(capa)
           }
         }
-
-        if (!conLetras) continue
-        const c = anillo.reduce(
-          (a, [la, ln]) => [a[0] + la / anillo.length, a[1] + ln / anillo.length],
-          [0, 0],
-        ) as [number, number]
-        L.marker(c, {
-          interactive: false,
-          icon: L.divIcon({
-            className: '',
-            iconSize: [30, 30],
-            iconAnchor: [15, 15],
-            html: `<div class="etiquetaMz" style="width:30px;height:30px;background:${color}">${mz.label}</div>`,
-          }),
-        }).addTo(capa)
       }
     },
-    [manzanas, ladosDe, hechosDe, hechos, modoMarcar, editando, marcarManzana, marcarLado],
+    [manzanas, ladosDe, hechos, modoMarcar, editando, marcarManzana, marcarLado],
   )
 
   const encuadre = useMemo(() => {
@@ -495,7 +539,7 @@ export function PredicacionPage() {
   useEffect(() => {
     if (!mapaListo || !capa.current) return
     capa.current.clearLayers()
-    dibujarPropio(capa.current, true)
+    dibujarPropio(capa.current)
   }, [dibujarPropio, mapaListo])
 
   useEffect(
@@ -769,6 +813,9 @@ export function PredicacionPage() {
                   {marcando ? '✓ Listo, terminé de marcar' : 'Marcar lo que recorrí'}
                 </button>
               )}
+              <button className="boton secundario" onClick={() => setHistorial(true)}>
+                Historial
+              </button>
             </section>
 
             <section className="panel">
@@ -859,6 +906,15 @@ export function PredicacionPage() {
           </button>
         ))}
       </nav>
+
+      {historial && miTerritorio && (
+        <HojaHistorial
+          territorio={miTerritorio}
+          manzanas={manzanas}
+          ladosDe={ladosDe}
+          onCerrar={() => setHistorial(false)}
+        />
+      )}
 
       {hoja && (
         <HojaMapa
@@ -1052,6 +1108,246 @@ function ListaSalidas({
   )
 }
 
+/**
+ * HISTORIAL
+ *
+ * No hace falta guardar "como estaba el territorio el 15 de agosto": la
+ * bitacora tiene cada hecho con su fecha, asi que el estado de un dia se
+ * calcula quedandose con el ultimo hecho de cada lado hasta el final de
+ * ese dia. Eso es lo que compra una tabla de solo agregar.
+ *
+ * Nadie edita esto, ni un admin: update y delete estan revocados a nivel
+ * de privilegio. Corregir es agregar un hecho nuevo que apunta al viejo,
+ * y la correccion queda a la vista. Es mas fuerte que "solo los admin
+ * pueden editar": asi nadie puede hacer desaparecer que algo se informo.
+ */
+function HojaHistorial({
+  territorio,
+  manzanas,
+  ladosDe,
+  onCerrar,
+}: {
+  territorio: Territorio
+  manzanas: Manzana[]
+  ladosDe: (mz: Manzana) => Lado[]
+  onCerrar: () => void
+}) {
+  const [eventos, setEventos] = useState<Evento[] | null>(null)
+  const [dia, setDia] = useState<string | null>(null)
+  const [nombres, setNombres] = useState<Record<string, string>>({})
+  const caja = useRef<HTMLDivElement | null>(null)
+  const mapa = useRef<L.Map | null>(null)
+  const capa = useRef<L.LayerGroup | null>(null)
+
+  useEffect(() => {
+    if (!supabase) return
+    let vivo = true
+    void (async () => {
+      const { data } = await supabase
+        .from('cobertura_eventos')
+        .select('id, lado_id, manzana_id, estado, informado_at, informado_por')
+        .eq('territory_id', territorio.id)
+        .order('informado_at', { ascending: true })
+      if (!vivo) return
+      const filas = (data as Evento[]) ?? []
+      setEventos(filas)
+      const dias = [...new Set(filas.map((e) => soloDia(e.informado_at)))]
+      setDia(dias[dias.length - 1] ?? null)
+
+      // Los nombres pueden no venir: un hermano solo puede leer su propio
+      // perfil. Lo que no llega se muestra como "un hermano", que es la
+      // verdad, en vez de inventar un nombre.
+      const ids = [...new Set(filas.map((e) => e.informado_por).filter(Boolean))] as string[]
+      if (ids.length) {
+        const { data: perfiles } = await supabase.from('profiles').select('id, full_name').in('id', ids)
+        if (vivo) {
+          setNombres(
+            Object.fromEntries(
+              ((perfiles as { id: string; full_name: string | null }[]) ?? []).map((p) => [
+                p.id,
+                p.full_name ?? 'un hermano',
+              ]),
+            ),
+          )
+        }
+      }
+    })()
+    return () => {
+      vivo = false
+    }
+  }, [territorio.id])
+
+  const dias = useMemo(
+    () => [...new Set((eventos ?? []).map((e) => soloDia(e.informado_at)))],
+    [eventos],
+  )
+  const indice = dia ? dias.indexOf(dia) : -1
+
+  // El estado al cierre de un dia: el ultimo hecho de cada lado hasta ahi.
+  const hechosAl = useMemo(() => {
+    const m = new Map<string, string>()
+    if (!eventos || !dia) return new Set<string>()
+    for (const e of eventos) {
+      if (soloDia(e.informado_at) > dia) break
+      m.set(e.lado_id, e.estado)
+    }
+    return new Set([...m.entries()].filter(([, v]) => v === 'recorrido').map(([k]) => k))
+  }, [eventos, dia])
+
+  const delDia = useMemo(
+    () => (eventos ?? []).filter((e) => dia && soloDia(e.informado_at) === dia),
+    [eventos, dia],
+  )
+
+  useEffect(() => {
+    if (!caja.current || !manzanas.length) return
+    const pts = manzanas.flatMap((m) => (m.geometry_geojson ? anilloDe(m.geometry_geojson) : []))
+    if (!pts.length) return
+    const b = L.latLngBounds(pts)
+    if (!mapa.current) {
+      const m = L.map(caja.current, { attributionControl: false, zoomAnimation: false })
+      m.fitBounds(b.pad(0.08), { animate: false })
+      L.tileLayer(TESELAS, { maxZoom: 19 }).addTo(m)
+      capa.current = L.layerGroup().addTo(m)
+      mapa.current = m
+      window.setTimeout(() => {
+        m.invalidateSize({ animate: false, pan: false })
+        m.fitBounds(b.pad(0.08), { animate: false })
+      }, 60)
+    }
+    capa.current!.clearLayers()
+    pintarManzanas(capa.current!, manzanas, ladosDe, hechosAl)
+  }, [manzanas, ladosDe, hechosAl])
+
+  useEffect(() => {
+    document.body.style.overflow = 'hidden'
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && onCerrar()
+    window.addEventListener('keydown', esc)
+    return () => {
+      document.body.style.overflow = ''
+      window.removeEventListener('keydown', esc)
+      mapa.current?.remove()
+      mapa.current = null
+    }
+  }, [onCerrar])
+
+  // Lo que paso ese dia se cuenta por LADO, no por evento: marcar, desmarcar
+  // y volver a marcar la misma calle son tres hechos en la bitacora y un solo
+  // lado recorrido. Vale el ultimo hecho del dia para cada lado.
+  const cierreDelDia = useMemo(() => {
+    const m = new Map<string, Evento>()
+    for (const e of delDia) m.set(e.lado_id, e)
+    return [...m.values()]
+  }, [delDia])
+
+  const porManzana = useMemo(() => {
+    const m = new Map<string, { letra: string; lados: number; quien: Set<string> }>()
+    for (const e of cierreDelDia) {
+      if (e.estado !== 'recorrido') continue
+      const mz = manzanas.find((x) => x.id === e.manzana_id)
+      if (!mz) continue
+      const fila = m.get(mz.id) ?? { letra: mz.label, lados: 0, quien: new Set<string>() }
+      fila.lados++
+      fila.quien.add(e.informado_por ? (nombres[e.informado_por] ?? 'un hermano') : 'alguien')
+      m.set(mz.id, fila)
+    }
+    return [...m.values()].sort((a, b) => a.letra.localeCompare(b.letra))
+  }, [cierreDelDia, manzanas, nombres])
+
+  const deshechos = cierreDelDia.filter((e) => e.estado !== 'recorrido').length
+  const total = manzanas.reduce((t, m) => t + ladosDe(m).length, 0)
+
+  return (
+    <div className="sobre">
+      <div className="sobreBarra">
+        <button className="btnIcono" aria-label="Cerrar el historial" onClick={onCerrar}>
+          ✕
+        </button>
+        <h2>
+          Historial
+          <small>Territorio {territorio.name}</small>
+        </h2>
+      </div>
+
+      {eventos === null ? (
+        <p className="sobrePie">
+          <span aria-hidden="true">◆</span>
+          <span>Cargando…</span>
+        </p>
+      ) : !dias.length ? (
+        <p className="sobrePie">
+          <span aria-hidden="true">◆</span>
+          <span>Todavía no hay nada informado en este territorio.</span>
+        </p>
+      ) : (
+        <>
+          <div className="histBarra">
+            <button
+              className="btnIcono"
+              aria-label="Día anterior"
+              disabled={indice <= 0}
+              onClick={() => setDia(dias[indice - 1])}
+            >
+              ‹
+            </button>
+            <span className="histDia">
+              <strong>{comoSeLlamaElDia(dia!) ?? fechaLarga(dia!)}</strong>
+              <small>
+                {indice + 1} de {dias.length} día{dias.length > 1 ? 's' : ''} con movimiento
+              </small>
+            </span>
+            <button
+              className="btnIcono"
+              aria-label="Día siguiente"
+              disabled={indice >= dias.length - 1}
+              onClick={() => setDia(dias[indice + 1])}
+            >
+              ›
+            </button>
+          </div>
+
+          <div className="sobreCuerpo">
+            <div id="mapaTerr" ref={caja} />
+          </div>
+
+          <div className="histPie">
+            <p className="histResumen">
+              <strong>
+                {hechosAl.size} de {total} lados
+              </strong>{' '}
+              recorridos al cierre de ese día.
+            </p>
+            {porManzana.length === 0 && deshechos === 0 ? (
+              <p className="histNada">Ese día no se marcó nada.</p>
+            ) : (
+              <ul className="histLista">
+                {porManzana.map((f) => (
+                  <li key={f.letra}>
+                    <b>{f.letra}</b>
+                    <span>
+                      {f.lados} lado{f.lados > 1 ? 's' : ''} · {[...f.quien].join(', ')}
+                    </span>
+                  </li>
+                ))}
+                {deshechos > 0 && (
+                  <li className="histDeshecho">
+                    <b>↺</b>
+                    <span>
+                      {deshechos === 1
+                        ? '1 lado que se había marcado y quedó sin recorrer'
+                        : `${deshechos} lados que se habían marcado y quedaron sin recorrer`}
+                    </span>
+                  </li>
+                )}
+              </ul>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 // El mapa a pantalla completa, compartido por los dos casos: el territorio
 // de una salida (mirar) y el propio (marcar).
 function HojaMapa({
@@ -1068,7 +1364,7 @@ function HojaMapa({
   editable?: boolean
   territorio: Territorio | null
   manzanas: Manzana[]
-  dibujarPropio: (capa: L.LayerGroup, conLetras: boolean) => void
+  dibujarPropio: (capa: L.LayerGroup) => void
   onCerrar: () => void
 }) {
   const caja = useRef<HTMLDivElement | null>(null)
@@ -1123,7 +1419,7 @@ function HojaMapa({
     const c = capa.current!
     c.clearLayers()
     if (propio) {
-      dibujarPropio(c, true)
+      dibujarPropio(c)
       return
     }
     const letras = letrasPrioritarias(salida?.priorizar)

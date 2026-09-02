@@ -361,3 +361,32 @@
    —su estado sigue siendo el dato— pero deja de invitar al dedo. */
 .vh .manzana:disabled { cursor: default; opacity: 1; }
 .vh .boton:disabled { opacity: .6; cursor: default; }
+
+/* ------------------------------------------------------- historial */
+/* La fecha manda: es lo que la persona esta mirando. Las flechas miden
+   56px como todo lo que se toca. */
+.vh .histBarra {
+  display: flex; align-items: center; gap: 14px;
+  padding: 12px var(--pad); background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.vh .histDia { flex: 1; min-width: 0; text-align: center; }
+.vh .histDia strong { display: block; font-size: var(--t-lead); font-weight: 600; }
+.vh .histDia small { display: block; font-size: var(--t-label); color: var(--fg-3); }
+.vh .histBarra .btnIcono:disabled { opacity: .35; cursor: default; }
+
+.vh .histPie {
+  max-height: 38vh; overflow-y: auto;
+  padding: 15px var(--pad) calc(15px + env(safe-area-inset-bottom, 0px));
+  background: var(--surface); border-top: 1px solid var(--line);
+}
+.vh .histResumen { margin: 0 0 10px; font-size: var(--t-label); color: var(--fg-2); }
+.vh .histNada { margin: 0; font-size: var(--t-label); color: var(--fg-3); }
+.vh .histLista { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.vh .histLista li { display: flex; align-items: center; gap: 12px; font-size: var(--t-label); color: var(--fg-2); }
+.vh .histLista b {
+  width: 34px; height: 34px; flex: 0 0 auto; display: grid; place-items: center;
+  border-radius: 11px; background: var(--good-bg); color: var(--good-fg);
+  font: 700 17px/1 Urbanist, sans-serif; text-transform: uppercase;
+}
+.vh .histDeshecho b { background: var(--warn-bg); color: var(--warn-fg); }
