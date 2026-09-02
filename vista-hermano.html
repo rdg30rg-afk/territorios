@@ -206,11 +206,21 @@ body {
   border-radius: var(--r-pill); font-size: var(--t-label); font-weight: 600;
   background: var(--canvas); border: 1px solid var(--line); color: var(--fg-2);
 }
-.marca-chip.terr { background: var(--ink); border-color: var(--ink); color: #fff; }
-.marca-chip.priorizar {
-  background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn-fg);
-  align-items: flex-start; padding: 9px 13px; line-height: 1.35;
+/* El territorio es el dato principal de la salida: el cuerpo mas grande
+   de los rotulos y el unico con superficie llena. */
+.marca-chip.terr {
+  background: var(--ink); border-color: var(--ink); color: #fff;
+  font-size: var(--t-lead); font-weight: 700; padding: 7px 16px; letter-spacing: -.01em;
 }
+.marca-chip.terr b { font-weight: 500; font-size: var(--t-label); opacity: .74; }
+/* Priorizar es una nota sobre el territorio, no otra etiqueta del mismo
+   rango. Sin superficie llena, no le compite al numero. El ambar queda
+   solo en la estrella, que es lo que llama la atencion. */
+.marca-chip.priorizar {
+  background: none; border: 0; padding: 0; color: var(--fg-2);
+  font-weight: 500; align-items: flex-start; line-height: 1.35;
+}
+.marca-chip.priorizar b { color: var(--warn-fg); font-size: var(--t-lead); line-height: 1.1; }
 .marca-chip.priorizar span { flex: 1; }
 .marca-chip.tel { background: var(--olive-bg); border-color: var(--olive-line); color: var(--olive-ink); }
 
@@ -554,7 +564,7 @@ function chipsDeSalida (s) {
   if (s.tipo === 'telefonica') c.push('<span class="marca-chip tel">☎ Por teléfono</span>')
   else if (s.tipo === 'grupos') c.push('<span class="marca-chip tel">◆ Cada grupo por su lado</span>')
   else {
-    if (s.terr) c.push(`<span class="marca-chip terr">Territorio ${s.terr}</span>`)
+    if (s.terr) c.push(`<span class="marca-chip terr"><b>Territorio</b> ${s.terr}</span>`)
     if (s.priorizar && s.priorizar !== 'todo') {
       const letras = /^[A-Za-z](,[A-Za-z])*$/.test(s.priorizar)
         ? 'Priorizá las manzanas ' + s.priorizar.split(',').join(', ')
