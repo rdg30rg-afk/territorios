@@ -156,6 +156,10 @@ body {
 .boton.principal { background: var(--lime); color: var(--ink); margin-top: 18px; }
 .boton.principal:active { background: var(--lime-deep); }
 .boton.secundario { background: transparent; color: #fff; border: 1px solid rgba(255,255,255,.28); margin-top: 10px; }
+/* "Chico" es de peso, no de altura: sigue midiendo 56px porque la regla 2
+   no se negocia. Lo que baja es el cuerpo de la letra y el relleno. */
+.boton.chico { background: transparent; border: 1px solid var(--line); color: var(--fg); font-size: var(--t-body); font-weight: 600; margin-top: 10px; }
+.tarjeta .boton.chico { border-color: rgba(255,255,255,.28); color: #fff; }
 
 /* ------------------------------------------------------ manzanas */
 .panel { scroll-margin-top: 84px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); padding: 22px 20px; margin-bottom: 18px; }
@@ -188,7 +192,7 @@ body {
    los barrios al medio ("Bo. Los / Tilos"). Y el barrio se fue de aca: es
    parte del donde, no del cuando. */
 .salida {
-  display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 16px; align-items: start;
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 16px; align-items: start;
   background: var(--surface); border: 1px solid var(--line); border-radius: 18px;
   padding: 16px; margin-bottom: 10px; width: 100%; text-align: left; cursor: pointer;
   font: inherit; color: inherit; min-height: var(--tap);
@@ -205,6 +209,19 @@ body {
    esta regla le ganaba a ".marca-chip.terr" (0-2-0) y pintaba de gris el
    texto de los chips negros: 2,15 de contraste, ilegible. */
 .salida .donde > span { display: block; font-size: var(--t-label); color: var(--fg-2); margin-top: 2px; }
+
+/* La fila se abre en su lugar. Antes tocarla saltaba a Google Maps sin
+   avisar: irse de la app tiene que ser una decision, no un accidente. */
+.salidaBloque { margin-bottom: 10px; }
+.salidaBloque .salida { margin-bottom: 0; }
+.salida .flecha { align-self: center; font-size: 24px; line-height: 1; color: var(--fg-3); transition: transform .15s ease; }
+.salida[aria-expanded='true'] .flecha { transform: rotate(180deg); }
+.salida[aria-expanded='true'] { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.salidaDetalle {
+  background: var(--surface); border: 1px solid var(--line); border-top: 0;
+  border-radius: 0 0 18px 18px; padding: 0 16px 16px;
+}
+.salidaDetalle .mapaMini { margin-top: 0; }
 
 .marcas { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 14px; }
 .marca-chip.priorizar { flex-basis: 100%; margin-top: 4px; }
@@ -247,6 +264,15 @@ body {
 
 /* ---------------------------------------------------------- mapa */
 #mapa { height: 340px; border-radius: 16px; border: 1px solid var(--line); margin-top: 4px; }
+/* El mapa chico no se arrastra ni se hace zoom: adentro de una pagina que
+   scrollea, un mapa que agarra el dedo es una trampa. Se toca y se abre
+   grande, que es lo que la persona queria hacer. */
+.mapaMini { height: 190px; border-radius: 16px; overflow: hidden; margin-top: 16px; background: var(--line); cursor: pointer; }
+.tarjeta .mapaMini { border: 1px solid rgba(255,255,255,.16); }
+.mapaPie { display: flex; gap: 9px; align-items: flex-start; margin: 9px 2px 0; font-size: var(--t-label); color: var(--fg-3); line-height: 1.4; }
+.mapaPie .llave { width: 15px; height: 15px; border-radius: 4px; background: var(--lime); border: 2px solid var(--ink); flex: 0 0 auto; margin-top: 3px; }
+.tarjeta .mapaPie .llave { border-color: #fff; }
+.tarjeta .mapaPie { color: #a4a8b0; }
 .etiquetaMz {
   display: grid; place-items: center; font: 700 15px Urbanist, sans-serif;
   border-radius: 9999px; border: 2px solid #fff; color: #fff;
@@ -291,6 +317,22 @@ body {
 .vacio .marcoVacio { width: 84px; height: 84px; border-radius: 26px; background: var(--olive-bg); color: var(--olive); display: grid; place-items: center; font-size: 38px; margin: 0 auto 18px; }
 .vacio h2 { margin: 0 0 8px; font-size: var(--t-h2); font-weight: 600; }
 .vacio p { margin: 0 0 22px; color: var(--fg-2); }
+
+/* ------------------------------------------- mapa a pantalla completa */
+.sobre { position: fixed; inset: 0; z-index: 60; background: var(--canvas); display: flex; flex-direction: column; }
+.sobre[hidden] { display: none; }
+.sobreBarra { display: flex; align-items: center; gap: 14px; padding: 12px var(--pad); background: var(--surface); border-bottom: 1px solid var(--line); }
+.sobreBarra h2 { flex: 1; min-width: 0; margin: 0; font-size: var(--t-lead); font-weight: 600; letter-spacing: -.02em; }
+.sobreBarra h2 small { display: block; font-size: var(--t-label); font-weight: 500; color: var(--fg-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sobreCuerpo { position: relative; flex: 1; min-height: 0; }
+#mapaTerr { position: absolute; inset: 0; }
+.sobrePie {
+  display: flex; gap: 10px; align-items: flex-start; margin: 0;
+  padding: 15px var(--pad) calc(15px + env(safe-area-inset-bottom, 0px));
+  background: var(--surface); border-top: 1px solid var(--line);
+  font-size: var(--t-label); color: var(--fg-2); line-height: 1.45;
+}
+.sobrePie .llave { width: 17px; height: 17px; border-radius: 5px; background: var(--lime); border: 2px solid var(--ink); flex: 0 0 auto; margin-top: 3px; }
 
 .oculto { display: none !important; }
 </style>
@@ -411,6 +453,16 @@ body {
   </div>
 </div>
 
+<!-- El mapa del territorio de una salida, a pantalla completa. -->
+<div class="sobre" id="sobreMapa" hidden>
+  <div class="sobreBarra">
+    <button class="btnIcono" id="cerrarSobre" aria-label="Cerrar el mapa">&#10005;</button>
+    <h2 id="sobreTitulo"></h2>
+  </div>
+  <div class="sobreCuerpo"><div id="mapaTerr"></div></div>
+  <p class="sobrePie" id="sobrePie"></p>
+</div>
+
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 const NUMERO = '20'
@@ -418,6 +470,9 @@ const VENCE = new Date(2026, 8, 14)   // domingo 14 de septiembre de 2026
 let manzanas = []
 let hechas = new Set(['a','b','c','d','e','f','g','h','i'])
 let mapa = null
+// Las formas de TODOS los territorios, no solo el mio: la salida de hoy
+// puede caer en cualquiera de los 69.
+let formasPorTerr = {}
 
 const DIAS = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado']
 const MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre']
@@ -598,6 +653,7 @@ function tituloSalida (s) {
 
 function pintarSalidas () {
   const cont = document.getElementById('listaSalidas')
+  cerrarDetalles()
   cont.innerHTML = ''
   document.getElementById('periodoSalidas').textContent = periodo
   document.getElementById('notaSalidas').innerHTML = `<span aria-hidden="true">◆</span><span>${notaSalidas}</span>`
@@ -641,6 +697,8 @@ function yaEmpezo (s) {
 function tarjetaSalida (s) {
   const esHoy = s.fecha === hoyISO()
   const paso = yaEmpezo(s)
+  const caja = document.createElement('div')
+  caja.className = 'salidaBloque'
   const b = document.createElement('button')
   b.className = 'salida' + (esHoy ? ' esHoy' : '') + (paso ? ' pasada' : '')
   b.innerHTML = `
@@ -650,17 +708,146 @@ function tarjetaSalida (s) {
       ${s.barrio ? `<span>${s.barrio}</span>` : ''}
       ${s.conductor ? `<span>Conduce ${s.conductor}</span>` : ''}
       <div class="marcas">${chipsDeSalida(s)}</div>
-    </span>`
-  // Solo se ofrece llegar a un lugar cuando hay un lugar.
-  if (s.lugar) {
-    b.onclick = () => window.open(
-      'https://www.google.com/maps/search/?api=1&query=' +
-      encodeURIComponent(`${s.lugar}, San Juan, Argentina`), '_blank')
-  } else {
-    b.style.cursor = 'default'
-  }
-  return b
+    </span>
+    ${s.lugar ? '<span class="flecha" aria-hidden="true">⌄</span>' : ''}`
+  caja.appendChild(b)
+  // Sin lugar no hay a donde ir ni que mostrar: la fila es solo informacion.
+  if (!s.lugar) { b.style.cursor = 'default'; return caja }
+  const det = document.createElement('div')
+  det.className = 'salidaDetalle oculto'
+  caja.appendChild(det)
+  b.setAttribute('aria-expanded', 'false')
+  b.onclick = () => alternarDetalle(s, b, det)
+  return caja
 }
+
+// Se abre de a una. Dos mapas chicos vivos a la vez es memoria tirada.
+let miniAbierto = null
+function cerrarDetalles () {
+  if (miniAbierto) { miniAbierto.remove(); miniAbierto = null }
+  document.querySelectorAll('.salidaDetalle').forEach(d => { d.classList.add('oculto'); d.innerHTML = '' })
+  document.querySelectorAll('.salida[aria-expanded]').forEach(x => x.setAttribute('aria-expanded', 'false'))
+}
+
+function alternarDetalle (s, btn, det) {
+  const estabaAbierto = !det.classList.contains('oculto')
+  cerrarDetalles()
+  if (estabaAbierto) return
+  det.classList.remove('oculto')
+  btn.setAttribute('aria-expanded', 'true')
+  const hay = hayMapaDe(s.terr)
+  det.innerHTML = `
+    ${hay ? '<div class="mapaMini"></div>' + pieDelMiniMapa(s) : ''}
+    <button class="boton principal">Cómo llegar →</button>
+    ${hay ? `<button class="boton chico">Ver el mapa del territorio ${s.terr}</button>` : ''}`
+  det.querySelector('.boton.principal').onclick = () => comoLlegar(s)
+  if (hay) {
+    miniAbierto = montarMiniMapa(det.querySelector('.mapaMini'), s)
+    det.querySelector('.boton.chico').onclick = () => verMapaTerritorio(s)
+  }
+  setTimeout(() => det.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 80)
+}
+
+// ================================================= mapa de la salida
+const TESELAS = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+const hayMapaDe = (terr) => !!(formasPorTerr[terr] || []).length
+
+// "A,D,E,F,G" se puede pintar en el mapa. "hasta Rio Bamba" no: eso es una
+// calle, y no la tenemos. Cuando no se puede, se dice con palabras.
+function letrasPrioritarias (p) {
+  if (!p || p === 'todo') return null
+  if (!/^[A-Za-z](\s*,\s*[A-Za-z])*$/.test(p)) return null
+  return new Set(p.split(',').map(x => x.trim().toLowerCase()))
+}
+
+// La leyenda explica EL VERDE, no la prioridad: si el verde es todo el
+// territorio no hay nada que explicar, y repetir abajo la misma frase que
+// ya dice la estrella arriba es decir dos veces lo mismo.
+function leyendaDelMapa (s) {
+  const letras = letrasPrioritarias(s.priorizar)
+  if (letras) return { llave: true, texto: 'En verde, las manzanas de hoy: ' + s.priorizar.split(',').join(', ') + '.' }
+  if (!s.priorizar || s.priorizar === 'todo') return { llave: false, texto: 'Se recorre el territorio entero.' }
+  return { llave: false, texto: 'Priorizá ' + s.priorizar.replace(/^Manzanas /, 'las manzanas ') + '.' }
+}
+
+// Debajo del mapa chico solo va la leyenda cuando hay algo que descifrar.
+function pieDelMiniMapa (s) {
+  const l = leyendaDelMapa(s)
+  if (!l.llave) return ''
+  return '<p class="mapaPie"><span class="llave" aria-hidden="true"></span><span>' + l.texto + '</span></p>'
+}
+
+function dibujarTerritorio (m, terr, letras, conLetras) {
+  const lista = formasPorTerr[terr] || []
+  if (!lista.length) return null
+  const puntos = []
+  for (const mz of lista) {
+    const anillo = mz.geom.coordinates[0].map(([x, y]) => [y, x])
+    puntos.push(...anillo)
+    const marcada = !letras || letras.has(String(mz.letra).toLowerCase())
+    L.polygon(anillo, {
+      color: marcada ? '#16191d' : '#8d939b',
+      weight: marcada ? 2 : 1,
+      fillColor: marcada ? '#cbea5b' : '#ffffff',
+      fillOpacity: marcada ? .72 : .35,
+    }).addTo(m)
+    if (!conLetras) continue
+    const c = anillo.reduce((a, [la, ln]) => [a[0] + la / anillo.length, a[1] + ln / anillo.length], [0, 0])
+    L.marker(c, {
+      interactive: false,
+      icon: L.divIcon({ className: '', iconSize: [30, 30], iconAnchor: [15, 15],
+        html: '<div class="etiquetaMz" style="width:30px;height:30px;background:' +
+          (marcada ? '#16191d' : '#8d939b') + '">' + mz.letra + '</div>' }),
+    }).addTo(m)
+  }
+  return L.latLngBounds(puntos)
+}
+
+function montarMiniMapa (caja, s) {
+  const m = L.map(caja, {
+    attributionControl: false, zoomControl: false, dragging: false, tap: false,
+    scrollWheelZoom: false, doubleClickZoom: false, touchZoom: false, boxZoom: false, keyboard: false,
+  })
+  L.tileLayer(TESELAS, { maxZoom: 19 }).addTo(m)
+  const b = dibujarTerritorio(m, s.terr, letrasPrioritarias(s.priorizar), false)
+  m.on('click', () => verMapaTerritorio(s))
+  setTimeout(() => { m.invalidateSize(); if (b) m.fitBounds(b.pad(0.15)) }, 60)
+  return m
+}
+
+function comoLlegar (s) {
+  window.open('https://www.google.com/maps/search/?api=1&query=' +
+    encodeURIComponent(s.lugar + ', San Juan, Argentina'), '_blank')
+}
+
+let mapaTerrInst = null
+function verMapaTerritorio (s) {
+  const sobre = document.getElementById('sobreMapa')
+  sobre.hidden = false
+  document.getElementById('sobreTitulo').innerHTML =
+    'Territorio ' + s.terr + (s.lugar ? '<small>Se sale de ' + s.lugar + '</small>' : '')
+  const l = leyendaDelMapa(s)
+  document.getElementById('sobrePie').innerHTML =
+    (l.llave ? '<span class="llave" aria-hidden="true"></span>' : '<span aria-hidden="true">◆</span>') +
+    '<span>' + l.texto + '</span>'
+  if (mapaTerrInst) { mapaTerrInst.remove(); mapaTerrInst = null }
+  mapaTerrInst = L.map('mapaTerr', { attributionControl: false })
+  L.tileLayer(TESELAS, { maxZoom: 19 }).addTo(mapaTerrInst)
+  const b = dibujarTerritorio(mapaTerrInst, s.terr, letrasPrioritarias(s.priorizar), true)
+  setTimeout(() => { mapaTerrInst.invalidateSize(); if (b) mapaTerrInst.fitBounds(b.pad(0.08)) }, 60)
+  // Con el mapa a pantalla completa, la pagina de atras no scrollea: el dedo
+  // arrastra el mapa, que es lo unico que hay.
+  document.body.style.overflow = 'hidden'
+  document.getElementById('cerrarSobre').focus()
+}
+
+function cerrarSobre () {
+  document.body.style.overflow = ''
+  document.getElementById('sobreMapa').hidden = true
+  if (mapaTerrInst) { mapaTerrInst.remove(); mapaTerrInst = null }
+}
+document.getElementById('cerrarSobre').onclick = cerrarSobre
+addEventListener('keydown', (e) => { if (e.key === 'Escape') cerrarSobre() })
 
 // ============================================================== hoy
 function pintarHoy () {
@@ -690,6 +877,10 @@ function pintarHoy () {
       : 'No hay salidas cargadas.'
   }
 
+  // Los mapas de Leaflet no se limpian solos con innerHTML: quedan
+  // escuchando el resize y el repintado de la pantalla para siempre.
+  if (mapaHoyInst) { mapaHoyInst.remove(); mapaHoyInst = null }
+  cerrarDetalles()
   cont.innerHTML = ''
 
   // La tarjeta oscura es para lo que tiene hora y vence: la salida de hoy.
@@ -709,10 +900,12 @@ function pintarHoy () {
   cont.appendChild(resumenTerritorio(faltan))
 }
 
+let mapaHoyInst = null
 function tarjetaDestacada (s, esFutura) {
   const d = document.createElement('section')
   d.className = 'tarjeta'
   const apodo = comoSeLlamaElDia(s.fecha) || fechaLarga(s.fecha)
+  const hay = hayMapaDe(s.terr)
   d.innerHTML = `
     <p class="rotulo">${esFutura ? 'La próxima salida' : 'La salida de hoy'}</p>
     <p class="numeroGrande">${s.hora} <small>${apodo}</small></p>
@@ -723,17 +916,21 @@ function tarjetaDestacada (s, esFutura) {
         </svg>
       </span>
       <span>
-        <strong>${s.lugar}</strong>
+        <strong>${tituloSalida(s)}</strong>
         <small>${s.barrio || 'San Juan'}${s.conductor ? ' · Conduce ' + s.conductor : ''}</small>
       </span>
     </div>
     <div class="marcas">${chipsDeSalida(s)}</div>
-    <button class="boton principal" id="bComoLlegar">Cómo llegar →</button>`
+    ${hay ? '<div class="mapaMini"></div>' + pieDelMiniMapa(s) : ''}
+    ${s.lugar ? '<button class="boton principal" id="bComoLlegar">Cómo llegar →</button>' : ''}
+    ${hay ? `<button class="boton chico" id="bMapaTerr">Ver el mapa del territorio ${s.terr}</button>` : ''}`
   setTimeout(() => {
     const b = d.querySelector('#bComoLlegar')
-    if (b) b.onclick = () => window.open(
-      'https://www.google.com/maps/search/?api=1&query=' +
-      encodeURIComponent(`${s.lugar}, San Juan, Argentina`), '_blank')
+    if (b) b.onclick = () => comoLlegar(s)
+    const t = d.querySelector('#bMapaTerr')
+    if (t) t.onclick = () => verMapaTerritorio(s)
+    const caja = d.querySelector('.mapaMini')
+    if (caja) mapaHoyInst = montarMiniMapa(caja, s)
   }, 0)
   return d
 }
@@ -786,7 +983,8 @@ Promise.all([
 ])
   .then(([sal, d]) => {
     if (sal) { salidas = sal.salidas; periodo = sal.periodo; notaSalidas = sal.nota; pintarSalidas() }
-    manzanas = (d && d.territorios[NUMERO]) || []
+    formasPorTerr = (d && d.territorios) || {}
+    manzanas = formasPorTerr[NUMERO] || []
     pintarHoy()
     if (!manzanas.length) {
       document.getElementById('tarjeta').classList.add('oculto')
