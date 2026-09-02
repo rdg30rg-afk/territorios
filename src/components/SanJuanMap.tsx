@@ -66,15 +66,21 @@ type TerritoryRecord = {
 }
 
 /**
- * Formas de las manzanas, servidas como archivo estatico.
+ * Formas de las manzanas.
  *
- * La base guarda cada manzana como un punto (label + lat + lng): no tiene
- * donde poner un poligono. Antes que cambiarle el esquema, las formas viajan
- * en public/datos/manzanas-territorios.json, indexadas por numero de
- * territorio, que es el campo `name` de la tabla territorios.
+ * La forma vive en territorio_manzanas.geometry_geojson. El archivo estatico
+ * public/datos/manzanas-territorios.json quedo como respaldo para las bases
+ * que todavia no tienen esa columna.
  *
- * Si el archivo falta o falla, el mapa sigue funcionando como siempre: se
- * dibujan los puntos de la base. Nunca es un requisito para operar.
+ * El archivo se indexa por el `name` del territorio y sus letras NO son las
+ * de la base: se genero reasignando letras N->S / O->E, y al cruzarlo con el
+ * respaldo, 412 de 508 coincidencias por letra tenian la forma de otra
+ * manzana. Por eso, cuando la base trae geometria, manda la base y el
+ * archivo ni se mira: emparejar por letra da el poligono equivocado en
+ * cuatro de cada cinco casos, sin fallar.
+ *
+ * Si no hay ni una cosa ni la otra, se dibujan los puntos, que es el
+ * comportamiento de siempre. Nunca es un requisito para operar.
  */
 type ManzanaForma = {
   letra: string
@@ -88,6 +94,7 @@ type TerritoryBlockRecord = {
   lat: number
   lng: number
   created_at: string
+  geometry_geojson?: { type: 'Polygon'; coordinates: [number, number][][] } | null
 }
 
 type TerritoryListItem = TerritoryRecord & {
@@ -1254,12 +1261,24 @@ export function SanJuanMap() {
 
     blockLayer.clearLayers()
 
-    // Territorios que tienen forma en el archivo: para esos se dibuja el
-    // poligono y se omiten sus puntos, para no mostrar las dos cosas encima.
+    // Territorios que tienen forma: para esos se dibuja el poligono y se
+    // omiten sus puntos, para no mostrar las dos cosas encima.
     const conForma = new Set<string>()
 
+    // La base primero. Emparejada por territory_id, que es exacto, y no por
+    // el numero del territorio como el archivo.
+    const formasDeLaBase = new Map<string, ManzanaForma[]>()
+    territoryBlocks.forEach((block) => {
+      if (!block.geometry_geojson?.coordinates?.length) {
+        return
+      }
+      const lista = formasDeLaBase.get(block.territory_id) ?? []
+      lista.push({ letra: block.label, geom: block.geometry_geojson })
+      formasDeLaBase.set(block.territory_id, lista)
+    })
+
     territories.forEach((territory, index) => {
-      const formas = manzanaFormas[territory.name]
+      const formas = formasDeLaBase.get(territory.id) ?? manzanaFormas[territory.name]
       if (!formas?.length) {
         return
       }
@@ -1634,10 +1653,21 @@ export function SanJuanMap() {
         .from('territorios')
         .select('id, name, description, polygon_geojson, created_at')
           .order('created_at', { ascending: false }),
+        // La geometria puede no existir todavia (base sin la migracion de
+        // cobertura). Se pide, y si la columna no esta se reintenta sin ella
+        // en vez de dejar el mapa sin manzanas.
         client
           .from('territorio_manzanas')
-          .select('id, territory_id, label, lat, lng, created_at')
-          .order('label', { ascending: true }),
+          .select('id, territory_id, label, lat, lng, created_at, geometry_geojson')
+          .order('label', { ascending: true })
+          .then((res) =>
+            res.error?.code === '42703'
+              ? client
+                  .from('territorio_manzanas')
+                  .select('id, territory_id, label, lat, lng, created_at')
+                  .order('label', { ascending: true })
+              : res,
+          ),
       ])
 
       if (!isMounted) {
