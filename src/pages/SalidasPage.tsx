@@ -474,7 +474,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
             key: `${day.dateKey}-manana`,
             dayLabel: day.dayLabel.split(',')[0] ?? day.dayLabel,
             dateLabel: formatShortPlannerDate(day.dateKey),
-            periodLabel: 'Manana',
+            periodLabel: 'Mañana',
             typeLabel: 'Salida territorial',
             slots: day.morningSlots,
           },

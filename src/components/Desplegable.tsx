@@ -52,6 +52,13 @@ export function Desplegable({
   const [caja, setCaja] = useState<{ top: number; left: number; width: number; arriba: boolean }>()
 
   const disparador = useRef<HTMLButtonElement>(null)
+  // Donde se dibuja la lista. Normalmente el body, pero si el desplegable
+  // esta adentro de un <dialog> abierto tiene que ir adentro de ese
+  // dialog: showModal() lo pone en el "top layer" del navegador, que esta
+  // por encima de cualquier z-index, asi que una lista colgada del body
+  // queda tapada por la ventana. Se veia justo asi -- solo asomaba el
+  // pedazo que sobresalia de la tarjeta.
+  const [donde, setDonde] = useState<HTMLElement | null>(null)
   const lista = useRef<HTMLDivElement>(null)
   const tecleado = useRef({ texto: '', cuando: 0 })
 
@@ -115,6 +122,7 @@ export function Desplegable({
 
   const abrir = () => {
     if (deshabilitado) return
+    setDonde(disparador.current?.closest('dialog[open]') ?? document.body)
     const i = visibles.findIndex((o) => o.valor === valor)
     setActiva(i >= 0 ? i : 0)
     setBusqueda('')
@@ -212,7 +220,7 @@ export function Desplegable({
         <span className="desplegable-flecha" aria-hidden="true" />
       </button>
 
-      {abierto && caja
+      {abierto && caja && donde
         ? createPortal(
             <div
               ref={lista}
@@ -260,7 +268,7 @@ export function Desplegable({
                 )}
               </div>
             </div>,
-            document.body,
+            donde,
           )
         : null}
     </>

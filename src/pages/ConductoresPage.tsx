@@ -33,17 +33,17 @@ const statusLabels: Record<DriverStatus, string> = {
 const weekDays = [
   { value: 1, label: 'Lunes' },
   { value: 2, label: 'Martes' },
-  { value: 3, label: 'Miercoles' },
+  { value: 3, label: 'Miércoles' },
   { value: 4, label: 'Jueves' },
   { value: 5, label: 'Viernes' },
-  { value: 6, label: 'Sabado' },
+  { value: 6, label: 'Sábado' },
   { value: 0, label: 'Domingo' },
 ]
 
 const availabilityTurns: Array<{ value: DriverAvailabilityTurn; label: string }> = [
-  { value: 'manana', label: 'Manana' },
+  { value: 'manana', label: 'Mañana' },
   { value: 'tarde', label: 'Tarde' },
-  { value: 'telefonica', label: 'Telefonica' },
+  { value: 'telefonica', label: 'Telefónica' },
 ]
 
 const emptyAvailability: DriverAvailability = {
@@ -455,7 +455,7 @@ export function ConductoresPage() {
                   type="search"
                   value={searchTerm}
                   onChange={(event) => setSearchTerm(event.target.value)}
-                  placeholder="Buscar por nombre, telefono u observacion"
+                  placeholder="Buscar por nombre, teléfono u observación"
                 />
               </label>
 
@@ -488,7 +488,7 @@ export function ConductoresPage() {
             <div className="module-table-shell">
               <div className="module-table module-table-head driver-availability-table">
                 <span>Conductor</span>
-                <span>Telefono</span>
+                <span>Teléfono</span>
                 <span>Disponibilidad</span>
                 <span>Estado</span>
                 <span>Acciones</span>
@@ -606,10 +606,12 @@ export function ConductoresPage() {
 
               <div className="availability-editor">
                 <div>
-                  <strong>Disponibilidad por dia</strong>
-                  <span>
-                    Marca un dia y luego elige si puede conducir de manana, tarde
-                    o telefonica.
+                  <strong>Disponibilidad por día</strong>
+                  {/* En bloque: strong y span pegados salian como
+                      "Disponibilidad por diaMarca un dia...". */}
+                  <span style={{ display: 'block' }}>
+                    Tildá un día y después elegí si puede conducir a la mañana, a
+                    la tarde o por teléfono.
                   </span>
                 </div>
                 <div className="availability-day-list">
@@ -700,7 +702,7 @@ export function ConductoresPage() {
             {selectedDriver ? (
               <div className="module-detail-list">
                 <div className="module-detail-card">
-                  <span>Telefono</span>
+                  <span>Teléfono</span>
                   <strong>{selectedDriver.phone || 'Sin telefono cargado'}</strong>
                 </div>
                 <div className="module-detail-card">
