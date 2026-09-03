@@ -84,7 +84,13 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,svg,png,ico,json}'],
       },
       devOptions: {
-        enabled: true,
+        // Apagado. El service worker de desarrollo secuestraba el editor:
+        // la pagina cargaba, el worker se activaba con autoUpdate, forzaba
+        // una recarga y el navigateFallback contestaba index.html. La app
+        // arrancaba, no encontraba la ruta y te sacaba a otro lado. El
+        // denylist del bloque de arriba solo lo respeta el worker del
+        // build, no el de desarrollo.
+        enabled: false,
       },
     }),
   ],

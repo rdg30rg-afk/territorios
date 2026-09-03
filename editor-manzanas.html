@@ -221,8 +221,8 @@
           <span id="estadoArchivo">Conectando con la base…</span>
           <button class="mini" id="bVincular">copia en disco</button>
         </div>
-        <button class="b pri" id="bGuardarBD" style="width:100%;margin-bottom:8px">Guardar en la base</button>
-        <button class="b sec" id="bComparar" style="width:100%;margin-bottom:8px">Comparar con la base</button>
+        <button class="b pri" id="bGuardarBD" style="width:100%;margin-bottom:8px">Guardar este territorio</button>
+        <button class="b sec" id="bComparar" style="width:100%;margin-bottom:8px">Ver qué falta guardar</button>
         <button class="b sec" id="bExport">Exportar</button>
         <button class="b sec" id="bImport">Importar</button>
         <button class="b dan" id="bReset">Vaciar</button>
@@ -1099,10 +1099,14 @@ function refrescarPanel () {
     sel.style.display = ''
     document.querySelectorAll('#chipsLetras button').forEach(b =>
       b.classList.toggle('on', b.dataset.l === (t.letras || 'orden')))
+    document.getElementById('bGuardarBD').textContent = `Guardar el territorio ${t.numero}`
     document.getElementById('infoSel').innerHTML =
       `<strong style="font-weight:500">Territorio ${t.numero}</strong> · Sector ${t.sector}<br>
        <span style="color:var(--suave)">${propias.length} manzanas · ${(m2 / 10000).toFixed(1)} ha</span>`
-  } else sel.style.display = 'none'
+  } else {
+    sel.style.display = 'none'
+    document.getElementById('bGuardarBD').textContent = 'Guardar este territorio'
+  }
 }
 
 // Volver a "nada seleccionado": el mapa queda entero a la vista y el panel
@@ -2408,9 +2412,9 @@ document.getElementById('bGuardarBD').onclick = async () => {
   const caras = propias.reduce((n, m) => n + carasDeMz(m).length, 0)
   const ok = await dialogo({
     titulo: 'Guardar el territorio ' + t.numero,
-    cuerpo: 'Se van a reemplazar sus manzanas en la base por las <b>' + propias.length +
-            '</b> que tenés dibujadas, con <b>' + caras + ' caras</b>.<br><br>' +
-            'Si ya había trabajo informado, el dibujo viejo no se borra: se retira y queda en el historial.',
+    cuerpo: 'Los hermanos van a ver este territorio con las <b>' + propias.length +
+            '</b> manzanas que dibujaste y sus <b>' + caras + ' cuadras</b>.<br><br>' +
+            'Si alguien ya había informado trabajo acá, no se borra: queda en el historial.',
     aceptar: 'Guardar',
   })
   if (!ok) return
@@ -2446,12 +2450,12 @@ document.getElementById('bGuardarBD').onclick = async () => {
     }
     const res = JSON.parse(txt)
     avisar('Territorio <b>' + t.numero + '</b> guardado: ' + res.manzanas + ' manzanas, ' +
-      res.lados + ' caras.' +
+      res.lados + ' cuadras.' +
       (res.manzanas_retiradas
         ? '<br>Se retiraron ' + res.manzanas_retiradas + ' manzanas del dibujo anterior.' : '') +
       (res.lados_con_cobertura_retirados
         ? '<br><b>Ojo:</b> ' + res.lados_con_cobertura_retirados +
-          ' caras con trabajo informado quedaron en el dibujo viejo.' : ''))
+          ' cuadras con trabajo informado quedaron en el dibujo viejo.' : ''))
     void traerDeLaBase()
   } catch (e) {
     avisar('No se pudo guardar: ' + e.message)
@@ -2552,7 +2556,7 @@ function cancelarLetras () {
 async function traerDeLaBase (avisando = false) {
   const token = tokenDeSesion()
   if (!BD_URL || !BD_KEY || !token) {
-    if (avisando) avisar('Para comparar con la base, entrá a la app en este navegador y volvé.')
+    if (avisando) avisar('Para ver qué falta guardar, entrá a la app en este navegador y volvé.')
     return
   }
   try {
@@ -2573,8 +2577,8 @@ async function traerDeLaBase (avisando = false) {
         else if (b !== n) distintos++
         else iguales++
       }
-      avisar(`Comparado con la base: <b>${iguales}</b> igual${iguales === 1 ? '' : 'es'}, ` +
-        `<b>${distintos}</b> con diferencias y <b>${sinCargar}</b> sin cargar.`)
+      avisar(`<b>${iguales}</b> territorio${iguales === 1 ? '' : 's'} ya guardado${iguales === 1 ? '' : 's'}, ` +
+        `<b>${distintos}</b> con cambios sin guardar y <b>${sinCargar}</b> sin guardar nunca.`)
     }
   } catch (e) {
     if (avisando) avisar('No se pudo leer la base: ' + String(e.message).slice(0, 120))
@@ -2617,11 +2621,11 @@ function pintarEstadoBorrador () {
     ? borradorHora.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
     : null
   const mapa = {
-    sin_sesion: ['Sin sesión: se guarda solo en este navegador. Entrá a la app y volvé.', true],
-    guardando: ['Guardando en la base…', false],
-    guardado: [hora ? `Guardado en la base · ${hora}` : 'Guardado en la base', false],
-    local: ['No se pudo escribir en la base. Por ahora solo en este navegador.', true],
-    vacio: ['Todavía no hay borrador en la base. Se crea con tu primer cambio.', false],
+    sin_sesion: ['Sin sesión: tu trabajo no se está guardando. Entrá a la app y volvé.', true],
+    guardando: ['Guardando…', false],
+    guardado: [hora ? `Tu trabajo está guardado · ${hora}` : 'Tu trabajo está guardado', false],
+    local: ['No se pudo guardar. Por ahora solo queda en esta computadora.', true],
+    vacio: ['Todavía no se guardó nada. Se guarda solo con tu primer cambio.', false],
     conflicto: ['Otra persona guardó después que vos. Recargá antes de seguir.', true],
   }
   const [texto, alarma] = mapa[borradorEstado] || mapa.local
