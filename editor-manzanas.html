@@ -172,6 +172,7 @@
         <span style="font-size:11.5px;color:var(--suave);margin-right:2px">Letras</span>
         <button data-l="orden" class="on">como marco</button>
         <button data-l="proximidad">por cercanía</button>
+        <button data-l="mano">a mano</button>
       </div>
       <button class="b sec" id="bManzanas" style="width:100%;margin-top:6px">☰ Ver y depurar sus manzanas</button>
       <button class="b sec" id="bDerivar" style="width:100%;margin-top:6px">+ Nuevo territorio después de este</button>
@@ -222,6 +223,7 @@
         </div>
         <button class="b pri" id="bTraer" style="width:100%;margin-bottom:8px">Traer del sistema actual</button>
         <button class="b pri" id="bGuardarBD" style="width:100%;margin-bottom:8px">Guardar en la base</button>
+        <button class="b sec" id="bComparar" style="width:100%;margin-bottom:8px">Comparar con la base</button>
         <label class="archivo" style="cursor:pointer;margin-bottom:8px;width:100%;display:flex;align-items:center;gap:8px">
           <input type="checkbox" id="cCaras"><span>ver las caras que van a salir</span>
         </label>
@@ -249,6 +251,7 @@
       <button data-h="marcar">✛ Marcar manzanas <span class="k">6</span></button>
       <button data-h="borrar" class="quita">🗑 Borrar manzana <span class="k">7</span></button>
       <button data-h="caras">▤ Arreglar caras <span class="k">8</span></button>
+      <button data-h="letras">A Poner las letras <span class="k">9</span></button>
     </div>
 
     <div class="flot ctx">
@@ -298,6 +301,8 @@ let herramienta = 'ver'
 let vecinos = 0   // 0 = solo el territorio elegido
 let verLetras = true
 let verCaras = false     // el editor muestra las caras que va a guardar
+let letrasNuevas = []    // ids en el orden en que se van tocando para reletrar
+let enLaBase = null      // numero de territorio -> manzanas que hay hoy en la base
 let paraFusionar = []
 let cortePuntos = []
 let historial = []
@@ -467,6 +472,7 @@ const capaEdicion = L.layerGroup().addTo(mapa)
 const capaDibujo = L.layerGroup().addTo(mapa)
 const capaFoco = L.layerGroup().addTo(mapa)
 const capaCaras = L.layerGroup().addTo(mapa)
+const capaLetrasNuevas = L.layerGroup().addTo(mapa)
 // Cada nivel de zoom muestra lo suyo. A escala de ciudad las manzanas sueltas
 // no significan nada y solo ensucian: ahi se ven los territorios, no las manzanas.
 const ZOOM_MANZANAS = 15   // debajo de esto, las manzanas libres se ocultan
@@ -765,6 +771,19 @@ function alClic (idManzana, ev) {
     return
   }
 
+  if (herramienta === 'letras') {
+    if (m.territorio !== activo) return avisar('Esa manzana no es del territorio abierto.')
+    if (letrasNuevas.includes(idManzana)) {
+      // Volver a tocar una ya elegida la saca, con las que vinieron despues:
+      // corregir un error a mitad de camino no puede obligar a empezar todo.
+      letrasNuevas = letrasNuevas.slice(0, letrasNuevas.indexOf(idManzana))
+    } else {
+      letrasNuevas = letrasNuevas.concat(idManzana)
+    }
+    pintarLetrasNuevas()
+    return
+  }
+
   if (herramienta === 'editar') { iniciarEdicion(idManzana); return }
 
   if (herramienta === 'dividir') {
@@ -1044,9 +1063,20 @@ function refrescarPanel () {
     const n = [...manzanas.values()].filter(m => m.territorio === t.id).length
     const b = document.createElement('button')
     b.className = 'terr' + (t.id === activo ? ' activo' : '')
+    // Lo que dice la base, si se pudo consultar. Sin esto no hay forma de
+    // saber que territorios ya se guardaron y cuales quedaron a medias: son
+    // 69 y se guardan de a uno.
+    const enBase = enLaBase ? enLaBase.get(String(t.numero)) : undefined
+    let estado = n ? 'ver' : 'vacío'
+    let color = 'var(--suave)'
+    if (enLaBase && n) {
+      if (enBase === undefined || enBase === 0) { estado = 'sin cargar'; color = '#b45309' }
+      else if (enBase !== n) { estado = `base: ${enBase}`; color = '#b45309' }
+      else { estado = '✓ guardado'; color = '#0f6b47' }
+    }
     b.innerHTML = `<span class="num" style="background:${t.color}">${t.numero}</span>
       <span><strong>Territorio ${t.numero}</strong><small>Sector ${t.sector} · ${n} manzana${n === 1 ? '' : 's'}</small></span>
-      <span style="color:var(--suave);font-size:11px">${n ? 'ver' : 'vacío'}</span>`
+      <span style="color:${color};font-size:11px">${estado}</span>`
     b.onclick = () => { activo = t.id; mzSel.clear(); enfocar(t.id); refrescar() }
     cont.appendChild(b)
   }
@@ -1663,6 +1693,11 @@ document.querySelectorAll('#chipsLetras button').forEach(b => {
   b.onclick = () => {
     if (!activo) return
     const t = territorios.get(activo)
+    // "A mano" no es un orden automatico: abre la herramienta para que la
+    // persona toque las manzanas en el orden que quiere.
+    if (b.dataset.l === 'mano') {
+      return document.querySelector('.herr button[data-h="letras"]').click()
+    }
     if ((t.letras || 'orden') === b.dataset.l) return
     instantanea()
     t.letras = b.dataset.l
@@ -1772,6 +1807,11 @@ document.querySelectorAll('.herr button').forEach(b => {
     if (b.dataset.h === herramienta && herramienta !== 'ver' && !dibujo.length) {
       return document.querySelector('.herr button[data-h="ver"]').click()
     }
+    // Poner letras a medio camino tampoco se tira sin avisar.
+    if (letrasNuevas.length && b.dataset.h !== 'letras') {
+      return avisar(`Llevás <b>${letrasNuevas.length}</b> manzana${letrasNuevas.length === 1 ? '' : 's'} con letra nueva. ` +
+        '<b>Enter</b> aplica, <b>Esc</b> cancela.')
+    }
     // Un dibujo empezado no se tira sin avisar: se cierra o se descarta a mano.
     if (dibujo.length && b.dataset.h !== 'dibujar') {
       return avisar(`Tenés una manzana a medio dibujar con <b>${dibujo.length} punto${dibujo.length === 1 ? '' : 's'}</b>. ` +
@@ -1793,10 +1833,12 @@ document.querySelectorAll('.herr button').forEach(b => {
       editar: 'Hacé clic en una manzana para <b>mover sus vértices</b>. Los puntos claros agregan uno nuevo; clic derecho borra. <b>Esc</b> termina.',
       dibujar: '<b>Dibujar manzana:</b> hacé clic para poner los puntos. Con el <b>imán</b> se pegan a las esquinas de las manzanas vecinas.',
       borrar: 'Hacé clic en una manzana para <b>borrarla</b> del prototipo. <b>Cmd+Z</b> la devuelve.',
+      letras: 'Tocá las manzanas en el <b>orden</b> que querés que queden: la primera va a ser la <b>A</b>, la segunda la <b>B</b>. <b>Enter</b> aplica lo que llevás, <b>Esc</b> cancela.',
       caras: 'Cada manzana muestra sus <b>caras</b>. Los puntos <b>llenos</b> son las uniones: tocá uno para <b>unir</b> las dos caras. Los <b>huecos</b> parten la cara ahí. <b>Cmd+Z</b> vuelve atrás.',
     }
     avisar(herramienta === 'caras' && activo ? ayuda.caras + '<br>' + resumenCaras() : ayuda[herramienta])
     pintarCaras()
+    pintarLetrasNuevas()
     cerrarBurbuja()
     // El iman necesita los vecinos ya pasados a pixeles antes del primer clic.
     prepararIman()
@@ -1894,6 +1936,13 @@ addEventListener('keydown', (e) => {
       dibujo.pop(); pintarDibujo(); pistaDibujo()
       return
     }
+    // Igual que con el dibujo: con letras a medio poner, Cmd+Z saca la
+    // ultima que tocaste, no el paso anterior del historial.
+    if (herramienta === 'letras' && letrasNuevas.length) {
+      letrasNuevas = letrasNuevas.slice(0, -1)
+      pintarLetrasNuevas()
+      return
+    }
     if (e.shiftKey) rehacer(); else deshacer()
     return
   }
@@ -1902,6 +1951,7 @@ addEventListener('keydown', (e) => {
     // Se va soltando de a una cosa por vez, de lo mas chico a lo mas grande:
     // primero el gesto en curso, y recien al final el territorio.
     if (dibujo.length) { cancelarDibujo(); avisar('Dibujo descartado.'); return }
+    if (cancelarLetras()) return
     if (burbuja) { cerrarBurbuja(); return }
     if (edicion) { terminarEdicion(); return }
     if (paraFusionar.length) { paraFusionar = []; refrescarMapa(); return }
@@ -1916,13 +1966,17 @@ addEventListener('keydown', (e) => {
     return
   }
 
+  if (herramienta === 'letras' && letrasNuevas.length && e.key === 'Enter') {
+    e.preventDefault(); aplicarLetrasNuevas(); return
+  }
+
   if (herramienta === 'dibujar' && dibujo.length) {
     if (e.key === 'Enter') { e.preventDefault(); cerrarDibujo(); return }
     if (e.key === 'Backspace') { e.preventDefault(); dibujo.pop(); pintarDibujo(); pistaDibujo(); return }
   }
 
   // Cambio de herramienta. No con Cmd/Ctrl: eso es un atajo del navegador.
-  const map = { 1: 'dibujar', 2: 'dividir', 3: 'fusionar', 4: 'mover', 5: 'editar', 6: 'marcar', 7: 'borrar', 8: 'caras' }
+  const map = { 1: 'dibujar', 2: 'dividir', 3: 'fusionar', 4: 'mover', 5: 'editar', 6: 'marcar', 7: 'borrar', 8: 'caras', 9: 'letras' }
   if (map[e.key] && !conMando) document.querySelector(`.herr button[data-h="${map[e.key]}"]`).click()
 })
 
@@ -2382,11 +2436,137 @@ document.getElementById('bGuardarBD').onclick = async () => {
       (res.lados_con_cobertura_retirados
         ? '<br><b>Ojo:</b> ' + res.lados_con_cobertura_retirados +
           ' caras con trabajo informado quedaron en el dibujo viejo.' : ''))
+    void traerDeLaBase()
   } catch (e) {
     avisar('No se pudo guardar: ' + e.message)
     await dialogo({ titulo: 'No se guardó', cuerpo: String(e.message) })
   }
 }
+
+/* ====================================================================
+   PONER LAS LETRAS A MANO
+   --------------------------------------------------------------------
+   Habia dos ordenes automaticos: el de marcado y el geografico. Ninguno
+   sirve cuando el recorrido real de la manzana lo decide otra cosa: por
+   donde se entra, donde para el colectivo, que vereda conviene primero.
+
+   No hace falta un campo nuevo. La letra ya sale de `orden`, asi que
+   poner letras a mano es RE-SELLAR ese orden con el que la persona toca
+   las manzanas. Guardar, deshacer y exportar siguen funcionando igual.
+
+   Durante el paso NO se toca `m.letra`: las letras provisorias se
+   dibujan en su propia capa. Si se toca el dato antes de la foto del
+   historial, Cmd+Z devuelve al lio a medio hacer en vez de al principio.
+   ==================================================================== */
+
+function pintarLetrasNuevas () {
+  capaLetrasNuevas.clearLayers()
+  if (herramienta !== 'letras') return
+  letrasNuevas.forEach((id, i) => {
+    const m = manzanas.get(id)
+    if (!m) return
+    const c = centroid(feat(m.geom)).geometry.coordinates
+    L.marker([c[1], c[0]], {
+      interactive: false,
+      icon: L.divIcon({
+        className: '',
+        html: '<span style="background:#7c3aed;color:#fff;border-radius:50%;width:22px;height:22px;' +
+              'display:grid;place-items:center;font:700 12px/1 system-ui;box-shadow:0 1px 4px rgba(0,0,0,.35)">' +
+              (LETRAS[i] || '·') + '</span>',
+        iconSize: [22, 22],
+        iconAnchor: [11, 11],
+      }),
+    }).addTo(capaLetrasNuevas)
+  })
+
+  const total = [...manzanas.values()].filter(m => m.territorio === activo).length
+  const n = letrasNuevas.length
+  if (!n) {
+    avisar('Tocá las manzanas en el <b>orden</b> que querés: la primera va a ser la <b>A</b>. ' +
+      'Tocar una ya elegida la saca junto con las que vinieron después.')
+  } else if (n >= total) {
+    aplicarLetrasNuevas()
+  } else {
+    avisar(`Vas <b>${n}</b> de ${total}. La próxima va a ser la <b>${LETRAS[n]}</b>. ` +
+      '<b>Enter</b> aplica lo que llevás, <b>Esc</b> cancela.')
+  }
+}
+
+function aplicarLetrasNuevas () {
+  if (!letrasNuevas.length || !activo) return
+  const elegidas = letrasNuevas
+  // Recien aca se toca el dato: la accion ya no puede fallar.
+  instantanea()
+  elegidas.forEach((id, i) => {
+    const m = manzanas.get(id)
+    if (m) m.orden = i
+  })
+  // Las que no se tocaron van despues, respetando el orden que traian.
+  const resto = [...manzanas.values()]
+    .filter(m => m.territorio === activo && !elegidas.includes(m.id))
+    .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0))
+  resto.forEach((m, k) => { m.orden = elegidas.length + k })
+
+  const t = territorios.get(activo)
+  if (t) t.letras = 'orden'
+  // El contador global tiene que quedar por encima de lo que acabamos de
+  // sellar, o la proxima manzana que se sume aterriza en el medio.
+  ordenSiguiente = Math.max(ordenSiguiente, elegidas.length + resto.length)
+
+  letrasNuevas = []
+  capaLetrasNuevas.clearLayers()
+  reletrar(activo)
+  refrescar()
+  avisar(`Letras puestas a mano: <b>${elegidas.length}</b> manzana${elegidas.length === 1 ? '' : 's'} en el orden que marcaste` +
+    (resto.length ? `, y ${resto.length} atrás.` : '.') + ' <b>Cmd+Z</b> vuelve atrás.')
+}
+
+function cancelarLetras () {
+  if (!letrasNuevas.length) return false
+  letrasNuevas = []
+  capaLetrasNuevas.clearLayers()
+  avisar('Se dejaron las letras como estaban.')
+  return true
+}
+
+/* Que dice la base hoy. Se guarda de a un territorio por vez y son 69:
+   sin esto no hay forma de saber cual ya se subio, cual quedo a medias y
+   cual todavia no existe alla. La vista cobertura_territorio ya trae la
+   cuenta de manzanas vigentes por territorio, asi que es una consulta. */
+async function traerDeLaBase (avisando = false) {
+  const token = tokenDeSesion()
+  if (!BD_URL || !BD_KEY || !token) {
+    if (avisando) avisar('Para comparar con la base, entrá a la app en este navegador y volvé.')
+    return
+  }
+  try {
+    const r = await fetch(`${BD_URL}/rest/v1/cobertura_territorio?select=name,manzanas`, {
+      headers: { apikey: BD_KEY, Authorization: 'Bearer ' + token },
+    })
+    if (!r.ok) throw new Error(await r.text())
+    const filas = await r.json()
+    enLaBase = new Map(filas.map((f) => [String(f.name), Number(f.manzanas) || 0]))
+    refrescarPanel()
+    if (avisando) {
+      let iguales = 0, distintos = 0, sinCargar = 0
+      for (const t of territorios.values()) {
+        const n = [...manzanas.values()].filter((m) => m.territorio === t.id).length
+        if (!n) continue
+        const b = enLaBase.get(String(t.numero))
+        if (!b) sinCargar++
+        else if (b !== n) distintos++
+        else iguales++
+      }
+      avisar(`Comparado con la base: <b>${iguales}</b> igual${iguales === 1 ? '' : 'es'}, ` +
+        `<b>${distintos}</b> con diferencias y <b>${sinCargar}</b> sin cargar.`)
+    }
+  } catch (e) {
+    if (avisando) avisar('No se pudo leer la base: ' + String(e.message).slice(0, 120))
+  }
+}
+
+document.getElementById('bComparar').onclick = () => traerDeLaBase(true)
+void traerDeLaBase()
 </script>
 </body>
 </html>
