@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Desplegable } from '../components/Desplegable'
 import { useAuth } from '../context/useAuth'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 
@@ -290,28 +291,26 @@ export function TerritorioPersonalPage() {
             <form className="form-stack" onSubmit={handleSubmit}>
               <label>
                 Territorio
-                <select
-                  value={territoryId}
-                  onChange={(event) => setTerritoryId(event.target.value)}
-                  disabled={!canManagePersonalTerritories}
-                >
-                  <option value="">Seleccionar territorio</option>
-                  {territories.map((territory) => {
-                    const reservation = activeReservationsByTerritory.get(territory.id)
+                <Desplegable
+                  etiqueta="Elegir territorio"
+                  valor={territoryId}
+                  alElegir={setTerritoryId}
+                  deshabilitado={!canManagePersonalTerritories}
+                  opciones={[
+                    { valor: '', texto: 'Elegir territorio' },
+                    ...territories.map((territory) => {
+                      const reserva = activeReservationsByTerritory.get(territory.id)
 
-                    return (
-                      <option
-                        key={territory.id}
-                        value={territory.id}
-                        disabled={Boolean(reservation)}
-                      >
-                        {reservation
-                          ? `${territory.name} - reservado para ${reservation.reserved_for}`
-                          : territory.name}
-                      </option>
-                    )
-                  })}
-                </select>
+                      return {
+                        valor: territory.id,
+                        deshabilitada: Boolean(reserva),
+                        texto: reserva
+                          ? `${territory.name} - reservado para ${reserva.reserved_for}`
+                          : territory.name,
+                      }
+                    }),
+                  ]}
+                />
               </label>
 
               {selectedTerritory ? (

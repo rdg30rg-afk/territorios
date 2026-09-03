@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { ModuleKey, ProfileRole } from '../context/AuthTypes'
+import { Desplegable } from '../components/Desplegable'
 import { useAuth } from '../context/useAuth'
 import { supabase } from '../lib/supabase'
 import '../styles/inicio-admin.css'
@@ -447,44 +448,40 @@ function UserAccessPanel() {
 
         <label>
           Asignacion
-          <select
-            value={draftRole}
-            onChange={(event) =>
-              setDraftRoles((current) => ({
-                ...current,
-                [user.id]: event.target.value as ProfileRole,
-              }))
+          <Desplegable
+            etiqueta="Asignacion"
+            valor={draftRole}
+            deshabilitado={isDisabled}
+            alElegir={(valor) =>
+              setDraftRoles((current) => ({ ...current, [user.id]: valor as ProfileRole }))
             }
-            disabled={isDisabled}
-          >
-            {manageableRoles.map((role) => (
-              <option key={role.value} value={role.value}>
-                {role.label}
-              </option>
-            ))}
-          </select>
+            opciones={manageableRoles.map((role) => ({
+              valor: role.value,
+              texto: role.label,
+            }))}
+          />
         </label>
 
         <label>
           Conductor vinculado
-          <select
-            value={draftDriverId}
-            onChange={(event) =>
-              setDraftDriverIds((current) => ({
-                ...current,
-                [user.id]: event.target.value,
-              }))
+          <Desplegable
+            etiqueta="Conductor vinculado"
+            valor={draftDriverId}
+            deshabilitado={isDisabled}
+            alElegir={(valor) =>
+              setDraftDriverIds((current) => ({ ...current, [user.id]: valor }))
             }
-            disabled={isDisabled}
-          >
-            <option value="">Sin vincular</option>
-            {drivers.map((driver) => (
-              <option key={driver.id} value={driver.id}>
-                {driver.full_name}
-                {driver.status !== 'activo' ? ` (${driver.status})` : ''}
-              </option>
-            ))}
-          </select>
+            opciones={[
+              { valor: '', texto: 'Sin vincular' },
+              ...drivers.map((driver) => ({
+                valor: driver.id,
+                texto:
+                  driver.status !== 'activo'
+                    ? `${driver.full_name} (${driver.status})`
+                    : driver.full_name,
+              })),
+            ]}
+          />
         </label>
 
         <div className="admin-module-checks">

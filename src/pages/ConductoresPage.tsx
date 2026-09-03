@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Desplegable } from '../components/Desplegable'
 import { Falta } from '../components/Falta'
 import { Modal } from '../components/Modal'
 import { useAuth } from '../context/useAuth'
@@ -460,17 +461,17 @@ export function ConductoresPage() {
 
               <label className="inline-filter">
                 Estado
-                <select
-                  value={statusFilter}
-                  onChange={(event) =>
-                    setStatusFilter(event.target.value as 'todos' | DriverStatus)
-                  }
-                >
-                  <option value="todos">Todos</option>
-                  <option value="activo">Activos</option>
-                  <option value="pendiente">Pendientes</option>
-                  <option value="inactivo">Inactivos</option>
-                </select>
+                <Desplegable
+                  etiqueta="Estado"
+                  valor={statusFilter}
+                  alElegir={(valor) => setStatusFilter(valor as 'todos' | DriverStatus)}
+                  opciones={[
+                    { valor: 'todos', texto: 'Todos' },
+                    { valor: 'activo', texto: 'Activos' },
+                    { valor: 'pendiente', texto: 'Pendientes' },
+                    { valor: 'inactivo', texto: 'Inactivos' },
+                  ]}
+                />
               </label>
             </div>
           </div>
@@ -590,15 +591,17 @@ export function ConductoresPage() {
 
               <label>
                 Estado
-                <select
-                  value={status}
-                  onChange={(event) => setStatus(event.target.value as DriverStatus)}
-                  disabled={!canManageDrivers}
-                >
-                  <option value="activo">Activo</option>
-                  <option value="pendiente">Pendiente</option>
-                  <option value="inactivo">Inactivo</option>
-                </select>
+                <Desplegable
+                  etiqueta="Estado"
+                  valor={status}
+                  alElegir={(valor) => setStatus(valor as DriverStatus)}
+                  deshabilitado={!canManageDrivers}
+                  opciones={[
+                    { valor: 'activo', texto: 'Activo' },
+                    { valor: 'pendiente', texto: 'Pendiente' },
+                    { valor: 'inactivo', texto: 'Inactivo' },
+                  ]}
+                />
               </label>
 
               <div className="availability-editor">

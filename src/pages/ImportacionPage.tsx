@@ -59,6 +59,7 @@ type Registro = {
   estado: 'pendiente' | 'aplicado' | 'conflicto' | 'descartado'
   motivo: string | null
   destino_tabla: string | null
+  destino_tipo: string | null
   revisado_at: string | null
 }
 
@@ -89,6 +90,7 @@ type Resumen = {
   total: number
   porEstado: Record<string, number>
   porTipo: Record<string, number>
+  sinEvidencia: number
 }
 
 const ESTADOS = ['pendiente', 'aplicado', 'conflicto', 'descartado'] as const
@@ -131,7 +133,7 @@ export function ImportacionPage() {
 
   const [corridas, setCorridas] = useState<Importacion[] | null>(null)
   const [corrida, setCorrida] = useState<string | null>(null)
-  const [resumen, setResumen] = useState<Resumen>({ total: 0, porEstado: {}, porTipo: {} })
+  const [resumen, setResumen] = useState<Resumen>({ total: 0, porEstado: {}, porTipo: {}, sinEvidencia: 0 })
   const [filtroTipo, setFiltroTipo] = useState<string>('todos')
   const [filtroEstado, setFiltroEstado] = useState<string>('conflicto')
   const [registros, setRegistros] = useState<Registro[] | null>(null)
@@ -187,10 +189,18 @@ export function ImportacionPage() {
       Promise.all(ESTADOS.map(async (e) => [e, await contar('estado', e)] as const)),
       Promise.all(TIPOS.map(async (t) => [t, await contar('tipo', t)] as const)),
     ])
+    const { count: sinEvidencia, error: cierresError } = await cliente
+      .from('historical_resolution_closures')
+      .select('id', { count: 'exact', head: true })
+      .eq('source_importation_id', corrida)
+    if (cierresError) {
+      setError(cierresError.message)
+    }
     setResumen({
       total,
       porEstado: Object.fromEntries(estados),
       porTipo: Object.fromEntries(tipos.filter(([, n]) => n > 0)),
+      sinEvidencia: sinEvidencia ?? 0,
     })
   }, [corrida])
 
@@ -204,7 +214,7 @@ export function ImportacionPage() {
     setRegistros(null)
     let q = supabase
       .from('importacion_registros')
-      .select('id, pestania, fila, rango, tipo, bruto, normalizado, estado, motivo, destino_tabla, revisado_at')
+      .select('id, pestania, fila, rango, tipo, bruto, normalizado, estado, motivo, destino_tabla, destino_tipo, revisado_at')
       .eq('importacion_id', corrida)
       .order('pestania', { ascending: true })
       .order('fila', { ascending: true })
@@ -353,6 +363,11 @@ export function ImportacionPage() {
             <strong>{resumen.porEstado.descartado ?? 0}</strong>
             <small>no entran, y se ve por qué</small>
           </article>
+          <article className="module-stat-card">
+            <span>Sin evidencia</span>
+            <strong>{resumen.sinEvidencia}</strong>
+            <small>cierre histórico auditable</small>
+          </article>
         </div>
       </section>
 
@@ -433,6 +448,7 @@ function FilaRegistro({
   const celdas = celdasConAlgo(r.bruto)
   const errores = r.bruto?.errores_formula ?? []
   const yaDecidida = (r.normalizado as { decision_humana?: unknown } | null)?.decision_humana
+  const cierreSinEvidencia = r.destino_tipo === 'historical_closure'
 
   return (
     <li className={`imp-fila imp-${r.estado}`}>
@@ -449,6 +465,12 @@ function FilaRegistro({
 
       {abierto && (
         <div className="imp-cuerpo">
+          {cierreSinEvidencia && (
+            <p className="imp-alerta imp-cierre">
+              Cierre auditable: sin evidencia suficiente. No se creó una relación operativa,
+              una fecha/hora ni un resultado.
+            </p>
+          )}
           {errores.length > 0 && (
             <p className="imp-alerta">
               El Excel devuelve error en {errores.length === 1 ? 'la columna' : 'las columnas'}{' '}

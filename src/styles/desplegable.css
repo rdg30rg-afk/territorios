@@ -1,0 +1,131 @@
+/* La lista desplegable propia. Los colores salen de los tokens del tema
+   activo; aca va la forma y el comportamiento visual. */
+
+.desplegable {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--panel-border, #e5e0d4);
+  border-radius: 10px;
+  background: var(--panel-bg, #fff);
+  color: var(--text-main, #16191d);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.desplegable:hover:not(:disabled) { border-color: var(--accent, #5f7d0a); }
+
+.desplegable:disabled {
+  background: var(--page-bg, #f6f4ee);
+  color: var(--text-soft, #6a6e77);
+  cursor: not-allowed;
+}
+
+/* Sin elegir, el rotulo es un marcador de posicion y no un valor: se ve
+   como el placeholder de un campo de texto, no como texto escrito. */
+.desplegable-vacio .desplegable-texto { color: var(--text-soft, #6a6e77); }
+
+.desplegable-texto {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desplegable-flecha {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-right: 1.8px solid var(--text-soft, #6a6e77);
+  border-bottom: 1.8px solid var(--text-soft, #6a6e77);
+  transform: translateY(-3px) rotate(45deg);
+}
+
+.desplegable[aria-expanded='true'] {
+  border-color: var(--accent, #5f7d0a);
+}
+
+.desplegable[aria-expanded='true'] .desplegable-flecha {
+  transform: translateY(1px) rotate(-135deg);
+}
+
+/* La lista vive en el body, fuera de la tabla: la grilla del planificador
+   tiene overflow:hidden y la recortaria. */
+.desplegable-lista {
+  position: fixed;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  max-height: 320px;
+  padding: 6px;
+  border: 1px solid var(--panel-border, #e5e0d4);
+  border-radius: 12px;
+  background: var(--panel-bg, #fff);
+  box-shadow: 0 18px 40px rgba(22, 25, 29, 0.18);
+}
+
+.desplegable-buscar {
+  min-height: 40px;
+  margin-bottom: 6px;
+  padding: 0 10px;
+  border: 1px solid var(--panel-border, #e5e0d4);
+  border-radius: 9px;
+  background: var(--page-bg, #f6f4ee);
+  color: inherit;
+  font: inherit;
+}
+
+.desplegable-opciones {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.desplegable-opcion {
+  display: block;
+  width: 100%;
+  min-height: 38px;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* La opcion bajo el cursor o bajo la flecha del teclado se marca igual:
+   una sola idea de "esta es la que va a entrar si apretas Enter". */
+.desplegable-opcion[data-activa='si'] {
+  background: var(--page-bg, #f0f6dd);
+}
+
+/* La ya elegida lleva un tilde ademas del peso: no depende del color. */
+.desplegable-opcion.elegida {
+  font-weight: 600;
+  color: var(--accent-dark, #516608);
+}
+
+.desplegable-opcion.elegida::after {
+  content: ' ✓';
+}
+
+.desplegable-opcion:disabled {
+  color: var(--text-soft, #6a6e77);
+  cursor: not-allowed;
+}
+
+.desplegable-nada {
+  margin: 0;
+  padding: 14px 10px;
+  color: var(--text-soft, #6a6e77);
+}

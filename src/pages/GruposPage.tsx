@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Desplegable } from '../components/Desplegable'
 import { Falta } from '../components/Falta'
 import { Modal } from '../components/Modal'
 import { useAuth } from '../context/useAuth'
@@ -384,17 +385,19 @@ export function GruposPage() {
 
               <label className="inline-filter">
                 Asignacion
-                <select
-                  value={assignmentFilter}
-                  onChange={(event) =>
-                    setAssignmentFilter(event.target.value as 'todos' | GroupAssignment)
+                <Desplegable
+                  etiqueta="Asignacion"
+                  valor={assignmentFilter}
+                  alElegir={(valor) =>
+                    setAssignmentFilter(valor as 'todos' | GroupAssignment)
                   }
-                >
-                  <option value="todos">Todos</option>
-                  <option value="superintendente">Superintendentes</option>
-                  <option value="siervo">Siervos de grupo</option>
-                  <option value="auxiliar">Auxiliares de grupo</option>
-                </select>
+                  opciones={[
+                    { valor: 'todos', texto: 'Todos' },
+                    { valor: 'superintendente', texto: 'Superintendentes' },
+                    { valor: 'siervo', texto: 'Siervos de grupo' },
+                    { valor: 'auxiliar', texto: 'Auxiliares de grupo' },
+                  ]}
+                />
               </label>
             </div>
           </div>
@@ -527,33 +530,33 @@ export function GruposPage() {
 
               <label>
                 Nombre y Apellido
-                <select
-                  value={driverId}
-                  onChange={(event) => setDriverId(event.target.value)}
-                  disabled={!canManageGroups}
-                >
-                  <option value="">Seleccionar desde conductores</option>
-                  {activeDrivers.map((driver) => (
-                    <option key={driver.id} value={driver.id}>
-                      {driver.full_name}
-                    </option>
-                  ))}
-                </select>
+                <Desplegable
+                  etiqueta="Elegir desde conductores"
+                  valor={driverId}
+                  alElegir={setDriverId}
+                  deshabilitado={!canManageGroups}
+                  opciones={[
+                    { valor: '', texto: 'Elegir desde conductores' },
+                    ...activeDrivers.map((driver) => ({
+                      valor: driver.id,
+                      texto: driver.full_name,
+                    })),
+                  ]}
+                />
               </label>
 
               <label>
                 Asignacion
-                <select
-                  value={assignment}
-                  onChange={(event) => setAssignment(event.target.value as GroupAssignment)}
-                  disabled={!canManageGroups}
-                >
-                  {assignmentOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+                <Desplegable
+                  etiqueta="Asignacion"
+                  valor={assignment}
+                  alElegir={(valor) => setAssignment(valor as GroupAssignment)}
+                  deshabilitado={!canManageGroups}
+                  opciones={assignmentOptions.map((option) => ({
+                    valor: option.value,
+                    texto: option.label,
+                  }))}
+                />
               </label>
 
               {error ? <div className="form-feedback error">{error}</div> : null}

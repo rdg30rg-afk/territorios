@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { Falta } from '../components/Falta'
+import { Desplegable } from '../components/Desplegable'
 import { Modal } from '../components/Modal'
 import { useAuth } from '../context/useAuth'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
@@ -1544,75 +1545,76 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                         placeholder="Direccion de salida"
                         disabled={!canManageOutings}
                       />
-                      <select
-                        value={draft?.driverId ?? ''}
-                        onChange={(event) =>
-                          handlePlannerDraftFieldChange(row, {
-                            driverId: event.target.value,
-                          })
+                      <Desplegable
+                        etiqueta="Conductor"
+                        valor={draft?.driverId ?? ''}
+                        deshabilitado={!canManageOutings}
+                        alElegir={(valor) =>
+                          handlePlannerDraftFieldChange(row, { driverId: valor })
                         }
-                        disabled={!canManageOutings}
-                      >
-                        <option value="">Conductor</option>
-                        {selectedRowSlot && availableRowDrivers.length === 0 ? (
-                          <option value="" disabled>
-                            No hay conductores disponibles
-                          </option>
-                        ) : null}
-                        {availableRowDrivers.map((driver) => (
-                          <option key={driver.id} value={driver.id}>
-                            {driver.full_name}
-                          </option>
-                        ))}
-                      </select>
-                      <select
-                        value={selectedRowSlot?.key ?? ''}
-                        onChange={(event) =>
-                          handleSelectPlannerRowSlot(row, event.target.value)
-                        }
-                        disabled={!canManageOutings || row.slots.length === 0}
-                      >
-                        <option value="">Elegir horario</option>
-                        {row.slots.map((slot) => (
-                          <option key={slot.key} value={slot.key}>
-                            {slot.timeLabel}
-                          </option>
-                        ))}
-                      </select>
-                      <select
-                        value={draft?.territoryId ?? ''}
-                        onChange={(event) =>
+                        opciones={[
+                          { valor: '', texto: 'Conductor' },
+                          ...(selectedRowSlot && availableRowDrivers.length === 0
+                            ? [
+                                {
+                                  valor: '',
+                                  texto: 'No hay conductores disponibles',
+                                  deshabilitada: true,
+                                },
+                              ]
+                            : []),
+                          ...availableRowDrivers.map((driver) => ({
+                            valor: driver.id,
+                            texto: driver.full_name,
+                          })),
+                        ]}
+                      />
+                      <Desplegable
+                        etiqueta="Elegir horario"
+                        valor={selectedRowSlot?.key ?? ''}
+                        deshabilitado={!canManageOutings || row.slots.length === 0}
+                        alElegir={(valor) => handleSelectPlannerRowSlot(row, valor)}
+                        opciones={[
+                          { valor: '', texto: 'Elegir horario' },
+                          ...row.slots.map((slot) => ({
+                            valor: slot.key,
+                            texto: slot.timeLabel,
+                          })),
+                        ]}
+                      />
+                      <Desplegable
+                        etiqueta="Territorio"
+                        valor={draft?.territoryId ?? ''}
+                        deshabilitado={!canManageOutings}
+                        alElegir={(valor) =>
                           handlePlannerDraftFieldChange(row, {
-                            territoryId: event.target.value,
+                            territoryId: valor,
                             meetingCoords: null,
-                            mapOpen: Boolean(event.target.value),
+                            mapOpen: Boolean(valor),
                           })
                         }
-                        disabled={!canManageOutings}
-                      >
-                        <option value="">Territorio</option>
-                        {territories.map((territory) => {
-                          const reservedByGroup = reservedTerritoriesByOtherGroups.get(
-                            territory.id,
-                          )
-                          const reservedForPersonalUse =
-                            reservedTerritoriesByPersonalUse.get(territory.id)
+                        opciones={[
+                          { valor: '', texto: 'Territorio' },
+                          ...territories.map((territory) => {
+                            const reservadoPorGrupo = reservedTerritoriesByOtherGroups.get(
+                              territory.id,
+                            )
+                            const reservadoPersonal = reservedTerritoriesByPersonalUse.get(
+                              territory.id,
+                            )
 
-                          return (
-                            <option
-                              key={territory.id}
-                              value={territory.id}
-                              disabled={Boolean(reservedByGroup || reservedForPersonalUse)}
-                            >
-                              {reservedByGroup
-                                ? `${territory.name} - reservado por ${reservedByGroup}`
-                                : reservedForPersonalUse
-                                  ? `${territory.name} - reservado para ${reservedForPersonalUse}`
-                                : territory.name}
-                            </option>
-                          )
-                        })}
-                      </select>
+                            return {
+                              valor: territory.id,
+                              deshabilitada: Boolean(reservadoPorGrupo || reservadoPersonal),
+                              texto: reservadoPorGrupo
+                                ? `${territory.name} - reservado por ${reservadoPorGrupo}`
+                                : reservadoPersonal
+                                  ? `${territory.name} - reservado para ${reservadoPersonal}`
+                                  : territory.name,
+                            }
+                          }),
+                        ]}
+                      />
                       <button
                         type="button"
                         className="secondary-button outing-map-toggle"
@@ -1699,48 +1701,47 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
 
               <label className="inline-filter">
                 Territorio
-                <select
-                  value={territoryFilter}
-                  onChange={(event) => setTerritoryFilter(event.target.value)}
-                >
-                  <option value="todos">Todos</option>
-                  {territories.map((territory) => {
-                    const reservedByGroup = reservedTerritoriesByOtherGroups.get(
-                      territory.id,
-                    )
-                    const reservedForPersonalUse =
-                      reservedTerritoriesByPersonalUse.get(territory.id)
+                <Desplegable
+                  etiqueta="Territorio"
+                  valor={territoryFilter}
+                  alElegir={setTerritoryFilter}
+                  opciones={[
+                    { valor: 'todos', texto: 'Todos' },
+                          ...territories.map((territory) => {
+                            const reservadoPorGrupo = reservedTerritoriesByOtherGroups.get(
+                              territory.id,
+                            )
+                            const reservadoPersonal = reservedTerritoriesByPersonalUse.get(
+                              territory.id,
+                            )
 
-                    return (
-                      <option
-                        key={territory.id}
-                        value={territory.id}
-                        disabled={Boolean(reservedByGroup || reservedForPersonalUse)}
-                      >
-                        {reservedByGroup
-                          ? `${territory.name} - reservado por ${reservedByGroup}`
-                          : reservedForPersonalUse
-                            ? `${territory.name} - reservado para ${reservedForPersonalUse}`
-                          : territory.name}
-                      </option>
-                    )
-                  })}
-                </select>
+                            return {
+                              valor: territory.id,
+                              deshabilitada: Boolean(reservadoPorGrupo || reservadoPersonal),
+                              texto: reservadoPorGrupo
+                                ? `${territory.name} - reservado por ${reservadoPorGrupo}`
+                                : reservadoPersonal
+                                  ? `${territory.name} - reservado para ${reservadoPersonal}`
+                                  : territory.name,
+                            }
+                          }),
+                  ]}
+                />
               </label>
 
               <label className="inline-filter">
                 Agenda
-                <select
-                  value={scheduleFilter}
-                  onChange={(event) =>
-                    setScheduleFilter(event.target.value as ScheduleFilter)
-                  }
-                >
-                  <option value="todos">Todas</option>
-                  <option value="hoy">Hoy</option>
-                  <option value="proximas">Proximas</option>
-                  <option value="pasadas">Pasadas</option>
-                </select>
+                <Desplegable
+                  etiqueta="Agenda"
+                  valor={scheduleFilter}
+                  alElegir={(valor) => setScheduleFilter(valor as ScheduleFilter)}
+                  opciones={[
+                    { valor: 'todos', texto: 'Todas' },
+                    { valor: 'hoy', texto: 'Hoy' },
+                    { valor: 'proximas', texto: 'Proximas' },
+                    { valor: 'pasadas', texto: 'Pasadas' },
+                  ]}
+                />
               </label>
             </div>
           </div>
@@ -1871,34 +1872,33 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
 
               <label>
                 Territorio
-                <select
-                  value={territoryId}
-                  onChange={(event) => setTerritoryId(event.target.value)}
-                  disabled={!canManageOutings}
-                >
-                  <option value="">Seleccionar territorio</option>
-                  {territories.map((territory) => {
-                    const reservedByGroup = reservedTerritoriesByOtherGroups.get(
-                      territory.id,
-                    )
-                    const reservedForPersonalUse =
-                      reservedTerritoriesByPersonalUse.get(territory.id)
+                <Desplegable
+                  etiqueta="Elegir territorio"
+                  valor={territoryId}
+                  alElegir={setTerritoryId}
+                  deshabilitado={!canManageOutings}
+                  opciones={[
+                    { valor: '', texto: 'Elegir territorio' },
+                          ...territories.map((territory) => {
+                            const reservadoPorGrupo = reservedTerritoriesByOtherGroups.get(
+                              territory.id,
+                            )
+                            const reservadoPersonal = reservedTerritoriesByPersonalUse.get(
+                              territory.id,
+                            )
 
-                    return (
-                      <option
-                        key={territory.id}
-                        value={territory.id}
-                        disabled={Boolean(reservedByGroup || reservedForPersonalUse)}
-                      >
-                        {reservedByGroup
-                          ? `${territory.name} - reservado por ${reservedByGroup}`
-                          : reservedForPersonalUse
-                            ? `${territory.name} - reservado para ${reservedForPersonalUse}`
-                            : territory.name}
-                      </option>
-                    )
-                  })}
-                </select>
+                            return {
+                              valor: territory.id,
+                              deshabilitada: Boolean(reservadoPorGrupo || reservadoPersonal),
+                              texto: reservadoPorGrupo
+                                ? `${territory.name} - reservado por ${reservadoPorGrupo}`
+                                : reservadoPersonal
+                                  ? `${territory.name} - reservado para ${reservadoPersonal}`
+                                  : territory.name,
+                            }
+                          }),
+                  ]}
+                />
               </label>
 
               {selectedFormTerritory ? (
@@ -1932,42 +1932,51 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
 
               <label>
                 Conductor
-                <select
-                  value={driverId}
-                  onChange={(event) => setDriverId(event.target.value)}
-                  disabled={!canManageOutings}
-                >
-                  <option value="">Seleccionar conductor</option>
-                  {selectedPlannerSlot &&
-                  getAvailableDriversForSlot(selectedPlannerSlot).length === 0 ? (
-                    <option value="" disabled>
-                      No hay conductores disponibles
-                    </option>
-                  ) : null}
-                  {getAvailableDriversForSlot(selectedPlannerSlot).map((driver) => (
-                    <option key={driver.id} value={driver.id}>
-                      {driver.full_name}
-                    </option>
-                  ))}
-                </select>
+                <Desplegable
+                  etiqueta="Elegir conductor"
+                  valor={driverId}
+                  alElegir={setDriverId}
+                  deshabilitado={!canManageOutings}
+                  opciones={[
+                    { valor: '', texto: 'Elegir conductor' },
+                    ...(selectedPlannerSlot &&
+                    getAvailableDriversForSlot(selectedPlannerSlot).length === 0
+                      ? [
+                          {
+                            valor: '',
+                            texto: 'No hay conductores disponibles',
+                            deshabilitada: true,
+                          },
+                        ]
+                      : []),
+                    ...getAvailableDriversForSlot(selectedPlannerSlot).map((driver) => ({
+                      valor: driver.id,
+                      texto: driver.full_name,
+                    })),
+                  ]}
+                />
               </label>
 
               <label>
                 Grupo
-                <select
-                  value={groupId}
-                  onChange={(event) => setGroupId(event.target.value)}
-                  disabled={!canManageOutings || isGroupServiceDelegate}
-                >
-                  <option value="">
-                    {isGroupServiceDelegate ? 'Sin grupo asociado' : 'Sin grupo asignado'}
-                  </option>
-                  {(isGroupServiceDelegate ? serviceGroupAssignments : selectableGroups).map((group) => (
-                    <option key={group.id} value={group.id}>
-                      {getGroupLabel(group)}
-                    </option>
-                  ))}
-                </select>
+                <Desplegable
+                  etiqueta="Grupo"
+                  valor={groupId}
+                  alElegir={setGroupId}
+                  deshabilitado={!canManageOutings || isGroupServiceDelegate}
+                  opciones={[
+                    {
+                      valor: '',
+                      texto: isGroupServiceDelegate
+                        ? 'Sin grupo asociado'
+                        : 'Sin grupo asignado',
+                    },
+                    ...(isGroupServiceDelegate
+                      ? serviceGroupAssignments
+                      : selectableGroups
+                    ).map((group) => ({ valor: group.id, texto: getGroupLabel(group) })),
+                  ]}
+                />
               </label>
 
               <label>
