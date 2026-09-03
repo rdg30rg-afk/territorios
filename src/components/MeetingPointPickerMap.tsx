@@ -84,7 +84,22 @@ export function MeetingPointPickerMap({
 
     mapRef.current = map
 
+    // MapLibre mide su contenedor una sola vez, cuando se crea. Dentro de
+    // la ventana modal el contenedor todavia no tenia tamanio, asi que caia
+    // en su medida por defecto: medido en pantalla, un panel de 518x343 con
+    // un lienzo de 400x300. Eso es el hueco a la derecha y las calles
+    // corridas respecto del recuadro.
+    //
+    // Un ResizeObserver cubre los tres casos de una: la ventana que se
+    // abre, la del navegador que cambia de tamanio, y el panel que se
+    // reacomoda solo. Avisarle una vez al abrir arreglaria unicamente el
+    // primero.
+    const contenedor = mapContainerRef.current
+    const observador = new ResizeObserver(() => map.resize())
+    observador.observe(contenedor)
+
     return () => {
+      observador.disconnect()
       markerRef.current?.remove()
       map.remove()
       mapRef.current = null

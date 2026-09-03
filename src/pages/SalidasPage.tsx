@@ -1856,7 +1856,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
           abierto={formularioAbierto}
           alCerrar={cerrarFormulario}
           titulo={editingOutingId ? 'Editar salida' : 'Nueva salida'}
-          bajada="Direccion, territorio, conductor y punto de encuentro."
+          bajada="Dirección, territorio, conductor y punto de encuentro."
         >
           <form className="form-stack" onSubmit={handleSubmit}>
               {selectedPlannerSlot ? (
@@ -1934,7 +1934,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
               ) : null}
 
               <label>
-                Direccion de la salida / punto de encuentro
+                Dirección de la salida / punto de encuentro
                 <input
                   value={meetingPointName}
                   onChange={(event) => setMeetingPointName(event.target.value)}
@@ -1993,10 +1993,10 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
               </label>
 
               <label>
-                Dia y horario elegidos
+                Día y horario elegidos
                 <input
                   value={scheduledFor ? formatLocalDate(new Date(scheduledFor).toISOString()) : ''}
-                  placeholder="Selecciona un slot en la grilla"
+                  placeholder="Elegí un horario en la grilla de arriba"
                   disabled
                 />
               </label>
@@ -2056,11 +2056,11 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
 
               <div className="map-picker-panel">
                 <div className="map-picker-head">
-                  <strong>Ubicacion geolocalizada</strong>
+                  <strong>Punto de encuentro en el mapa</strong>
                   <span>
                     {meetingCoords
                       ? `${meetingCoords[1].toFixed(6)}, ${meetingCoords[0].toFixed(6)}`
-                      : 'Haz clic sobre el mapa para fijar el punto'}
+                      : 'Tocá el mapa para marcar dónde se juntan'}
                   </span>
                 </div>
                 <Suspense fallback={<MapFallback />}>
