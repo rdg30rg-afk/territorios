@@ -174,6 +174,7 @@
         <button data-l="proximidad">por cercanía</button>
         <button data-l="mano">a mano</button>
       </div>
+      <button class="b sec" id="bTraerTerr" style="width:100%;margin-top:6px">↓ Traer este territorio de la base</button>
       <button class="b sec" id="bManzanas" style="width:100%;margin-top:6px">☰ Ver y depurar sus manzanas</button>
       <button class="b sec" id="bDerivar" style="width:100%;margin-top:6px">+ Nuevo territorio después de este</button>
       <button class="b dan" id="bRedibujar" style="width:100%;margin-top:6px">↺ Redibujar desde cero</button>
@@ -2785,6 +2786,78 @@ async function escribirBorrador () {
     borradorEstado = 'local'
   }
   pintarEstadoBorrador()
+}
+
+/* Traer de la base el dibujo publicado de un territorio.
+   --------------------------------------------------------------------
+   El editor escribia y nunca leia de vuelta. Mientras el borrador y lo
+   publicado dijeran lo mismo no se notaba; el dia que se separaron -y
+   se separaron- el editor siguio mostrando su version vieja para
+   siempre, sin forma de recuperar lo que ya estaba guardado bien.
+
+   Las manzanas que vuelven traen su forma y su letra de la base. No
+   conservan el id de OpenStreetMap del que salieron, asi que las
+   originales pueden reaparecer libres abajo: son candidatas, no
+   duplicados, y se ven distinto porque no tienen territorio. */
+document.getElementById('bTraerTerr').onclick = async () => {
+  if (!activo) return
+  const t = territorios.get(activo)
+  const token = tokenDeSesion()
+  if (!BD_URL || !BD_KEY || !token) {
+    await dialogo({
+      titulo: sesionVencida ? 'Tu sesión venció' : 'Falta iniciar sesión',
+      cuerpo: 'Abrí la app en otra pestaña de este navegador y volvé acá.',
+    })
+    return
+  }
+
+  let filas
+  try {
+    const H = { apikey: BD_KEY, Authorization: 'Bearer ' + token }
+    const rt = await fetch(`${BD_URL}/rest/v1/territorios?select=id&name=eq.${encodeURIComponent(t.numero)}`, { headers: H })
+    const terr = await rt.json()
+    if (!terr.length) throw new Error('En la base no existe el territorio ' + t.numero)
+    const rm = await fetch(
+      `${BD_URL}/rest/v1/territorio_manzanas?select=id,label,orden,geometry_geojson&vigente_hasta=is.null&territory_id=eq.${terr[0].id}&order=orden`,
+      { headers: H },
+    )
+    filas = (await rm.json()).filter((f) => f.geometry_geojson)
+    if (!filas.length) throw new Error('El territorio ' + t.numero + ' no tiene manzanas guardadas en la base.')
+  } catch (e) {
+    await dialogo({ titulo: 'No se pudo traer', cuerpo: String(e.message).slice(0, 200) })
+    return
+  }
+
+  const actuales = [...manzanas.values()].filter((m) => m.territorio === activo)
+  const ok = await dialogo({
+    titulo: 'Traer el territorio ' + t.numero + ' de la base',
+    cuerpo:
+      `Acá tenés <b>${actuales.length}</b> manzana${actuales.length === 1 ? '' : 's'} en este territorio ` +
+      `y en la base hay <b>${filas.length}</b>.<br><br>` +
+      'Se reemplaza lo de acá por lo guardado. Las manzanas sueltas del mapa no se tocan.',
+    aceptar: 'Traer',
+    peligro: actuales.length > filas.length,
+  })
+  if (!ok) return
+
+  instantanea()
+  for (const m of actuales) manzanas.delete(m.id)
+  filas.forEach((f, i) => {
+    const id = 'bd:' + f.id
+    manzanas.set(id, {
+      id,
+      geom: f.geometry_geojson,
+      territorio: activo,
+      orden: f.orden ?? i,
+      editada: true,
+    })
+    ordenSiguiente = Math.max(ordenSiguiente, (f.orden ?? i) + 1)
+  })
+  t.letras = 'orden'
+  reletrar(activo)
+  enfocar(activo)
+  refrescar()
+  avisar(`Territorio <b>${t.numero}</b> traído de la base: <b>${filas.length}</b> manzanas con sus letras. <b>Cmd+Z</b> vuelve atrás.`)
 }
 </script>
 </body>
