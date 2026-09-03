@@ -1,0 +1,87 @@
+/* Revisión de lo importado.
+   Los colores salen de las variables del tema; nada fijo acá, para que
+   siga funcionando cuando el tema cambie. */
+
+.imp-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+
+.imp-fila {
+  border: 1px solid var(--linea, #d8dde3);
+  border-radius: 10px;
+  background: var(--panel, #fff);
+  overflow: hidden;
+}
+
+/* El estado se lee de un vistazo por el filo izquierdo, sin leer texto. */
+.imp-conflicto  { border-left: 4px solid #b45309; }
+.imp-pendiente  { border-left: 4px solid #0f6b47; }
+.imp-descartado { border-left: 4px solid #9aa3ad; opacity: 0.72; }
+.imp-aplicado   { border-left: 4px solid #1d4ed8; }
+
+.imp-cabecera {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(120px, auto) minmax(90px, auto) 1fr 24px;
+  gap: 12px;
+  align-items: center;
+  text-align: left;
+  padding: 10px 12px;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.imp-cabecera:hover { background: rgba(127, 127, 127, 0.07); }
+
+.imp-donde { font-size: 12px; opacity: 0.75; }
+.imp-tipo { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.6; }
+.imp-motivo { font-size: 13px; }
+.imp-flecha { opacity: 0.5; }
+
+.imp-cuerpo { padding: 4px 12px 14px; border-top: 1px solid var(--linea, #e6eaee); }
+
+.imp-alerta {
+  margin: 10px 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(180, 83, 9, 0.1);
+  color: #7c3e06;
+  font-size: 13px;
+}
+
+.imp-tabla { width: 100%; font-size: 13px; }
+.imp-tabla th { width: 34px; text-align: left; opacity: 0.6; font-weight: 600; }
+.imp-tabla td { padding: 2px 6px; vertical-align: top; }
+.imp-extra { font-size: 11px; opacity: 0.6; }
+/* La celda que el Excel no supo calcular: se ve que está rota. */
+.imp-mala td, .imp-mala th { background: rgba(180, 83, 9, 0.12); }
+
+.imp-nota { display: grid; gap: 4px; font-size: 12px; margin: 6px 0 12px; }
+.imp-nota input {
+  padding: 8px 10px;
+  border: 1px solid var(--linea, #d8dde3);
+  border-radius: 8px;
+  font: inherit;
+  background: var(--panel, #fff);
+  color: inherit;
+}
+
+.imp-acciones { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.imp-pie { margin-top: 12px; font-size: 12px; opacity: 0.65; }
+
+.imp-mas { padding: 10px; font-size: 13px; opacity: 0.7; text-align: center; }
+
+/* Angosto: todo se apila en una sola columna y la flecha se queda
+   arriba a la derecha. Sin esto el motivo caia en una columna implicita
+   de 40px y se leia una letra por renglon. */
+@media (max-width: 900px) {
+  .imp-cabecera {
+    grid-template-columns: 1fr 24px;
+    gap: 4px 12px;
+  }
+  .imp-donde  { grid-column: 1; grid-row: 1; }
+  .imp-tipo   { grid-column: 1; grid-row: 2; }
+  .imp-motivo { grid-column: 1 / -1; grid-row: 3; }
+  .imp-flecha { grid-column: 2; grid-row: 1; justify-self: end; }
+}

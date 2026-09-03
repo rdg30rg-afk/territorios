@@ -58,6 +58,18 @@ export function AppShell() {
           ))}
         </nav>
 
+        {profile?.role === 'admin' && (
+          <NavLink to="/importacion" className="module-link">
+            <span className="module-icon" aria-hidden="true">
+              ⇪
+            </span>
+            <span>
+              <strong>Revisión del Excel</strong>
+              <small>Lo importado, antes de que entre.</small>
+            </span>
+          </NavLink>
+        )}
+
         <NavLink to="/predicacion" className="module-link vista-hermano-link">
           <span className="module-icon" aria-hidden="true">
             ◆

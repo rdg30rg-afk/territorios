@@ -20,6 +20,11 @@ const GruposPage = lazy(() =>
     default: module.GruposPage,
   })),
 )
+const ImportacionPage = lazy(() =>
+  import('./pages/ImportacionPage').then((module) => ({
+    default: module.ImportacionPage,
+  })),
+)
 const MapasPage = lazy(() =>
   import('./pages/MapasPage').then((module) => ({ default: module.MapasPage })),
 )
@@ -63,6 +68,9 @@ function App() {
         <Route path="predicacion" element={loadRoute(<PredicacionPage />)} />
         <Route element={<AppShell />}>
           <Route index element={loadRoute(<DashboardPage />)} />
+          {/* Sin ModuleGuard: no es un modulo, es del admin. La pagina se
+              guarda sola y el RLS del staging solo deja leer a un admin. */}
+          <Route path="importacion" element={loadRoute(<ImportacionPage />)} />
           <Route element={<ModuleGuard moduleKey="mapas" />}>
             <Route path="mapas" element={loadRoute(<MapasPage />)} />
           </Route>
