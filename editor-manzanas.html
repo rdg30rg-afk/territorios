@@ -221,7 +221,6 @@
           <span id="estadoArchivo">Sin archivo de respaldo</span>
           <button class="mini" id="bVincular">vincular archivo</button>
         </div>
-        <button class="b sec" id="bTraer" style="width:100%;margin-bottom:8px">Volver a traer del sistema</button>
         <button class="b pri" id="bGuardarBD" style="width:100%;margin-bottom:8px">Guardar en la base</button>
         <button class="b sec" id="bComparar" style="width:100%;margin-bottom:8px">Comparar con la base</button>
         <button class="b sec" id="bExport">Exportar</button>
@@ -229,7 +228,6 @@
         <button class="b dan" id="bReset">Vaciar</button>
       </div>
       <input type="file" id="fImport" accept="application/json" class="oculto">
-      <input type="file" id="fTraer" accept="application/json" class="oculto">
     </div>
   </aside>
 
@@ -1465,6 +1463,10 @@ const enBbox = (p, b) => p[0] >= b[0] && p[0] <= b[2] && p[1] >= b[1] && p[1] <=
 
 let SECTORES = {}   // numero de territorio -> sector, sacado del PDF oficial
 
+// Se llama UNA sola vez, al abrir el editor en un navegador sin nada
+// guardado. Tuvo un boton para volver a correrla a mano y se saco: el
+// sistema ya esta importado y lo unico que podia hacer ese boton era
+// borrar 69 territorios de trabajo.
 function traerDelSistema (respaldo) {
   const registros = respaldo.records || []
   if (!registros.length) return avisar('Ese archivo no tiene territorios.')
@@ -1569,37 +1571,6 @@ function traerDelSistema (respaldo) {
     (informe.letrasAjenas.length ? `<br>⚠ ${informe.letrasAjenas.length} manzanas tuyas caen en el territorio de al lado (diferencia de borde).` : '') +
     (informe.sinLetra ? `<br>${informe.sinLetra} manzanas de OSM dentro de tus territorios que vos no tenías cargadas.` : ''))
   console.log('Informe de importación:', informe)
-}
-
-document.getElementById('bTraer').onclick = async () => {
-  // Esto no agrega: REEMPLAZA. Borra todos los territorios y le saca el
-  // territorio a cada manzana. Mientras era la carga inicial no molestaba;
-  // ahora hay trabajo hecho que todavia no subio a la base, y era el unico
-  // boton destructivo de la pantalla que no preguntaba nada.
-  const conTerritorio = [...manzanas.values()].filter(m => m.territorio).length
-  let sinSubir = 0
-  if (enLaBase) {
-    for (const t of territorios.values()) {
-      const n = [...manzanas.values()].filter(m => m.territorio === t.id).length
-      if (n && enLaBase.get(String(t.numero)) !== n) sinSubir++
-    }
-  }
-  const ok = await confirmar('Volver a traer del sistema',
-    `Se borran los <b>${territorios.size}</b> territorios de este editor y las ` +
-    `<b>${conTerritorio}</b> manzanas asignadas vuelven a quedar libres. ` +
-    'Después se cargan de nuevo desde el archivo que elijas.<br><br>' +
-    (sinSubir
-      ? `<b>Ojo:</b> ${sinSubir} territorio${sinSubir === 1 ? ' tiene' : 's tienen'} cambios que todavía no están en la base. Eso se pierde.`
-      : 'La base de datos de la app no se toca.'),
-    'Sí, traer de nuevo', true)
-  if (ok) document.getElementById('fTraer').click()
-}
-document.getElementById('fTraer').onchange = async (e) => {
-  const f = e.target.files[0]; if (!f) return
-  avisar('Procesando el respaldo…')
-  try { traerDelSistema(JSON.parse(await f.text())) }
-  catch (err) { avisar('No se pudo leer el archivo: ' + err.message) }
-  e.target.value = ''
 }
 
 // ---------------------------------------------------------------- controles
