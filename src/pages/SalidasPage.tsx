@@ -2,7 +2,6 @@ import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { Falta } from '../components/Falta'
 import { Vacio } from '../components/Vacio'
 import '../styles/importacion.css'
-import { leerNotasImportadas } from '../lib/notasImportadas'
 import { Desplegable } from '../components/Desplegable'
 import { Modal } from '../components/Modal'
 import { useAuth } from '../context/useAuth'
@@ -50,6 +49,36 @@ type TerritoryRecord = {
   polygon_geojson: GeoJSON.Polygon | null
 }
 
+type MeetingPointRecord = {
+  id: string
+  nombre: string
+  barrio: string | null
+  lat: number | null
+  lng: number | null
+  maps_url: string | null
+  territory_id: string | null
+  activo: boolean
+}
+
+type OutingProvenance = {
+  id: string
+  salida_id: string
+  importacion_id: string
+  registro_id: string
+  application_id: string
+  source_sha256: string
+  parser_version: string
+  source_sheet: string
+  source_row: number
+  source_range: string | null
+  source_conductor_text: string | null
+  source_conductor_alias_id: string | null
+  source_priorizar: string | null
+  source_narrative: Record<string, unknown>
+  source_status: boolean | null
+  source_resolution_status: string | null
+}
+
 type OutingRecord = {
   id: string
   title: string
@@ -59,8 +88,13 @@ type OutingRecord = {
   meeting_point_name: string | null
   meeting_point_lat: number | null
   meeting_point_lng: number | null
+  meeting_point_id: string | null
   scheduled_for: string
   notes: string | null
+  tipo: 'telefonica' | 'grupos' | 'asamblea' | 'especial' | null
+  origen: 'app' | 'excel'
+  registro_id: string | null
+  provenance?: OutingProvenance | null
 }
 
 type PersonalTerritoryReservation = {
@@ -138,6 +172,12 @@ const PHONE_TITLE = 'PREDICACION TELEFONICA'
 const MORNING_HOURS = buildQuarterHourRange(9, 0, 10, 30)
 const AFTERNOON_HOURS = buildQuarterHourRange(15, 30, 19, 0)
 const PHONE_DAYS = new Set([1, 2, 3, 5])
+
+function esSalidaHistorica(
+  outing: Pick<OutingRecord, 'origen' | 'registro_id'>,
+): boolean {
+  return outing.origen === 'excel' || Boolean(outing.registro_id)
+}
 
 function normalizeDriverAvailability(value: unknown): DriverAvailability {
   if (!value || typeof value !== 'object') {
@@ -413,6 +453,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
   const [drivers, setDrivers] = useState<DriverRecord[]>([])
   const [groups, setGroups] = useState<GroupRecord[]>([])
   const [territories, setTerritories] = useState<TerritoryRecord[]>([])
+  const [meetingPoints, setMeetingPoints] = useState<MeetingPointRecord[]>([])
   const [outings, setOutings] = useState<OutingRecord[]>([])
   // Cuantas hay en la base, no cuantas se trajeron: sin esto la pantalla no
   // puede decir que esta mostrando una parte, y una lista recortada en
@@ -435,11 +476,9 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
   const [driverId, setDriverId] = useState('')
   const [groupId, setGroupId] = useState('')
   const [meetingPointName, setMeetingPointName] = useState('')
+  const [meetingPointId, setMeetingPointId] = useState<string | null>(null)
   const [scheduledFor, setScheduledFor] = useState('')
   const [notes, setNotes] = useState('')
-  // El JSON de procedencia que dejo la importacion, si esta salida lo
-  // tiene. Vive fuera del cuadro editable para que guardar no lo pise.
-  const [notasDelExcel, setNotasDelExcel] = useState<string | null>(null)
   const [meetingCoords, setMeetingCoords] = useState<[number, number] | null>(null)
   const [territoryFilter, setTerritoryFilter] = useState('todos')
   const [scheduleFilter, setScheduleFilter] = useState<ScheduleFilter>('todos')
@@ -560,9 +599,12 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
         { data: driversData, error: driversError },
         { data: groupsData, error: groupsError },
         { data: territoriesData, error: territoriesError },
+        { data: meetingPointsData, error: meetingPointsError },
         { data: outingsData, error: outingsError },
         { count: totalDeSalidas },
         { data: personalReservationsData, error: personalReservationsError },
+        { data: provenanceDataFirst, error: provenanceErrorFirst },
+        { data: provenanceDataSecond, error: provenanceErrorSecond },
       ] = await Promise.all([
         client
           .from('conductores')
@@ -577,6 +619,10 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
           .from('territorios')
           .select('id, name, description, polygon_geojson')
           .order('name', { ascending: true }),
+        client
+          .from('puntos_encuentro')
+          .select('id, nombre, barrio, lat, lng, maps_url, territory_id, activo')
+          .order('nombre', { ascending: true }),
         // Esta consulta no tenia filtro ni limite y ordenaba ascendente.
         // PostgREST corta en 1000 filas pase lo que pase, asi que devolvia
         // las MIL MAS VIEJAS y se comia el cupo entero: medido en el
@@ -588,7 +634,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
         client
           .from('salidas')
           .select(
-            'id, title, territory_id, driver_id, group_id, meeting_point_name, meeting_point_lat, meeting_point_lng, scheduled_for, notes',
+            'id, title, territory_id, driver_id, group_id, meeting_point_id, meeting_point_name, meeting_point_lat, meeting_point_lng, scheduled_for, notes, tipo, origen, registro_id',
           )
           .order('scheduled_for', { ascending: false })
           .limit(SALIDAS_QUE_SE_TRAEN),
@@ -598,6 +644,20 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
           .select('id, territory_id, reserved_for, status, reserved_at')
           .eq('status', 'activa')
           .order('reserved_at', { ascending: false }),
+        client
+          .from('salida_importacion_procedencia')
+          .select(
+            'id, salida_id, importacion_id, registro_id, application_id, source_sha256, parser_version, source_sheet, source_row, source_range, source_conductor_text, source_conductor_alias_id, source_priorizar, source_narrative, source_status, source_resolution_status',
+          )
+          .order('source_row', { ascending: true })
+          .range(0, 999),
+        client
+          .from('salida_importacion_procedencia')
+          .select(
+            'id, salida_id, importacion_id, registro_id, application_id, source_sha256, parser_version, source_sheet, source_row, source_range, source_conductor_text, source_conductor_alias_id, source_priorizar, source_narrative, source_status, source_resolution_status',
+          )
+          .order('source_row', { ascending: true })
+          .range(1000, 1999),
       ])
 
       if (!isMounted) {
@@ -608,14 +668,18 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
         driversError?.message ||
         groupsError?.message ||
         territoriesError?.message ||
+        meetingPointsError?.message ||
         outingsError?.message ||
-        personalReservationsError?.message
+        personalReservationsError?.message ||
+        provenanceErrorFirst?.message ||
+        provenanceErrorSecond?.message
 
       if (loadError) {
         setError(loadError)
         setDrivers([])
         setGroups([])
         setTerritories([])
+        setMeetingPoints([])
         setOutings([])
         setPersonalReservations([])
       } else {
@@ -623,7 +687,19 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
         setDrivers((driversData as DriverRecord[]) ?? [])
         setGroups((groupsData as GroupRecord[]) ?? [])
         setTerritories((territoriesData as TerritoryRecord[]) ?? [])
-        setOutings((outingsData as OutingRecord[]) ?? [])
+        setMeetingPoints((meetingPointsData as MeetingPointRecord[]) ?? [])
+        const provenanceByOuting = new Map(
+          [
+            ...((provenanceDataFirst as OutingProvenance[]) ?? []),
+            ...((provenanceDataSecond as OutingProvenance[]) ?? []),
+          ].map((item) => [item.salida_id, item]),
+        )
+        setOutings(
+          ((outingsData as OutingRecord[]) ?? []).map((outing) => ({
+            ...outing,
+            provenance: provenanceByOuting.get(outing.id) ?? null,
+          })),
+        )
         setCuantasSalidasHay(totalDeSalidas ?? null)
         setPersonalReservations(
           (personalReservationsData as PersonalTerritoryReservation[]) ?? [],
@@ -794,6 +870,8 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
         outing.groupName,
         outing.meeting_point_name,
         outing.notes ?? '',
+        outing.provenance?.source_conductor_text ?? '',
+        outing.provenance?.source_priorizar ?? '',
       ]
         .join(' ')
         .toLowerCase()
@@ -806,6 +884,12 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
     () => visibleOutingDetails.find((outing) => outing.id === selectedOutingId) ?? null,
     [selectedOutingId, visibleOutingDetails],
   )
+
+  const editingOuting = useMemo(
+    () => outings.find((outing) => outing.id === editingOutingId) ?? null,
+    [editingOutingId, outings],
+  )
+  const editingHistorical = Boolean(editingOuting && esSalidaHistorica(editingOuting))
 
   // Antes se mostraban cuatro cifras: total, hoy, con grupo y proximas. La
   // unica que pedia hacer algo era "con grupo", y dicha al reves: lo que
@@ -832,7 +916,6 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
   }
 
   const resetForm = () => {
-    setNotasDelExcel(null)
     setEditingOutingId(null)
     setSelectedSlotKey(null)
     setLastSuggestedTitle(null)
@@ -841,16 +924,23 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
     setDriverId('')
     setGroupId(isGroupServiceDelegate ? currentServiceGroup?.id ?? '' : '')
     setMeetingPointName('')
+    setMeetingPointId(null)
     setScheduledFor('')
     setNotes('')
     setMeetingCoords(null)
   }
 
   const handleUseTerritoryCenter = () => {
+    if (editingHistorical) {
+      setError('Una salida histórica no toma coordenadas sugeridas: elegí un punto o marcá uno en el mapa.')
+      return
+    }
+
     if (!selectedFormTerritory || !selectedTerritoryCenter) {
       return
     }
 
+    setMeetingPointId(null)
     setMeetingCoords(selectedTerritoryCenter)
 
     if (!meetingPointName.trim()) {
@@ -859,6 +949,30 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
 
     setMessage(`Punto sugerido cargado en el centro de ${selectedFormTerritory.name}.`)
     setError(null)
+  }
+
+  const handleSelectMeetingPoint = (selectedId: string) => {
+    setMeetingPointId(selectedId || null)
+
+    if (!selectedId) {
+      return
+    }
+
+    const point = meetingPoints.find((item) => item.id === selectedId)
+    if (!point) {
+      return
+    }
+
+    setMeetingPointName(point.nombre)
+    setMeetingCoords(
+      point.lng !== null && point.lat !== null ? [point.lng, point.lat] : null,
+    )
+    setError(null)
+    setMessage(
+      point.lat !== null && point.lng !== null
+        ? `Punto guardado elegido: ${point.nombre}.`
+        : `Punto guardado elegido: ${point.nombre}; todavía no tiene GPS.`,
+    )
   }
 
   const handleSelectPlannerSlot = (slot: PlannerSlot) => {
@@ -1035,12 +1149,11 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
     setDriverId(outing.driver_id ?? '')
     setGroupId(outing.group_id ?? '')
     setMeetingPointName(outing.meeting_point_name ?? '')
+    setMeetingPointId(outing.meeting_point_id ?? null)
     setScheduledFor(new Date(outing.scheduled_for).toISOString().slice(0, 16))
-    // Si lo que hay en notes es el JSON de la importacion, no entra al
-    // cuadro de texto: se guarda aparte y se muestra como frases.
-    const importadas = leerNotasImportadas(outing.notes)
-    setNotasDelExcel(importadas ? importadas.crudo : null)
-    setNotes(importadas ? '' : (outing.notes ?? ''))
+    // La procedencia ya vive en su tabla inmutable. notes queda disponible
+    // solamente para observaciones humanas.
+    setNotes(outing.notes ?? '')
     setMeetingCoords(
       outing.meeting_point_lng !== null && outing.meeting_point_lat !== null
         ? [outing.meeting_point_lng, outing.meeting_point_lat]
@@ -1053,6 +1166,11 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
 
   const handleDelete = async (outing: OutingRecord) => {
     if (!client || !canManageOutings) {
+      return
+    }
+
+    if (esSalidaHistorica(outing)) {
+      setError('Las salidas históricas no se borran; se corrigen o completan de forma auditable.')
       return
     }
 
@@ -1214,37 +1332,105 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
       return
     }
 
-    if (
+    const existingOuting = editingOutingId
+      ? outings.find((outing) => outing.id === editingOutingId) ?? null
+      : null
+    const historicalEdit = Boolean(existingOuting && esSalidaHistorica(existingOuting))
+    const effectiveTitle = title.trim() || existingOuting?.title || ''
+    const effectiveTerritoryId = historicalEdit
+      ? territoryId || existingOuting?.territory_id || ''
+      : territoryId
+    const effectiveDriverId = historicalEdit
+      ? driverId || existingOuting?.driver_id || ''
+      : driverId
+    const effectiveGroupId = historicalEdit
+      ? groupId || existingOuting?.group_id || null
+      : lockedGroupId || null
+    const effectiveScheduledFor = historicalEdit
+      ? existingOuting?.scheduled_for || ''
+      : scheduledFor
+    const selectedMeetingPoint = meetingPointId
+      ? meetingPoints.find((point) => point.id === meetingPointId) ?? null
+      : null
+    const effectiveMeetingCoords: [number, number] | null =
+      selectedMeetingPoint
+        ? selectedMeetingPoint.lat !== null && selectedMeetingPoint.lng !== null
+          ? [selectedMeetingPoint.lng, selectedMeetingPoint.lat]
+          : null
+        : meetingCoords ??
+          (existingOuting &&
+          existingOuting.meeting_point_lat !== null &&
+          existingOuting.meeting_point_lng !== null
+            ? [existingOuting.meeting_point_lng, existingOuting.meeting_point_lat]
+            : null)
+    const enteredMeetingPointName = meetingPointName.trim()
+    const storedMeetingPointName = existingOuting?.meeting_point_name?.trim() ?? ''
+    const coordinatesChanged = Boolean(
+      historicalEdit &&
+        existingOuting &&
+        meetingCoords &&
+        (existingOuting.meeting_point_lat === null ||
+          existingOuting.meeting_point_lng === null ||
+          meetingCoords[1] !== existingOuting.meeting_point_lat ||
+          meetingCoords[0] !== existingOuting.meeting_point_lng),
+    )
+    const pointDetailsChanged = Boolean(
+      historicalEdit &&
+        existingOuting &&
+        ((enteredMeetingPointName !== '' &&
+          enteredMeetingPointName !== storedMeetingPointName) ||
+          coordinatesChanged ||
+          (meetingPointId !== null && meetingPointId !== existingOuting.meeting_point_id)),
+    )
+    const effectiveMeetingPointId = historicalEdit
+      ? pointDetailsChanged
+        ? meetingPointId
+        : existingOuting?.meeting_point_id ?? null
+      : meetingPointId
+    const effectiveMeetingPointName =
+      enteredMeetingPointName || existingOuting?.meeting_point_name || null
+    const effectiveNotes = historicalEdit
+      ? notes.trim() || existingOuting?.notes || null
+      : notes.trim() || null
+
+    if (historicalEdit) {
+      if (!effectiveTitle || !effectiveScheduledFor) {
+        setError('La salida histórica necesita conservar al menos su título y su horario.')
+        return
+      }
+    } else if (
       !title.trim() ||
       !territoryId ||
       !meetingPointName.trim() ||
       !scheduledFor ||
       !driverId
     ) {
-      setError(
-        'Faltan datos: título, territorio, conductor, punto de encuentro y horario.',
-      )
+      setError('Faltan datos: título, territorio, conductor, punto de encuentro y horario.')
       return
     }
 
-    if (groupServiceMode && !lockedGroupId) {
+    if (!historicalEdit && groupServiceMode && !lockedGroupId) {
       setError('Elegí el grupo de servicio antes de guardar la salida.')
       return
     }
 
-    if (!meetingCoords) {
+    if (!historicalEdit && !effectiveMeetingCoords) {
       setError('Falta marcar en el mapa dónde se juntan.')
       return
     }
 
-    const reservedByGroup = reservedTerritoriesByOtherGroups.get(territoryId)
+    const reservedByGroup = effectiveTerritoryId
+      ? reservedTerritoriesByOtherGroups.get(effectiveTerritoryId)
+      : null
 
     if (reservedByGroup) {
       setError(`El territorio ya esta reservado por ${reservedByGroup}.`)
       return
     }
 
-    const reservedForPersonalUse = reservedTerritoriesByPersonalUse.get(territoryId)
+    const reservedForPersonalUse = effectiveTerritoryId
+      ? reservedTerritoriesByPersonalUse.get(effectiveTerritoryId)
+      : null
 
     if (reservedForPersonalUse) {
       setError(`El territorio esta reservado personalmente para ${reservedForPersonalUse}.`)
@@ -1254,18 +1440,24 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
     setIsSaving(true)
 
     const payload = {
-      title: title.trim(),
-      territory_id: territoryId,
-      driver_id: driverId,
-      group_id: lockedGroupId || null,
-      meeting_point_name: meetingPointName.trim(),
-      meeting_point_lat: Number(meetingCoords[1].toFixed(6)),
-      meeting_point_lng: Number(meetingCoords[0].toFixed(6)),
-      scheduled_for: new Date(scheduledFor).toISOString(),
-      // Si venia del Excel, se escribe de vuelta igual. Perder la
-      // procedencia por haber abierto el formulario no es una opcion, y
-      // hoy no hay columna donde poner una observacion escrita a mano.
-      notes: notasDelExcel ?? (notes.trim() || null),
+      title: effectiveTitle,
+      territory_id: effectiveTerritoryId || null,
+      driver_id: effectiveDriverId || null,
+      group_id: effectiveGroupId,
+      meeting_point_id: effectiveMeetingPointId,
+      meeting_point_name: effectiveMeetingPointName,
+      meeting_point_lat: effectiveMeetingCoords
+        ? Number(effectiveMeetingCoords[1].toFixed(6))
+        : null,
+      meeting_point_lng: effectiveMeetingCoords
+        ? Number(effectiveMeetingCoords[0].toFixed(6))
+        : null,
+      // En una salida histórica se manda el instante almacenado, nunca el
+      // valor local del input. La fecha y la hora forman parte de la fuente.
+      scheduled_for: historicalEdit
+        ? existingOuting!.scheduled_for
+        : new Date(effectiveScheduledFor).toISOString(),
+      notes: effectiveNotes,
     }
 
     const query = editingOutingId
@@ -1274,7 +1466,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
 
     const { data, error: saveError } = await query
       .select(
-        'id, title, territory_id, driver_id, group_id, meeting_point_name, meeting_point_lat, meeting_point_lng, scheduled_for, notes',
+        'id, title, territory_id, driver_id, group_id, meeting_point_id, meeting_point_name, meeting_point_lat, meeting_point_lng, scheduled_for, notes, tipo, origen, registro_id',
       )
       .single()
 
@@ -1284,15 +1476,18 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
       return
     }
 
+    const savedOuting: OutingRecord = {
+      ...(data as OutingRecord),
+      provenance: existingOuting?.provenance ?? null,
+    }
     setOutings((current) =>
-      [...current.filter((item) => item.id !== (data as OutingRecord).id), data as OutingRecord]
-        .sort(
-          (left, right) =>
-            new Date(left.scheduled_for).getTime() -
-            new Date(right.scheduled_for).getTime(),
-        ),
+      [...current.filter((item) => item.id !== savedOuting.id), savedOuting].sort(
+        (left, right) =>
+          new Date(left.scheduled_for).getTime() -
+          new Date(right.scheduled_for).getTime(),
+      ),
     )
-    setSelectedOutingId((data as OutingRecord).id)
+    setSelectedOutingId(savedOuting.id)
     setMessage(
       editingOutingId
         ? 'Salida actualizada correctamente.'
@@ -1421,7 +1616,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
       .from('salidas')
       .insert(payload)
       .select(
-        'id, title, territory_id, driver_id, group_id, meeting_point_name, meeting_point_lat, meeting_point_lng, scheduled_for, notes',
+        'id, title, territory_id, driver_id, group_id, meeting_point_id, meeting_point_name, meeting_point_lat, meeting_point_lng, scheduled_for, notes, tipo, origen, registro_id',
       )
 
     if (saveError) {
@@ -1803,6 +1998,9 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                       }}
                     >
                       {outing.title}
+                      {esSalidaHistorica(outing) ? (
+                        <span className="history-badge">Histórica · Excel</span>
+                      ) : null}
                     </button>
                     <span>{outing.territoryName}</span>
                     <span>
@@ -1833,18 +2031,22 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                               startEditing(outing)
                             }}
                           >
-                            Editar
+                            {esSalidaHistorica(outing) ? 'Completar' : 'Editar'}
                           </button>
-                          <button
-                            type="button"
-                            className="danger-button"
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              void handleDelete(outing)
-                            }}
-                          >
-                            Eliminar
-                          </button>
+                          {esSalidaHistorica(outing) ? (
+                            <span className="history-protection">Histórica · no se borra</span>
+                          ) : (
+                            <button
+                              type="button"
+                              className="danger-button"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                void handleDelete(outing)
+                              }}
+                            >
+                              Eliminar
+                            </button>
+                          )}
                         </>
                       ) : null}
                     </span>
@@ -1858,8 +2060,18 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
         <Modal
           abierto={formularioAbierto}
           alCerrar={cerrarFormulario}
-          titulo={editingOutingId ? 'Editar salida' : 'Nueva salida'}
-          bajada="Dirección, territorio, conductor y punto de encuentro."
+          titulo={
+            editingOutingId
+              ? editingHistorical
+                ? 'Completar salida histórica'
+                : 'Editar salida'
+              : 'Nueva salida'
+          }
+          bajada={
+            editingHistorical
+              ? 'Completá lo que tengas. Lo demás queda como está; fecha, hora y procedencia se conservan.'
+              : 'Dirección, territorio, conductor y punto de encuentro.'
+          }
         >
           <form className="form-stack" onSubmit={handleSubmit}>
               {selectedPlannerSlot ? (
@@ -1887,7 +2099,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
               </label>
 
               <label>
-                Territorio
+                Territorio{editingHistorical ? ' (opcional por ahora)' : ''}
                 <Desplegable
                   etiqueta="Elegir territorio"
                   valor={territoryId}
@@ -1925,29 +2137,62 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                     {selectedFormTerritory.description ||
                       'Sin referencia breve cargada para este territorio.'}
                   </p>
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    onClick={handleUseTerritoryCenter}
-                    disabled={!canManageOutings || !selectedTerritoryCenter}
-                  >
-                    Usar centro del territorio
-                  </button>
+                  {editingHistorical ? (
+                    <p className="history-form-hint">
+                      El centro no se completa solo: elegí un punto guardado o marcá
+                      el lugar exacto en el mapa cuando tengas esa evidencia.
+                    </p>
+                  ) : (
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={handleUseTerritoryCenter}
+                      disabled={!canManageOutings || !selectedTerritoryCenter}
+                    >
+                      Usar centro del territorio
+                    </button>
+                  )}
                 </div>
               ) : null}
 
               <label>
                 Dirección de la salida / punto de encuentro
+                {editingHistorical ? ' (podés completarla después)' : ''}
                 <input
                   value={meetingPointName}
-                  onChange={(event) => setMeetingPointName(event.target.value)}
+                  onChange={(event) => {
+                    setMeetingPointId(null)
+                    setMeetingPointName(event.target.value)
+                  }}
                   placeholder="Ej. Plaza 25 de Mayo"
                   disabled={!canManageOutings}
                 />
               </label>
 
               <label>
-                Conductor
+                Punto guardado{editingHistorical ? ' (opcional)' : ''}
+                <Desplegable
+                  etiqueta="Elegir punto guardado"
+                  valor={meetingPointId ?? ''}
+                  alElegir={handleSelectMeetingPoint}
+                  deshabilitado={!canManageOutings}
+                  opciones={[
+                    { valor: '', texto: 'Elegir punto guardado' },
+                    ...meetingPoints.map((point) => ({
+                      valor: point.id,
+                      texto: point.activo ? point.nombre : `${point.nombre} (inactivo)`,
+                      deshabilitada: !point.activo,
+                    })),
+                  ]}
+                />
+                <small className="form-help">
+                  Usá un punto existente cuando la fuente o una decisión posterior lo
+                  respalde. Si no, podés marcarlo manualmente.
+                </small>
+              </label>
+
+              <label>
+                Conductor{editingHistorical ? ' (opcional por ahora)' : ''}
                 <Desplegable
                   etiqueta="Elegir conductor"
                   valor={driverId}
@@ -1974,7 +2219,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
               </label>
 
               <label>
-                Grupo
+                Grupo{editingHistorical ? ' (opcional por ahora)' : ''}
                 <Desplegable
                   etiqueta="Grupo"
                   valor={groupId}
@@ -1996,7 +2241,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
               </label>
 
               <label>
-                Día y horario elegidos
+                {editingHistorical ? 'Día y horario conservados' : 'Día y horario elegidos'}
                 <input
                   value={scheduledFor ? formatLocalDate(new Date(scheduledFor).toISOString()) : ''}
                   placeholder="Elegí un horario en la grilla de arriba"
@@ -2004,58 +2249,84 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                 />
               </label>
 
-              {(() => {
-                const delExcel = leerNotasImportadas(notasDelExcel)
-                if (!delExcel) {
-                  return (
-                    <label>
-                      Observaciones
-                      <textarea
-                        value={notes}
-                        onChange={(event) => setNotes(event.target.value)}
-                        placeholder="Indicaciones adicionales"
-                        rows={4}
-                        disabled={!canManageOutings}
-                      />
-                    </label>
-                  )
-                }
-
-                return (
-                  <div className="module-detail-card">
-                    <span>Lo que decia el Excel</span>
-                    <ul className="del-excel">
-                      {delExcel.conductorSegunElExcel ? (
+              {editingHistorical ? (
+                <div className="module-detail-card history-provenance-card">
+                  <span>Procedencia histórica · solo lectura</span>
+                  {editingOuting?.provenance ? (
+                    <>
+                      <strong>
+                        {editingOuting.provenance.source_sheet}, fila{' '}
+                        {editingOuting.provenance.source_row}
+                      </strong>
+                      <ul className="del-excel">
                         <li>
-                          Figura <strong>{delExcel.conductorSegunElExcel}</strong> como
-                          conductor.
+                          Alias escrito en la fuente:{' '}
+                          <strong>
+                            {editingOuting.provenance.source_conductor_text ?? 'Sin dato'}
+                          </strong>
+                          {editingOuting.provenance.source_conductor_alias_id
+                            ? ' · coincide con un alias guardado.'
+                            : ' · no se asigna un conductor automáticamente.'}
                         </li>
-                      ) : null}
-                      {delExcel.priorizar ? (
                         <li>
-                          Habia que priorizar <strong>{delExcel.priorizar}</strong>.
+                          Priorizar:{' '}
+                          <strong>{editingOuting.provenance.source_priorizar ?? 'Sin dato'}</strong>
                         </li>
-                      ) : null}
-                      {delExcel.narrativa.map((linea) => (
-                        <li key={linea}>{linea}</li>
-                      ))}
-                      {delExcel.laCasillaDecia !== null ? (
                         <li>
-                          La casilla de territorio completado estaba{' '}
-                          <strong>{delExcel.laCasillaDecia ? 'tildada' : 'sin tildar'}</strong>
-                          {delExcel.resolucion === 'sin_confirmar'
-                            ? ', y todavia nadie lo confirmo.'
-                            : '.'}
+                          Casilla de fuente:{' '}
+                          <strong>
+                            {editingOuting.provenance.source_status === null
+                              ? 'Sin dato'
+                              : editingOuting.provenance.source_status
+                                ? 'tildada'
+                                : 'sin tildar'}
+                          </strong>
+                          {' · Resolución: '}
+                          <strong>
+                            {editingOuting.provenance.source_resolution_status ?? 'Sin dato'}
+                          </strong>
                         </li>
-                      ) : null}
-                    </ul>
+                        {Object.entries(editingOuting.provenance.source_narrative).map(
+                          ([key, value]) => (
+                            <li key={key}>
+                              {key.replace(/[:.]+$/, '')}:{' '}
+                              <strong>
+                                {value === null || value === undefined
+                                  ? 'Sin dato'
+                                  : typeof value === 'string'
+                                    ? value
+                                    : JSON.stringify(value)}
+                              </strong>
+                            </li>
+                          ),
+                        )}
+                      </ul>
+                      <p className="del-excel-nota">
+                        La fuente no se edita. Lo que completes en la ficha queda como
+                        dato operativo; la procedencia y la fecha original permanecen.
+                      </p>
+                    </>
+                  ) : (
                     <p className="del-excel-nota">
-                      Esto vino de la importacion y no se edita: es de donde salio la
-                      salida. Se guarda igual aunque cambies el resto.
+                      Esta salida está marcada como histórica, pero todavía no se pudo
+                      cargar su detalle de procedencia. No se va a inventar ningún dato.
                     </p>
-                  </div>
-                )
-              })()}
+                  )}
+                </div>
+              ) : null}
+
+              <label>
+                {editingHistorical
+                  ? 'Observaciones humanas (no cambia la procedencia)'
+                  : 'Observaciones'}
+                <textarea
+                  value={notes}
+                  onChange={(event) => setNotes(event.target.value)}
+                  placeholder="Indicaciones adicionales"
+                  rows={4}
+                  disabled={!canManageOutings}
+                />
+              </label>
 
               <div className="map-picker-panel">
                 <div className="map-picker-head">
@@ -2072,6 +2343,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                     territoryGeometry={selectedFormTerritory?.polygon_geojson ?? null}
                     onPick={(coords) => {
                       if (canManageOutings) {
+                        setMeetingPointId(null)
                         setMeetingCoords(coords)
                       }
                     }}
@@ -2162,6 +2434,28 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                   <span>Observaciones</span>
                   <strong>{selectedOuting.notes || 'Sin observaciones'}</strong>
                 </article>
+                {selectedOuting.provenance ? (
+                  <article className="module-detail-card history-provenance-card">
+                    <span>Procedencia histórica · solo lectura</span>
+                    <strong>
+                      {selectedOuting.provenance.source_sheet}, fila{' '}
+                      {selectedOuting.provenance.source_row}
+                    </strong>
+                    <p>
+                      Alias fuente:{' '}
+                      <strong>
+                        {selectedOuting.provenance.source_conductor_text ?? 'Sin dato'}
+                      </strong>
+                      {selectedOuting.provenance.source_conductor_alias_id
+                        ? ' · alias relacionado'
+                        : ' · sin asignación automática'}
+                    </p>
+                    <p>
+                      La fecha, hora y fuente original se conservan. Esta salida no se
+                      puede borrar.
+                    </p>
+                  </article>
+                ) : null}
                 {selectedOuting.meeting_point_lat !== null &&
                 selectedOuting.meeting_point_lng !== null ? (
                   <>

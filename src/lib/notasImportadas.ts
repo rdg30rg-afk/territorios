@@ -1,16 +1,15 @@
 /**
- * LO QUE EL EXCEL DEJO EN "OBSERVACIONES"
+ * COMPATIBILIDAD CON EL FORMATO DE PROCEDENCIA ANTERIOR
  *
- * El aplicador del historico (scripts/aplicar-historico-staging.py) guarda
- * en salidas.notes un JSON con la procedencia de cada fila:
+ * Antes de la migración 20260903200000, el aplicador del histórico
+ * (scripts/aplicar-historico-staging.py) guardaba en salidas.notes un JSON con
+ * la procedencia de cada fila:
  *
  *   {"conductor_alias":"Hugo Quiroga","priorizar":"Manzanas D,E,F",
  *    "narrativa":{"L:PREDICADO:":"..."},"estado_fuente":false,
  *    "estado_resolucion":"sin_confirmar"}
  *
- * Son las 1.790 salidas, el 100% de las que hay, todas con origen 'excel'.
- *
- * Eso caia tal cual dentro del cuadro "Observaciones" del formulario, que
+ * Eso caía tal cual dentro del cuadro "Observaciones" del formulario, que
  * es texto libre que una persona lee y edita. Dos problemas, y el segundo
  * es el grave:
  *
@@ -20,9 +19,10 @@
  *    procedencia de esa salida -- de que conductor venia, que habia que
  *    priorizar, que decia la casilla del Excel-- sin manera de recuperarla.
  *
- * Mientras esos campos no tengan columnas propias, la interfaz los muestra
- * como frases y no deja editarlos: no puede ofrecer como texto libre un
- * dato que no es suyo.
+ * Los registros ya migrados leen la procedencia desde
+ * salida_importacion_procedencia. Esta función queda sólo para compatibilidad
+ * de lecturas antiguas o herramientas de diagnóstico; no debe usarse para
+ * escribir nuevamente el JSON en salidas.notes.
  */
 export type NotasImportadas = {
   conductorSegunElExcel: string | null

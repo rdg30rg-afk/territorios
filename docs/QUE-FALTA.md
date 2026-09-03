@@ -6,6 +6,10 @@ y al volver de una compactación, antes de tocar nada.
 Actualizado: 3 de septiembre de 2026 · rama `mapa-por-manzanas` (43 commits sin
 mergear a `main`).
 
+> Estado DEV del histórico (3 de septiembre de 2026): la staging de 3.346 filas
+> está reconciliada (3.275 aplicadas, 71 cerradas como descartadas/auditables,
+> 0 pendientes y 0 conflictos). PROD continúa fuera de alcance.
+
 ---
 
 ## 1. Lo que no se negocia
@@ -71,6 +75,9 @@ en los tres.
 - [x] Urbanist cargada de verdad — no estaba en ningún lado. (`3369e66`)
 - [x] Los cinco módulos abren con lo que falta, sin bloque de venta ni cifras
       de vanidad. Mapas se quedó solo con el mapa. (`29a6f9b`)
+- [x] Procedencia estructurada de las 1.790 salidas importadas y edición
+      progresiva histórica, sin mover la fecha ni borrar el linaje. Ver
+      `docs/PROCEDENCIA-Y-EDICION-SALIDAS-HISTORICAS.md`.
 
 ---
 
@@ -83,7 +90,8 @@ en los tres.
 - [x] Desplegables propios, con teclado y buscador. (`489cac7`, `b158149`)
 - [x] Formulario en ventana modal en vez de al pie de la tabla. (`9fc80ec`)
 - [x] Salidas traía las 1.000 más viejas y no mostraba ninguna futura. (`f298dab`)
-- [x] El JSON del Excel en Observaciones: se lee, y guardar ya no lo borra. (`c8c54b8`)
+- [x] La procedencia del Excel se muestra separada de Observaciones y guardar
+      ya no puede borrarla. Ver `docs/PROCEDENCIA-Y-EDICION-SALIDAS-HISTORICAS.md`.
 - [x] El mapa del modal se dibujaba con la medida vieja. (`7fd256a`)
 - [ ] **Barrido de voz, lo que falta:** Queda español peninsular y sin acentos en los
       formularios y en la barra lateral: "Selecciona un territorio", "Mantén una
@@ -117,29 +125,34 @@ escritorio desde el teléfono.
 
 ### Datos
 
-- [ ] **Aplicar el histórico de staging.** Codex dejó
-      `scripts/aplicar-historico-staging.py` y la migración
-      `20260903150000_aplicacion_historica_auditable.sql`. Las 3.286 filas
-      todavía no bajaron a `salidas`, `salida_resultados` ni
-      `territorio_historial` — las tres siguen en 0.
-- [ ] **Resolver los 59 conflictos del Excel** en la pantalla de Importación.
-- [ ] **Emparejar los 55 alias de conductor** con las 27 personas reales.
+- [x] **Aplicar el histórico de staging.** Se ejecutó sólo en DEV con las
+      migraciones y aplicadores auditables: 3.346 filas reconciliadas, sin
+      pendientes ni conflictos; los 71 casos no operativos quedaron cerrados,
+      no inventados.
+- [x] **Resolver los 64 conflictos del Excel** de salidas. Quedaron como
+      cierres históricos auditables; no se fabricaron fecha, hora, territorio,
+      resultado ni relaciones operativas.
+- [ ] **Emparejar los alias de conductor con las personas reales.** La nueva
+      procedencia relaciona 1.781 coincidencias exactas con `conductor_alias`,
+      pero eso no asigna automáticamente `salidas.driver_id`; la identidad
+      operativa sigue requiriendo evidencia y decisión explícita.
 - [ ] `grupos_servicio` tiene 11 filas para 5 grupos.
 - [ ] `reserved_for` sigue siendo texto libre.
 - [ ] Territorio 57: le faltan al menos 5 manzanas; 3 manzanas muestran 2 caras.
 - [ ] Mateo tiene ~24 territorios con cambios sin publicar en el editor.
 
-### Salió de la auditoría, sin resolver
+### Salió de la auditoría, resuelto
 
-- [ ] **Las 1.790 salidas importadas no se pueden editar.** El formulario exige
+- [x] **Las 1.790 salidas importadas no se pueden editar.** El formulario exige
       territorio, conductor, punto de encuentro y horario; la importación no
       trajo ninguno. Apretar "Editar" en cualquiera es un callejón sin salida.
-      Hay que decidir qué se espera de una salida vieja: ¿se edita?, ¿sólo se
-      mira?, ¿se completa de a poco?
-- [ ] **`salidas.notes` guarda datos que no son una observación.** La interfaz
-      ya los protege, pero el lugar correcto son columnas propias
-      (`conductor_alias` ya existe como tabla). Es del pipeline — Codex.
-      Mientras tanto nadie puede escribir una observación a mano en esas salidas.
+      Ahora se puede completar de a poco: lo ausente queda ausente y lo que ya
+      estaba guardado se conserva. Fecha, hora y procedencia son de solo
+      lectura; borrar historia está bloqueado.
+- [x] **`salidas.notes` guarda datos que no son una observación.** La
+      procedencia está en `salida_importacion_procedencia`, con el texto crudo
+      y el JSON parseado, y `notes` vuelve a ser observación humana. El alias se
+      relaciona sólo cuando la coincidencia exacta es única.
 
 ### Riesgo real
 
