@@ -140,6 +140,78 @@
   .vert:active{cursor:grabbing}
   .vert-medio{background:var(--indigo);border:2px solid #fff;border-radius:50%;opacity:.5;cursor:copy}
   .vert-medio:hover{opacity:1}
+
+  /* ==================================================================
+     TELEFONO
+     ------------------------------------------------------------------
+     El editor nacio con la barra clavada en 330px y ni una media query:
+     en un telefono de 375 la barra se comia 330 y al mapa le quedaban
+     45. No se veia mal, no se veia.
+
+     Lo que se arma con el dedo es lo mismo que se arma con el mouse:
+     crear un territorio, sumarle manzanas, ponerles las letras, unir
+     dos, arreglar caras. Todo eso es tocar. Lo unico que se pelea con
+     un dedo es mover vertices y dibujar una manzana punto por punto, y
+     son las dos cosas que casi nunca hacen falta porque OpenStreetMap
+     ya trae las manzanas hechas.
+
+     Tres decisiones:
+     - El mapa ocupa la pantalla. El panel sube desde abajo cuando se
+       lo pide y se va cuando no.
+     - Las herramientas pasan a una tira horizontal: se llega con el
+       pulgar sin tapar el mapa.
+     - Todo lo que dependia del teclado -Cmd+Z, Enter, Esc- tiene un
+       boton. En un telefono no hay teclas.
+     ================================================================== */
+  #barraMovil { display: none; }
+
+  @media (max-width: 820px) {
+    .app { grid-template-columns: 1fr; }
+
+    .lateral {
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 1200;
+      max-height: 72vh; background: var(--canvas);
+      border-right: 0; border-top: 1px solid var(--linea);
+      border-radius: 18px 18px 0 0; box-shadow: 0 -10px 30px rgba(0,0,0,.18);
+      transform: translateY(100%); transition: transform .22s ease;
+      overflow-y: auto;
+    }
+    .app.panel-abierto .lateral { transform: translateY(0); }
+    .cabecera { position: sticky; top: 0; background: var(--canvas); z-index: 2; }
+
+    /* La tira de herramientas, al alcance del pulgar. */
+    .herr {
+      top: auto; right: 8px; left: 8px; bottom: 118px;
+      display: flex; flex-direction: row; gap: 6px; overflow-x: auto; padding: 7px;
+      -webkit-overflow-scrolling: touch; scrollbar-width: none;
+    }
+    .herr::-webkit-scrollbar { display: none; }
+    .herr button { white-space: nowrap; flex: 0 0 auto; padding: 9px 12px; }
+    .herr .k { display: none; }
+
+    .ctx { left: 8px; right: 8px; bottom: 66px; overflow-x: auto; white-space: nowrap; }
+    .aviso { left: 8px; right: 8px; max-width: none; top: 8px; }
+
+    /* Los puntos de tocar tienen que ser de dedo, no de mouse. */
+    .leaflet-interactive { stroke-width: 3px; }
+
+    #barraMovil {
+      display: flex; gap: 8px; align-items: center;
+      position: fixed; left: 8px; right: 8px; bottom: 10px; z-index: 1300;
+      background: var(--canvas); border: 1px solid var(--linea);
+      border-radius: 999px; padding: 6px; box-shadow: var(--sombra);
+    }
+    #barraMovil button {
+      border: 0; background: none; font: 500 13px 'Plus Jakarta Sans', sans-serif;
+      color: var(--texto); padding: 9px 12px; border-radius: 999px; cursor: pointer;
+      flex: 1 1 auto; white-space: nowrap;
+    }
+    #barraMovil button.principal { background: var(--azul); color: #fff; }
+    #barraMovil button:disabled { opacity: .35; }
+    #barraMovil .gesto { display: none; }
+    .app.hay-gesto #barraMovil .gesto { display: block; }
+    .app.hay-gesto #barraMovil .normal { display: none; }
+  }
 </style>
 </head>
 <body>
@@ -250,6 +322,13 @@
       <button data-h="letras">A Poner las letras <span class="k">9</span></button>
     </div>
 
+    <div id="barraMovil">
+      <button class="normal" id="mPanel">☰ Territorios</button>
+      <button class="normal" id="mDeshacer">↶ Deshacer</button>
+      <button class="gesto" id="mCancelar">✕ Cancelar</button>
+      <button class="gesto principal" id="mListo">✓ Listo</button>
+    </div>
+
     <div class="flot ctx">
       <span style="color:var(--suave)">Alrededor</span>
       <div class="chips" id="chipsCtx">
@@ -313,6 +392,7 @@ let borradorEstado = 'sin_sesion'   // sin_sesion | vacio | guardando | guardado
 let borradorHora = null
 let borradorTimer = null            // las escrituras se agrupan, no una por movimiento
 let baseLeida = false               // la base CONTESTO, aunque haya venido vacia
+let ultimoTextoGuardado = null      // para no escribir cuando no cambio nada
 let sesionVencida = false           // el token de la app se vencio; lo renueva la app, no esta pagina
 let paraFusionar = []
 let cortePuntos = []
@@ -371,6 +451,12 @@ function guardar () {
     revisadas: [...revisadas],
   }
   const texto = JSON.stringify(datos)
+  // Si no cambio nada, no se escribe. guardar() corre en cada refrescar,
+  // y refrescar corre al abrir el territorio, al mover el mapa, al entrar
+  // a una herramienta. Sin esto, abrir el editor para mirar ya generaba
+  // una escritura y le aparecia a la otra persona como una version nueva.
+  if (texto === ultimoTextoGuardado) return
+  ultimoTextoGuardado = texto
   // El navegador queda como red de contencion: si se corta internet a
   // mitad de una edicion, el trabajo no se evapora. Pero ya no es la
   // copia que manda.
@@ -526,6 +612,7 @@ const TOCAN_LIBRES = new Set(['marcar', 'mover'])
 // Solo se dibuja lo visible: con 4.352 manzanas, pintarlas todas es lo que
 // hoy hace pesado el mapa de la app.
 function refrescarMapa () {
+  if (typeof pintarBarraMovil === 'function') pintarBarraMovil()
   capaManzanas.clearLayers()
   capaLetras.clearLayers()
   capaNumeros.clearLayers()
@@ -2148,6 +2235,9 @@ try {
     territorios.forEach(t => reletrar(t.id))
   }
 } catch (e) { /* si el guardado quedo corrupto, se arranca limpio */ }
+// Lo que acabamos de cargar ya esta guardado: que la primera pintada no
+// lo vuelva a escribir.
+if (guardado && vinoDe === 'la base') ultimoTextoGuardado = JSON.stringify(guardado)
 if (vinoDe === 'este navegador' && remoto) {
   avisar('Seguís con la versión de <b>esta computadora</b>. Se está subiendo.')
 }
@@ -2565,6 +2655,7 @@ document.getElementById('bGuardarBD').onclick = async () => {
    ==================================================================== */
 
 function pintarLetrasNuevas () {
+  pintarBarraMovil()
   capaLetrasNuevas.clearLayers()
   if (herramienta !== 'letras') return
   letrasNuevas.forEach((id, i) => {
@@ -2593,7 +2684,7 @@ function pintarLetrasNuevas () {
     aplicarLetrasNuevas()
   } else {
     avisar(`Vas <b>${n}</b> de ${total}. La próxima va a ser la <b>${LETRAS[n]}</b>. ` +
-      '<b>Enter</b> aplica lo que llevás, <b>Esc</b> cancela.')
+      (enTelefono() ? 'Tocá <b>Listo</b> abajo para aplicar.' : '<b>Enter</b> aplica lo que llevás, <b>Esc</b> cancela.'))
   }
 }
 
@@ -2885,6 +2976,82 @@ document.getElementById('bTraerTerr').onclick = async () => {
   refrescar()
   avisar(`Territorio <b>${t.numero}</b> traído de la base: <b>${filas.length}</b> manzanas con sus letras. <b>Cmd+Z</b> vuelve atrás.`)
 }
+
+/* ====================================================================
+   LOS BOTONES DEL TELEFONO
+   --------------------------------------------------------------------
+   En la compu, un gesto a medias se cierra con Enter y se descarta con
+   Esc, y Cmd+Z deshace. En un telefono no hay teclas: sin estos botones
+   quedas a medio dibujar una manzana sin forma de cerrarla.
+
+   La barra cambia sola: mientras no hay nada empezado muestra el panel
+   y deshacer; apenas hay un gesto en curso muestra cancelar y listo.
+   ==================================================================== */
+
+const enTelefono = () => window.matchMedia('(max-width: 820px)').matches
+
+function gestoEnCurso () {
+  if (dibujo.length) return { que: 'dibujo', n: dibujo.length }
+  if (letrasNuevas.length) return { que: 'letras', n: letrasNuevas.length }
+  if (paraFusionar.length) return { que: 'fusion', n: paraFusionar.length }
+  if (cortePuntos.length) return { que: 'corte', n: cortePuntos.length }
+  if (edicion) return { que: 'vertices', n: 0 }
+  return null
+}
+
+function pintarBarraMovil () {
+  const app = document.querySelector('.app')
+  const listoEl = document.getElementById('mListo')
+  if (!app || !listoEl) return
+  const g = gestoEnCurso()
+  app.classList.toggle('hay-gesto', Boolean(g))
+  const listo = listoEl
+  const deshacer = document.getElementById('mDeshacer')
+  deshacer.disabled = !historial.length
+  if (!g) return
+  listo.disabled = false
+  listo.textContent =
+    g.que === 'dibujo' ? `✓ Cerrar la manzana (${g.n})`
+    : g.que === 'letras' ? `✓ Aplicar las letras (${g.n})`
+    : g.que === 'vertices' ? '✓ Terminar de mover'
+    : g.que === 'fusion' ? 'Elegí la segunda'
+    : 'Marcá el segundo punto'
+  listo.disabled = g.que === 'fusion' || g.que === 'corte'
+}
+
+document.getElementById('mPanel').onclick = () =>
+  document.querySelector('.app').classList.toggle('panel-abierto')
+
+document.getElementById('mDeshacer').onclick = () => { deshacer(); pintarBarraMovil() }
+
+document.getElementById('mCancelar').onclick = () => {
+  // Mismo orden que Esc: se suelta el gesto mas chico primero.
+  if (dibujo.length) { cancelarDibujo(); avisar('Dibujo descartado.') }
+  else if (letrasNuevas.length) cancelarLetras()
+  else if (edicion) terminarEdicion()
+  else if (paraFusionar.length) { paraFusionar = []; refrescarMapa() }
+  else if (cortePuntos.length) { cortePuntos = []; capaCorte.clearLayers() }
+  pintarBarraMovil()
+}
+
+document.getElementById('mListo').onclick = () => {
+  if (dibujo.length) cerrarDibujo()
+  else if (letrasNuevas.length) aplicarLetrasNuevas()
+  else if (edicion) terminarEdicion()
+  pintarBarraMovil()
+}
+
+// La barra se entera de todo lo que pasa sin tener que llamarla desde
+// cada funcion: cualquier toque en el mapa o en el panel la repinta.
+pintarBarraMovil()
+
+// Al elegir un territorio desde el panel, en telefono el panel se cierra
+// solo: si no, tapa el mapa justo cuando queres verlo.
+document.getElementById('listaT').addEventListener('click', () => {
+  if (window.matchMedia('(max-width: 820px)').matches) {
+    document.querySelector('.app').classList.remove('panel-abierto')
+  }
+}, true)
 </script>
 </body>
 </html>
