@@ -59,6 +59,20 @@ export function AppShell() {
         </nav>
 
         {profile?.role === 'admin' && (
+          /* Documento aparte, no una ruta de React: por eso <a> y no
+             NavLink. Comparte origen y sesion con la app. */
+          <a href="/editor-manzanas.html" className="module-link">
+            <span className="module-icon" aria-hidden="true">
+              ▤
+            </span>
+            <span>
+              <strong>Editor de manzanas</strong>
+              <small>Dibujar, asignar y arreglar caras.</small>
+            </span>
+          </a>
+        )}
+
+        {profile?.role === 'admin' && (
           <NavLink to="/importacion" className="module-link">
             <span className="module-icon" aria-hidden="true">
               ⇪
