@@ -560,7 +560,10 @@ function UserAccessPanel() {
               Define los modulos permitidos antes de autorizar el acceso.
             </span>
           </div>
-          <strong>{pendingUsers.length}</strong>
+          {/* El contador solo aparece si hay algo que contar. Un globo
+              naranja con un cero adentro es una alarma que no suena por
+              nada, y despues nadie mira las que si suenan. */}
+          {pendingUsers.length > 0 ? <strong>{pendingUsers.length}</strong> : null}
         </div>
 
         {pendingUsers.length === 0 ? (

@@ -1,0 +1,736 @@
+/* ==========================================================================
+   Tema "hermano" para el admin
+   --------------------------------------------------------------------------
+   Se activa solo con <html data-theme="hermano">. Sin ese atributo la app
+   queda exactamente como estaba: esta hoja no toca :root pelado, ni rutas,
+   ni consultas, ni permisos, ni geometria.
+
+   DE DONDE SALE
+   Del lenguaje de src/styles/vista-hermano.css, que es el unico archivo de
+   estilo del proyecto donde cada decision tiene un motivo escrito y ese
+   motivo es una persona. De ahi se muda:
+     - el papel calido en vez del blanco,
+     - Urbanist,
+     - UN acento (lima/oliva) con sus derivados de estado,
+     - una sola superficie oscura en toda la pantalla,
+     - el color nunca solo: siempre con palabra o forma al lado.
+
+   QUE NO SE MUDA, A PROPOSITO
+   La densidad. Alla el piso es 16px y todo lo tocable mide 56px, porque
+   quien mira es un publicador de 70 anios parado al sol con el telefono en
+   la mano. Aca quien mira es el que administra, en una PC, con un puntero
+   de un pixel, y necesita ver cuarenta filas de importacion en pantalla,
+   no ocho. Copiar los 56px seria copiar la respuesta sin la pregunta.
+   Por eso el cuerpo baja a 15px y los controles a 38px.
+
+   LA SUPERFICIE OSCURA
+   En la vista del hermano hay una sola tarjeta oscura y es la que importa
+   hoy. Aca ese papel lo hace la barra lateral: es lo unico oscuro, y el
+   contenido -que es donde se decide- queda sobre papel claro.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   1. Tokens
+   -------------------------------------------------------------------------- */
+
+:root[data-theme='hermano'] {
+  /* Tinta y papel, iguales a la vista del hermano. */
+  --h-ink: #16191d;
+  --h-canvas: #f6f4ee;
+  --h-surface: #ffffff;
+  --h-line: #e5e0d4;
+
+  --h-fg: #16191d;
+  --h-fg-2: #4b4f57;
+  --h-fg-3: #6a6e77;
+
+  /* El unico tono vivo. El lima vive como RELLENO; para texto esta el
+     oliva. El oliva de marca da 4,28 sobre su fondo tenue y no llega a
+     contraste: para texto sobre olive-bg va --h-olive-ink, que da 5,82. */
+  --h-lime: #cbea5b;
+  --h-lime-deep: #b4d63c;
+  --h-olive: #5f7d0a;
+  --h-olive-ink: #516608;
+  --h-olive-bg: #f0f6dd;
+  --h-olive-line: #d3e2a4;
+
+  /* Estado. Si aparecen, algo esta pasando de verdad. */
+  --h-good-fg: #0f6b47;  --h-good-bg: #e3f2e9;  --h-good-line: #aed6c1;
+  --h-warn-fg: #955408;  --h-warn-bg: #fbeed7;  --h-warn-line: #ebd2a3;
+  --h-bad-fg:  #a12b1e;  --h-bad-bg:  #fbe7e4;  --h-bad-line:  #eebbb3;
+
+  /* Escala de admin. Una sola perilla, como alla, pero calibrada para
+     mouse y pantalla grande. */
+  --h-step: 1;
+  --h-t-micro: calc(12px * var(--h-step));
+  --h-t-label: calc(13px * var(--h-step));
+  --h-t-body:  calc(15px * var(--h-step));
+  --h-t-lead:  calc(17px * var(--h-step));
+  --h-t-h3:    calc(20px * var(--h-step));
+  --h-t-h2:    calc(27px * var(--h-step));
+  --h-t-num:   calc(30px * var(--h-step));
+
+  --h-tap: 38px;
+  --h-r-control: 10px;
+  --h-r-panel: 16px;
+  --h-r-pill: 999px;
+
+  --h-shadow: 0 6px 18px rgba(22, 25, 29, 0.06);
+  --h-shadow-float: 0 16px 34px rgba(22, 25, 29, 0.12);
+  --h-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --h-dur: 160ms;
+
+  /* Mapeo sobre los tokens que index.css ya usa: con esto se reskinea de
+     entrada todo lo que ya escribia var(), sin tocar index.css. */
+  --page-bg: var(--h-surface);
+  --panel-bg: var(--h-surface);
+  --panel-border: var(--h-line);
+  --text-main: var(--h-fg);
+  --text-soft: var(--h-fg-3);
+  --accent: var(--h-olive);
+  --accent-dark: var(--h-olive-ink);
+  --accent-soft: var(--h-olive-bg);
+  --shadow: var(--h-shadow);
+}
+
+/* --------------------------------------------------------------------------
+   2. Base
+   -------------------------------------------------------------------------- */
+
+:root[data-theme='hermano'] {
+  font-family: Urbanist, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  /* Numeros de ancho fijo: una columna de cuentas que baila se lee peor. */
+  font-feature-settings: 'tnum';
+  color: var(--h-fg);
+  background: var(--h-canvas);
+}
+
+:root[data-theme='hermano'] body {
+  background: var(--h-canvas);
+  font-size: var(--h-t-body);
+  line-height: 1.5;
+  font-weight: 400;
+}
+
+:root[data-theme='hermano'] h1,
+:root[data-theme='hermano'] h2,
+:root[data-theme='hermano'] h3,
+:root[data-theme='hermano'] h4 {
+  color: var(--h-fg);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.18;
+}
+
+:root[data-theme='hermano'] h2 { font-size: var(--h-t-h2); }
+:root[data-theme='hermano'] h3 { font-size: var(--h-t-h3); }
+:root[data-theme='hermano'] h4 { font-size: var(--h-t-lead); }
+
+/* Eyebrow: rotulo corto, no grito. Sin mayusculas forzadas. */
+:root[data-theme='hermano'] .eyebrow {
+  color: var(--h-fg-3);
+  font-size: var(--h-t-micro);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: none;
+}
+
+:root[data-theme='hermano'] .lead {
+  color: var(--h-fg-2);
+  font-size: var(--h-t-lead);
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+:root[data-theme='hermano'] :focus-visible {
+  outline: 3px solid var(--h-olive);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+:root[data-theme='hermano'] ::selection {
+  background: var(--h-lime);
+  color: var(--h-ink);
+}
+
+/* --------------------------------------------------------------------------
+   3. Shell y barra lateral
+   La unica superficie oscura de la pantalla. El contenido, donde se
+   decide, queda sobre papel claro.
+   -------------------------------------------------------------------------- */
+
+:root[data-theme='hermano'] .app-shell { background: var(--h-canvas); }
+
+:root[data-theme='hermano'] .sidebar {
+  background: var(--h-ink);
+  color: #f4f3ef;
+  border-right: 0;
+  gap: 1.1rem;
+  padding: 1.25rem 1rem;
+}
+
+:root[data-theme='hermano'] .sidebar .eyebrow { color: #9ba0a8; }
+
+:root[data-theme='hermano'] .sidebar .brand-copy,
+:root[data-theme='hermano'] .sidebar .security-card li,
+:root[data-theme='hermano'] .sidebar .module-link small {
+  color: #a4a8b0;
+}
+
+:root[data-theme='hermano'] .brand-panel {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  padding: 0.35rem 0.25rem 0;
+}
+
+:root[data-theme='hermano'] .brand-panel h1 {
+  color: #ffffff;
+  font-size: var(--h-t-lead);
+  letter-spacing: -0.01em;
+}
+
+/* Enlace de modulo. Activo = relleno lima, texto tinta: el mismo gesto que
+   el boton principal de la vista del hermano. */
+:root[data-theme='hermano'] .module-link {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--h-r-control);
+  padding: 0.55rem 0.65rem;
+  color: #f4f3ef;
+  transition: background var(--h-dur) var(--h-ease);
+}
+
+:root[data-theme='hermano'] .module-link:hover {
+  transform: none;
+  background: rgba(255, 255, 255, 0.07);
+  border-color: transparent;
+}
+
+:root[data-theme='hermano'] .module-link.active {
+  background: var(--h-lime);
+  border-color: transparent;
+  color: var(--h-ink);
+}
+
+:root[data-theme='hermano'] .module-link.active small { color: #4a5a12; }
+
+:root[data-theme='hermano'] .module-icon {
+  background: rgba(255, 255, 255, 0.08);
+  border: 0;
+  border-radius: 9px;
+  color: inherit;
+}
+
+:root[data-theme='hermano'] .module-link.active .module-icon {
+  background: rgba(22, 25, 29, 0.14);
+  color: var(--h-ink);
+}
+
+:root[data-theme='hermano'] .user-card,
+:root[data-theme='hermano'] .security-card,
+:root[data-theme='hermano'] .install-card {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--h-r-control);
+  box-shadow: none;
+  color: #f4f3ef;
+}
+
+:root[data-theme='hermano'] .sidebar .ghost-button {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  color: #f4f3ef;
+}
+
+:root[data-theme='hermano'] .sidebar .ghost-button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* --------------------------------------------------------------------------
+   4. Contenido y paneles
+   -------------------------------------------------------------------------- */
+
+:root[data-theme='hermano'] .content {
+  background: var(--h-canvas);
+  padding: 1.75rem 2rem 3rem;
+}
+
+:root[data-theme='hermano'] .page-header { margin-bottom: 1.1rem; }
+
+:root[data-theme='hermano'] .panel,
+:root[data-theme='hermano'] .list-card,
+:root[data-theme='hermano'] .map-panel,
+:root[data-theme='hermano'] .status-card,
+:root[data-theme='hermano'] .module-detail-card,
+:root[data-theme='hermano'] .module-guidance-item,
+:root[data-theme='hermano'] .module-registry-panel,
+:root[data-theme='hermano'] .territory-registry-panel,
+:root[data-theme='hermano'] .territory-block-panel,
+:root[data-theme='hermano'] .personal-alert-panel,
+:root[data-theme='hermano'] .admin-access-panel,
+:root[data-theme='hermano'] .territory-studio,
+:root[data-theme='hermano'] .territory-console,
+:root[data-theme='hermano'] .module-console {
+  background: var(--h-surface);
+  border: 1px solid var(--h-line);
+  border-radius: var(--h-r-panel);
+  box-shadow: none;
+}
+
+:root[data-theme='hermano'] .module-hero,
+:root[data-theme='hermano'] .territory-hero,
+:root[data-theme='hermano'] .group-assignment-card,
+:root[data-theme='hermano'] .outing-day-card,
+:root[data-theme='hermano'] .driver-card,
+:root[data-theme='hermano'] .availability-day-card,
+:root[data-theme='hermano'] .personal-reservation-card,
+:root[data-theme='hermano'] .territory-summary-box,
+:root[data-theme='hermano'] .availability-editor,
+:root[data-theme='hermano'] .admin-notification-panel {
+  background: var(--h-surface);
+  border: 1px solid var(--h-line);
+  border-radius: var(--h-r-control);
+  box-shadow: none;
+}
+
+/* La tarjeta de venta que abre cada modulo pesa menos que los datos. */
+:root[data-theme='hermano'] .hero-card {
+  background: var(--h-surface);
+  border: 1px solid var(--h-line);
+  border-radius: var(--h-r-panel);
+  box-shadow: none;
+  color: var(--h-fg);
+}
+
+:root[data-theme='hermano'] .stat-card,
+:root[data-theme='hermano'] .module-stat-card,
+:root[data-theme='hermano'] .territory-metric-card {
+  background: var(--h-surface);
+  border: 1px solid var(--h-line);
+  border-radius: var(--h-r-control);
+  box-shadow: none;
+}
+
+:root[data-theme='hermano'] .stat-card strong,
+:root[data-theme='hermano'] .module-stat-card strong,
+:root[data-theme='hermano'] .territory-metric-card strong {
+  font-size: var(--h-t-num);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* --------------------------------------------------------------------------
+   5. Botones
+   Uno solo manda: el principal, relleno lima con texto tinta. Los demas
+   son borde. Si en una pantalla hay dos botones llenos, uno esta de mas.
+   -------------------------------------------------------------------------- */
+
+:root[data-theme='hermano'] .primary-button,
+:root[data-theme='hermano'] .secondary-button,
+:root[data-theme='hermano'] .ghost-button,
+:root[data-theme='hermano'] .danger-button,
+:root[data-theme='hermano'] .compact-button {
+  min-height: var(--h-tap);
+  border-radius: var(--h-r-control);
+  font: 600 var(--h-t-body)/1 Urbanist, -apple-system, sans-serif;
+  letter-spacing: 0;
+  transition: background var(--h-dur) var(--h-ease);
+}
+
+:root[data-theme='hermano'] .primary-button {
+  background: var(--h-lime);
+  border: 1px solid var(--h-lime-deep);
+  color: var(--h-ink);
+  box-shadow: none;
+}
+
+:root[data-theme='hermano'] .primary-button:hover:not(:disabled) {
+  background: var(--h-lime-deep);
+  transform: none;
+}
+
+:root[data-theme='hermano'] .secondary-button,
+:root[data-theme='hermano'] .ghost-button {
+  background: var(--h-surface);
+  border: 1px solid var(--h-line);
+  color: var(--h-fg);
+}
+
+:root[data-theme='hermano'] .secondary-button:hover:not(:disabled),
+:root[data-theme='hermano'] .ghost-button:hover:not(:disabled) {
+  background: var(--h-canvas);
+}
+
+/* Rojo de borde, no de relleno: dar de baja no es la accion esperada. */
+:root[data-theme='hermano'] .danger-button {
+  background: var(--h-bad-bg);
+  border: 1px solid var(--h-bad-line);
+  color: var(--h-bad-fg);
+}
+
+:root[data-theme='hermano'] .danger-button:hover:not(:disabled) {
+  background: #f6d9d4;
+}
+
+:root[data-theme='hermano'] .compact-button {
+  min-height: 32px;
+  font-size: var(--h-t-label);
+}
+
+:root[data-theme='hermano'] button:disabled { opacity: 0.45; }
+
+/* --------------------------------------------------------------------------
+   6. Formularios
+   -------------------------------------------------------------------------- */
+
+:root[data-theme='hermano'] input,
+:root[data-theme='hermano'] select,
+:root[data-theme='hermano'] textarea {
+  background: var(--h-surface);
+  border: 1px solid var(--h-line);
+  border-radius: var(--h-r-control);
+  color: var(--h-fg);
+  font: 400 var(--h-t-body)/1.4 Urbanist, -apple-system, sans-serif;
+  min-height: var(--h-tap);
+}
+
+:root[data-theme='hermano'] input:focus,
+:root[data-theme='hermano'] select:focus,
+:root[data-theme='hermano'] textarea:focus {
+  border-color: var(--h-olive);
+}
+
+:root[data-theme='hermano'] input::placeholder,
+:root[data-theme='hermano'] textarea::placeholder { color: var(--h-fg-3); }
+
+:root[data-theme='hermano'] input[type='checkbox'],
+:root[data-theme='hermano'] input[type='radio'] {
+  min-height: 0;
+  accent-color: var(--h-olive);
+}
+
+:root[data-theme='hermano'] label { color: var(--h-fg-2); font-size: var(--h-t-label); }
+
+/* --------------------------------------------------------------------------
+   7. Tablas y filas
+   Aca es donde la densidad importa: sin borde por fila, solo una linea.
+   -------------------------------------------------------------------------- */
+
+:root[data-theme='hermano'] .module-table-shell,
+:root[data-theme='hermano'] .territory-table-shell,
+:root[data-theme='hermano'] .outing-schedule-shell {
+  background: var(--h-surface);
+  border: 1px solid var(--h-line);
+  border-radius: var(--h-r-control);
+  overflow: hidden;
+}
+
+:root[data-theme='hermano'] .module-table-head,
+:root[data-theme='hermano'] .territory-table-head,
+:root[data-theme='hermano'] .outing-schedule-head {
+  background: var(--h-canvas);
+  border-bottom: 1px solid var(--h-line);
+  color: var(--h-fg-3);
+  font-size: var(--h-t-micro);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+:root[data-theme='hermano'] .module-table-row,
+:root[data-theme='hermano'] .territory-table-row,
+:root[data-theme='hermano'] .outing-schedule-row,
+:root[data-theme='hermano'] .table-row {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--h-line);
+  border-radius: 0;
+  font-size: var(--h-t-body);
+}
+
+:root[data-theme='hermano'] .module-table-row:hover,
+:root[data-theme='hermano'] .territory-table-row:hover,
+:root[data-theme='hermano'] .outing-schedule-row:hover {
+  background: var(--h-canvas);
+}
+
+:root[data-theme='hermano'] .territory-table-row.active,
+:root[data-theme='hermano'] .module-table-row-button.active,
+:root[data-theme='hermano'] .outing-schedule-row.active {
+  background: var(--h-olive-bg);
+  color: var(--h-olive-ink);
+}
+
+:root[data-theme='hermano'] .territory-item {
+  border: 1px solid var(--h-line);
+  border-radius: var(--h-r-control);
+  background: var(--h-surface);
+}
+
+:root[data-theme='hermano'] .territory-item:hover { background: var(--h-canvas); }
+
+:root[data-theme='hermano'] .territory-item.active {
+  background: var(--h-olive-bg);
+  border-color: var(--h-olive-line);
+  color: var(--h-olive-ink);
+}
+
+/* --------------------------------------------------------------------------
+   8. Pastillas de estado
+   Regla heredada: el color nunca es el unico portador de significado.
+   Todas llevan la palabra al lado; ninguna se distingue solo por el tono.
+   -------------------------------------------------------------------------- */
+
+:root[data-theme='hermano'] .status-pill,
+:root[data-theme='hermano'] .territory-count-pill,
+:root[data-theme='hermano'] .outing-type-pill,
+:root[data-theme='hermano'] .tag-row {
+  border-radius: var(--h-r-pill);
+  font-size: var(--h-t-micro);
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+:root[data-theme='hermano'] .status-activo {
+  background: var(--h-good-bg);
+  border: 1px solid var(--h-good-line);
+  color: var(--h-good-fg);
+}
+
+:root[data-theme='hermano'] .status-pendiente {
+  background: var(--h-warn-bg);
+  border: 1px solid var(--h-warn-line);
+  color: var(--h-warn-fg);
+}
+
+:root[data-theme='hermano'] .status-inactivo {
+  background: var(--h-canvas);
+  border: 1px solid var(--h-line);
+  color: var(--h-fg-3);
+}
+
+:root[data-theme='hermano'] .territory-count-pill,
+:root[data-theme='hermano'] .tag-row {
+  background: var(--h-olive-bg);
+  border: 1px solid var(--h-olive-line);
+  color: var(--h-olive-ink);
+}
+
+:root[data-theme='hermano'] .form-feedback {
+  border-radius: var(--h-r-control);
+  font-size: var(--h-t-body);
+}
+
+:root[data-theme='hermano'] .form-feedback.error {
+  background: var(--h-bad-bg);
+  border: 1px solid var(--h-bad-line);
+  color: var(--h-bad-fg);
+}
+
+:root[data-theme='hermano'] .form-feedback.success {
+  background: var(--h-good-bg);
+  border: 1px solid var(--h-good-line);
+  color: var(--h-good-fg);
+}
+
+/* --------------------------------------------------------------------------
+   9. Inicio del admin
+   La lista de lo que espera una decision. El numero adelante y grande:
+   cuantos son se lee antes que el texto.
+   -------------------------------------------------------------------------- */
+
+:root[data-theme='hermano'] .inicio-lista li {
+  border-color: var(--h-line);
+  background: var(--h-surface);
+  border-radius: var(--h-r-control);
+  padding: 13px 14px;
+}
+
+:root[data-theme='hermano'] .inicio-lista li:hover { background: var(--h-canvas); }
+
+/* Ambar, no lima: el lima es la accion, esto es lo que falta hacer. */
+:root[data-theme='hermano'] .inicio-cuantos {
+  background: var(--h-warn-bg);
+  color: var(--h-warn-fg);
+  font: 700 var(--h-t-h3)/1 Urbanist, -apple-system, sans-serif;
+  border-radius: 9px;
+}
+
+:root[data-theme='hermano'] .inicio-texto strong {
+  font-size: var(--h-t-body);
+  font-weight: 600;
+}
+
+:root[data-theme='hermano'] .inicio-texto small {
+  font-size: var(--h-t-label);
+  color: var(--h-fg-3);
+  opacity: 1;
+}
+
+:root[data-theme='hermano'] .inicio-accion {
+  border-color: var(--h-line);
+  border-radius: var(--h-r-pill);
+  font-size: var(--h-t-label);
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  color: var(--h-olive-ink);
+}
+
+:root[data-theme='hermano'] .inicio-accion:hover {
+  background: var(--h-olive-bg);
+  border-color: var(--h-olive-line);
+}
+
+:root[data-theme='hermano'] .inicio-tranquilo p { color: var(--h-fg-2); opacity: 1; }
+
+/* --------------------------------------------------------------------------
+   10. Mapas
+   El mapa trae sus propios colores; el marco no compite con el.
+   -------------------------------------------------------------------------- */
+
+:root[data-theme='hermano'] .territory-map-frame,
+:root[data-theme='hermano'] .territory-map-stage,
+:root[data-theme='hermano'] .map-canvas,
+:root[data-theme='hermano'] .meeting-map-canvas,
+:root[data-theme='hermano'] .territory-leaflet-canvas {
+  border: 1px solid var(--h-line);
+  border-radius: var(--h-r-control);
+}
+
+:root[data-theme='hermano'] .territory-map-floating-card,
+:root[data-theme='hermano'] .map-picker-panel {
+  background: var(--h-surface);
+  border: 1px solid var(--h-line);
+  border-radius: var(--h-r-control);
+  box-shadow: var(--h-shadow-float);
+}
+
+/* --------------------------------------------------------------------------
+   11. Ajustes finos sobre reglas de index.css que traian color propio
+   -------------------------------------------------------------------------- */
+
+/* El saludo no es un panel: no lleva papel ni borde propio. */
+:root[data-theme='hermano'] .page-header {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  padding: 0 0 0.25rem;
+}
+
+/* Ese contador venia con un degrade naranja lleno, del tamanio de un boton.
+   Aca es una pastilla ambar como las del inicio: se lee igual y no grita.
+   Que no aparezca cuando vale cero se resuelve en el componente, no aca. */
+:root[data-theme='hermano'] .admin-notification-head > strong {
+  min-width: 40px;
+  height: 34px;
+  border-radius: 9px;
+  background: var(--h-warn-bg);
+  border: 1px solid var(--h-warn-line);
+  color: var(--h-warn-fg);
+  font: 700 var(--h-t-lead)/1 Urbanist, -apple-system, sans-serif;
+}
+
+:root[data-theme='hermano'] .admin-access-subhead {
+  border-top: 1px solid var(--h-line);
+}
+
+:root[data-theme='hermano'] .admin-notification-head span,
+:root[data-theme='hermano'] .admin-access-subhead span {
+  color: var(--h-fg-3);
+  font-weight: 500;
+  font-size: var(--h-t-label);
+}
+
+:root[data-theme='hermano'] .admin-user-card {
+  background: var(--h-surface);
+  border: 1px solid var(--h-line);
+  border-radius: var(--h-r-control);
+  box-shadow: none;
+}
+
+/* La tarjeta pendiente se distingue por el borde oliva, no por relleno:
+   sigue siendo una fila de trabajo, no una alerta. */
+:root[data-theme='hermano'] .admin-user-card-pending {
+  border-color: var(--h-olive-line);
+  background: var(--h-olive-bg);
+}
+
+:root[data-theme='hermano'] .status-card {
+  background: var(--h-canvas);
+  border: 1px solid var(--h-line);
+  color: var(--h-fg-2);
+  font-size: var(--h-t-body);
+}
+
+/* --------------------------------------------------------------------------
+   12. El encabezado de modulo
+   index.css lo pinta marron oscuro y por eso su texto es claro
+   (#fff7f0, #f8bc9c). Al pasarlo a papel blanco hay que devolver el texto
+   a tinta, si no queda blanco sobre blanco: invisible, no "sutil".
+   -------------------------------------------------------------------------- */
+
+:root[data-theme='hermano'] .module-hero,
+:root[data-theme='hermano'] .territory-hero {
+  background: var(--h-surface);
+  color: var(--h-fg);
+}
+
+:root[data-theme='hermano'] .module-hero-copy .eyebrow,
+:root[data-theme='hermano'] .territory-hero-copy .eyebrow {
+  color: var(--h-fg-3);
+}
+
+:root[data-theme='hermano'] .module-hero-copy h3,
+:root[data-theme='hermano'] .territory-hero-copy h3 {
+  color: var(--h-fg);
+}
+
+:root[data-theme='hermano'] .module-hero-copy p,
+:root[data-theme='hermano'] .module-hero-copy p:last-child,
+:root[data-theme='hermano'] .territory-hero-copy p,
+:root[data-theme='hermano'] .module-stat-card small,
+:root[data-theme='hermano'] .table-hint {
+  color: var(--h-fg-2);
+}
+
+/* Las cifras del encabezado: fondo papel, numero en tinta, rotulo en gris.
+   El rotulo deja de ir en versalitas espaciadas: a ese tamanio se lee peor
+   que en minusculas y no gana nada. */
+:root[data-theme='hermano'] .module-stat-card {
+  background: var(--h-canvas);
+  border: 1px solid var(--h-line);
+  padding: 0.75rem 0.85rem;
+}
+
+:root[data-theme='hermano'] .module-stat-card span {
+  color: var(--h-fg-3);
+  font-size: var(--h-t-micro);
+  text-transform: none;
+  letter-spacing: 0.02em;
+  font-weight: 600;
+}
+
+:root[data-theme='hermano'] .module-stat-card strong {
+  color: var(--h-fg);
+  font-size: var(--h-t-num);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* El resaltado del inicio venia en degrade durazno. Papel y borde. */
+:root[data-theme='hermano'] .hero-highlight {
+  background: var(--h-canvas);
+  border: 1px solid var(--h-line);
+  border-radius: var(--h-r-control);
+  color: var(--h-fg);
+}
+
+/* La grilla de cifras estaba fija en tres columnas y Conductores tiene
+   cuatro: la cuarta caia sola a un segundo renglon, con el aspecto de
+   haberse roto. Que se acomoden solas a cuantas sean. */
+:root[data-theme='hermano'] .module-hero-stats {
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.6rem;
+}

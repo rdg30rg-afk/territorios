@@ -1999,7 +1999,12 @@ button {
 
 .admin-user-card {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(160px, 0.6fr) minmax(190px, 0.8fr) minmax(260px, 1.1fr) minmax(220px, auto);
+  /* Cinco columnas con minimos fijos sumaban 1050px + separaciones, mas
+     de lo que queda cuando la barra lateral se lleva su parte: el ultimo
+     bloque -el de "Guardar acceso" y "Dar de baja"- se salia de la tarjeta
+     y quedaba cortado, sin poder tocarse. Con auto-fit las columnas se
+     acomodan a lo que hay y bajan de renglon en vez de desbordar. */
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 0.85rem;
   align-items: center;
   padding: 1rem;
@@ -2061,6 +2066,12 @@ button {
   gap: 0.55rem;
   justify-content: flex-end;
   flex-wrap: wrap;
+  /* Los botones se llevan un renglon propio, pegados a la derecha. Con
+     997px reales de tarjeta, los cinco bloques nunca entraban en una sola
+     linea, y "queda lo que entra" es como se cortaba el boton antes. */
+  grid-column: 1 / -1;
+  border-top: 1px solid rgba(109, 76, 65, 0.1);
+  padding-top: 0.75rem;
 }
 
 .admin-notification-panel {

@@ -4,6 +4,16 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/pwa/icon-180.png" />
+    <!-- Urbanist: la pide vista-hermano.css en ocho reglas y no estaba
+         cargada en ningun lado, asi que la vista del hermano venia cayendo
+         en la fuente del sistema. Va como <link> y no como @import de CSS
+         para que el navegador la pida en paralelo con la hoja de estilos. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Urbanist:wght@400;500;600;700&display=swap"
+    />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#4e342e" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -19,23 +29,28 @@
     <!--
       Selector de tema. Aislado del arbol de React a proposito: no toca
       componentes, rutas ni estado de la app.
-        ?theme=mapsi    activa la piel nueva
-        ?theme=classic  vuelve al tema original
+        ?theme=hermano  el idioma visual de la vista del hermano
+        ?theme=mapsi    la piel Mapsi
+        ?theme=classic  el tema original
       La eleccion queda en localStorage. El boton flotante solo aparece
       en desarrollo local, nunca en un build publicado.
     -->
     <script>
       (function () {
         var KEY = 'territorios:theme'
-        var THEMES = ['classic', 'mapsi']
+        var THEMES = ['classic', 'mapsi', 'hermano']
 
         function apply(theme) {
-          if (theme === 'mapsi') {
-            document.documentElement.setAttribute('data-theme', 'mapsi')
-          } else {
+          // 'classic' es el tema original y no lleva atributo: sus reglas
+          // viven en :root pelado dentro de index.css.
+          if (theme === 'classic') {
             document.documentElement.removeAttribute('data-theme')
+          } else {
+            document.documentElement.setAttribute('data-theme', theme)
           }
         }
+
+        var NOMBRES = { classic: 'Clasico', mapsi: 'Mapsi', hermano: 'Hermano' }
 
         function read() {
           var fromUrl = new URLSearchParams(window.location.search).get('theme')
@@ -69,7 +84,7 @@
           }
           apply(theme)
           var label = document.getElementById('theme-switch-label')
-          if (label) label.textContent = theme === 'mapsi' ? 'Mapsi' : 'Clasico'
+          if (label) label.textContent = NOMBRES[theme]
         }
 
         var isLocal = ['localhost', '127.0.0.1', '::1'].indexOf(location.hostname) !== -1
@@ -93,10 +108,12 @@
           button.innerHTML =
             '<span style="width:8px;height:8px;border-radius:50%;background:#407dfe"></span>' +
             'Tema: <strong id="theme-switch-label" style="font-weight:600">' +
-            (current === 'mapsi' ? 'Mapsi' : 'Clasico') +
+            NOMBRES[current] +
             '</strong>'
+          // Rota entre los tres, en el orden de THEMES.
           button.addEventListener('click', function () {
-            window.__setTheme(current === 'mapsi' ? 'classic' : 'mapsi')
+            var i = THEMES.indexOf(current)
+            window.__setTheme(THEMES[(i + 1) % THEMES.length])
           })
           document.body.appendChild(button)
         })

@@ -6,6 +6,7 @@ import 'leaflet-draw/dist/leaflet.draw.css'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import './index.css'
 import './styles/theme-mapsi.css'
+import './styles/theme-hermano.css'
 import App from './App.tsx'
 import { AuthProvider } from './context/AuthContext'
 
