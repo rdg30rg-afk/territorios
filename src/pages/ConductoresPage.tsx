@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Falta } from '../components/Falta'
+import { useIrAlFormulario } from '../hooks/useIrAlFormulario'
 import { useAuth } from '../context/useAuth'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 
@@ -147,6 +148,9 @@ export function ConductoresPage() {
   const [drivers, setDrivers] = useState<DriverRecord[]>([])
   const [selectedDriverId, setSelectedDriverId] = useState<string | null>(null)
   const [editingDriverId, setEditingDriverId] = useState<string | null>(null)
+  // Al empezar a editar, la pantalla va al formulario: si no, el cambio
+  // ocurre debajo de la tabla y parece que el boton no hizo nada.
+  const formulario = useIrAlFormulario(editingDriverId)
   const [fullName, setFullName] = useState('')
   const [phone, setPhone] = useState('')
   const [notes, setNotes] = useState('')
@@ -535,7 +539,7 @@ export function ConductoresPage() {
           )}
         </section>
 
-        <section className="two-column-grid module-form-grid">
+        <section className="two-column-grid module-form-grid" ref={formulario}>
           <article className="panel">
             <p className="eyebrow">{editingDriverId ? 'Edicion' : 'Alta'}</p>
             <h3>{editingDriverId ? 'Editar conductor' : 'Nuevo conductor'}</h3>

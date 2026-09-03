@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { Falta } from '../components/Falta'
+import { useIrAlFormulario } from '../hooks/useIrAlFormulario'
 import { useAuth } from '../context/useAuth'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 
@@ -417,6 +418,9 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
   >([])
   const [selectedOutingId, setSelectedOutingId] = useState<string | null>(null)
   const [editingOutingId, setEditingOutingId] = useState<string | null>(null)
+  // Al empezar a editar, la pantalla va al formulario: si no, el cambio
+  // ocurre debajo de la tabla y parece que el boton no hizo nada.
+  const formulario = useIrAlFormulario(editingOutingId)
   const [selectedSlotKey, setSelectedSlotKey] = useState<string | null>(null)
   const [activePlannerRowKey, setActivePlannerRowKey] = useState<string | null>(null)
   const [plannerDrafts, setPlannerDrafts] = useState<Record<string, PlannerDraft>>({})
@@ -1811,7 +1815,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
           )}
         </section>
 
-        <section className="two-column-grid module-form-grid">
+        <section className="two-column-grid module-form-grid" ref={formulario}>
           <article className="panel">
             <p className="eyebrow">{editingOutingId ? 'Edicion' : 'Planificacion'}</p>
             <h3>{editingOutingId ? 'Editar salida' : 'Nueva salida'}</h3>
