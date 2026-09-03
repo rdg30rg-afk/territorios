@@ -310,6 +310,7 @@ let borradorEstado = 'sin_sesion'   // sin_sesion | vacio | guardando | guardado
 let borradorHora = null
 let borradorTimer = null            // las escrituras se agrupan, no una por movimiento
 let baseLeida = false               // la base CONTESTO, aunque haya venido vacia
+let sesionVencida = false           // el token de la app se vencio; lo renueva la app, no esta pagina
 let paraFusionar = []
 let cortePuntos = []
 let historial = []
@@ -346,7 +347,10 @@ function guardar () {
   // El navegador queda como red de contencion: si se corta internet a
   // mitad de una edicion, el trabajo no se evapora. Pero ya no es la
   // copia que manda.
-  try { localStorage.setItem(CLAVE, texto) } catch (e) { /* sin espacio, se sigue en memoria */ }
+  try {
+    localStorage.setItem(CLAVE, texto)
+    localStorage.setItem(CLAVE + ':at', new Date().toISOString())
+  } catch (e) { /* sin espacio, se sigue en memoria */ }
   guardarEnArchivo(texto)
   guardarBorrador(datos)
 }
@@ -2050,13 +2054,49 @@ try {
   if (sv.ok) SIN_VIVIENDAS = new Map(Object.entries(await sv.json()))
 } catch (e) { /* sin el archivo el diagnostico sigue, con menos datos */ }
 
-// Manda la base. El localStorage solo entra si la base no contesta: sin
-// sesion, sin internet, o la fila todavia no existe.
-let guardado = await leerBorrador()
-let vinoDe = guardado ? 'la base' : null
-if (!guardado) {
-  try { guardado = JSON.parse(localStorage.getItem(CLAVE) || 'null') } catch (e) { guardado = null }
-  if (guardado) vinoDe = 'este navegador'
+// Manda la base, pero NO a ciegas. Puede haber trabajo hecho en esta
+// computadora que nunca llego a subir -otra pestaña vieja, un rato sin
+// internet, la sesion vencida-. Si los dos lados no dicen lo mismo, no se
+// elige solo: elige la persona, con los numeros de cada uno a la vista.
+// Perder una tarde de dibujo por una regla automatica no se arregla
+// despues.
+const remoto = await leerBorrador()
+let local = null
+try { local = JSON.parse(localStorage.getItem(CLAVE) || 'null') } catch (e) { local = null }
+const localAt = localStorage.getItem(CLAVE + ':at')
+
+const resumenDe = (d) => d
+  ? `${(d.territorios || []).length} territorios · ${(d.asignacion || []).length} manzanas asignadas`
+  : 'nada'
+const firmaDe = (d) => d ? `${(d.territorios || []).length}/${(d.asignacion || []).length}` : '-'
+
+let guardado = remoto || local
+let vinoDe = remoto ? 'la base' : (local ? 'este navegador' : null)
+
+if (remoto && local && firmaDe(remoto) !== firmaDe(local)) {
+  const cuando = localAt
+    ? new Date(localAt).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })
+    : 'sin fecha'
+  const cuandoBase = borradorSello
+    ? new Date(borradorSello).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })
+    : 'sin fecha'
+  const usarBase = await dialogo({
+    titulo: 'Hay dos versiones distintas',
+    cuerpo:
+      `<b>En esta computadora:</b> ${resumenDe(local)}<br><small>${cuando}</small><br><br>` +
+      `<b>Guardado en la base:</b> ${resumenDe(remoto)}<br><small>${cuandoBase}</small><br><br>` +
+      'Elegí con cuál seguir. Lo que ya publicaste con “Guardar el territorio” no se toca: esto es solo el trabajo a medio hacer.',
+    aceptar: 'Usar el de la base',
+  })
+  if (usarBase) {
+    guardado = remoto
+    vinoDe = 'la base'
+  } else {
+    guardado = local
+    vinoDe = 'este navegador'
+    // Lo de esta computadora pasa a ser lo bueno: se sube apenas se pueda.
+    setTimeout(() => guardar(), 1500)
+  }
 }
 
 try {
@@ -2081,7 +2121,9 @@ try {
     territorios.forEach(t => reletrar(t.id))
   }
 } catch (e) { /* si el guardado quedo corrupto, se arranca limpio */ }
-void vinoDe
+if (vinoDe === 'este navegador' && remoto) {
+  avisar('Seguís con la versión de <b>esta computadora</b>. Se está subiendo.')
+}
 
 // La primera vez se cargan solos los territorios reales del sistema actual.
 // Solo si la base CONTESTO y vino vacia: sembrar del archivo cuando en
@@ -2370,13 +2412,25 @@ function resumenCaras () {
    Del otro lado, la funcion comprueba que sea admin.
    ==================================================================== */
 
+// La sesion de Supabase dura una hora y la RENUEVA la app, que es la que
+// tiene el cliente. Esta pagina solo la lee. Si el token vencio y no lo
+// miramos, cada guardado se va contra un 401 y el editor parece andar
+// mientras no guarda nada. Por eso se comprueba el vencimiento ANTES de
+// pedir, y se avisa con lo que hay que hacer.
 function tokenDeSesion () {
   if (!BD_URL) return null
   const ref = BD_URL.replace(/^https?:\/\//, '').split('.')[0]
   try {
     const crudo = localStorage.getItem('sb-' + ref + '-auth-token')
     if (!crudo) return null
-    return JSON.parse(crudo)?.access_token ?? null
+    const s = JSON.parse(crudo)
+    // 60 segundos de margen: no sirve un token que vence en el camino.
+    if (s?.expires_at && s.expires_at * 1000 < Date.now() + 60000) {
+      sesionVencida = true
+      return null
+    }
+    sesionVencida = false
+    return s?.access_token ?? null
   } catch (e) { return null }
 }
 
@@ -2388,8 +2442,12 @@ document.getElementById('bGuardarBD').onclick = async () => {
   }
   const token = tokenDeSesion()
   if (!token) {
-    await dialogo({ titulo: 'Falta iniciar sesión',
-      cuerpo: 'Entrá a la app en este mismo navegador, iniciá sesión como administrador y volvé.' })
+    await dialogo({
+      titulo: sesionVencida ? 'Tu sesión venció' : 'Falta iniciar sesión',
+      cuerpo: sesionVencida
+        ? 'Abrí la app en otra pestaña de este navegador y volvé acá. La sesión se renueva sola y no perdés nada de lo que dibujaste.'
+        : 'Entrá a la app en este mismo navegador, iniciá sesión como administrador y volvé.',
+    })
     return
   }
   if (!activo) {
@@ -2585,6 +2643,17 @@ async function traerDeLaBase (avisando = false) {
   }
 }
 
+// Se mira cada minuto: si no, el cartel sigue diciendo "guardado" una hora
+// despues de que dejo de guardar.
+setInterval(() => {
+  const antes = sesionVencida
+  tokenDeSesion()
+  if (sesionVencida !== antes) {
+    if (sesionVencida) borradorEstado = 'sin_sesion'
+    pintarEstadoBorrador()
+  }
+}, 60000)
+
 document.getElementById('bComparar').onclick = () => traerDeLaBase(true)
 void traerDeLaBase()
 
@@ -2621,7 +2690,9 @@ function pintarEstadoBorrador () {
     ? borradorHora.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
     : null
   const mapa = {
-    sin_sesion: ['Sin sesión: tu trabajo no se está guardando. Entrá a la app y volvé.', true],
+    sin_sesion: [sesionVencida
+      ? 'Tu sesión venció y no se está guardando. Abrí la app en otra pestaña y volvé acá: se renueva sola.'
+      : 'Sin sesión: tu trabajo no se está guardando. Entrá a la app y volvé.', true],
     guardando: ['Guardando…', false],
     guardado: [hora ? `Tu trabajo está guardado · ${hora}` : 'Tu trabajo está guardado', false],
     local: ['No se pudo guardar. Por ahora solo queda en esta computadora.', true],
