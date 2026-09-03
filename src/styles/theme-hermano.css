@@ -734,3 +734,154 @@
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 0.6rem;
 }
+
+/* --------------------------------------------------------------------------
+   13. Controles de formulario
+   Estaban a medias: el accent-color oliva se aplicaba, pero la casilla
+   seguia siendo la nativa de 18px y el select traia la flecha del
+   navegador. En el planificador de Salidas la casilla ES la interaccion
+   principal -- se tilda una fila para crear la salida-- asi que ser un
+   cuadradito gris de 18px no alcanza.
+   -------------------------------------------------------------------------- */
+
+:root[data-theme='hermano'] input[type='checkbox'],
+:root[data-theme='hermano'] input[type='radio'] {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 2px solid #c9c3b4;
+  border-radius: 7px;
+  background: var(--h-surface);
+  display: inline-grid;
+  place-content: center;
+  cursor: pointer;
+  transition:
+    background var(--h-dur) var(--h-ease),
+    border-color var(--h-dur) var(--h-ease);
+}
+
+:root[data-theme='hermano'] input[type='radio'] { border-radius: 50%; }
+
+:root[data-theme='hermano'] input[type='checkbox']:hover:not(:disabled),
+:root[data-theme='hermano'] input[type='radio']:hover:not(:disabled) {
+  border-color: var(--h-olive);
+}
+
+/* El tilde se dibuja con clip-path: no depende de una fuente de iconos ni
+   de una imagen que pueda no cargar. */
+:root[data-theme='hermano'] input[type='checkbox']::before {
+  content: '';
+  width: 13px;
+  height: 13px;
+  background: var(--h-ink);
+  clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+  transform: scale(0);
+  transition: transform 120ms var(--h-ease);
+}
+
+:root[data-theme='hermano'] input[type='radio']::before {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--h-ink);
+  transform: scale(0);
+  transition: transform 120ms var(--h-ease);
+}
+
+/* Relleno lima con el tilde en tinta: el mismo gesto que el boton
+   principal. Y nunca es solo el color -- el tilde es una forma, y en el
+   planificador ademas va la palabra "Si" o "No" al lado. */
+:root[data-theme='hermano'] input[type='checkbox']:checked,
+:root[data-theme='hermano'] input[type='radio']:checked {
+  background: var(--h-lime);
+  border-color: var(--h-lime-deep);
+}
+
+:root[data-theme='hermano'] input[type='checkbox']:checked::before,
+:root[data-theme='hermano'] input[type='radio']:checked::before {
+  transform: scale(1);
+}
+
+:root[data-theme='hermano'] input[type='checkbox']:disabled,
+:root[data-theme='hermano'] input[type='radio']:disabled {
+  background: var(--h-canvas);
+  border-color: var(--h-line);
+  cursor: not-allowed;
+}
+
+/* La palabra al lado de la casilla. Cuando esta tildada pasa a oliva y a
+   negrita: se distingue sin depender del color. */
+:root[data-theme='hermano'] .outing-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  cursor: pointer;
+  font-size: var(--h-t-label);
+  /* index.css le pone 800 a todas. Eso dejaba el "No" mas pesado que el
+     "Si": el estado apagado gritaba mas que el encendido. Sin tildar es
+     texto normal en gris; tildado sube a 600 y a oliva. */
+  font-weight: 400;
+  color: var(--h-fg-3);
+}
+
+:root[data-theme='hermano'] .outing-check:has(input:checked) {
+  color: var(--h-olive-ink);
+  font-weight: 600;
+}
+
+:root[data-theme='hermano'] .outing-check:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* Select: la flecha va dibujada por nosotros. Con appearance:auto cada
+   navegador pone la suya y en Salidas conviven cuatro por fila. */
+:root[data-theme='hermano'] select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 34px;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8' fill='none' stroke='%236a6e77' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1.5 6 6.5l5-5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 12px 8px;
+  cursor: pointer;
+}
+
+:root[data-theme='hermano'] select:disabled {
+  background-color: var(--h-canvas);
+  color: var(--h-fg-3);
+  cursor: not-allowed;
+}
+
+:root[data-theme='hermano'] input:disabled,
+:root[data-theme='hermano'] textarea:disabled {
+  background: var(--h-canvas);
+  color: var(--h-fg-3);
+  cursor: not-allowed;
+}
+
+/* Foco: aro oliva ademas del borde. El borde solo no se ve cuando el
+   control ya tiene borde. */
+:root[data-theme='hermano'] input:focus-visible,
+:root[data-theme='hermano'] select:focus-visible,
+:root[data-theme='hermano'] textarea:focus-visible {
+  outline: 3px solid var(--h-olive);
+  outline-offset: 1px;
+  border-color: var(--h-olive);
+}
+
+/* Encabezados de la grilla del planificador: sin versalitas. A 12px las
+   mayusculas se leen peor que las minusculas y no ganan nada. */
+:root[data-theme='hermano'] .outing-schedule-head,
+:root[data-theme='hermano'] .module-table-head,
+:root[data-theme='hermano'] .territory-table-head {
+  text-transform: none;
+  letter-spacing: 0.01em;
+  font-size: var(--h-t-label);
+}
