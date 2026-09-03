@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { Falta } from '../components/Falta'
-import { useIrAlFormulario } from '../hooks/useIrAlFormulario'
+import { Modal } from '../components/Modal'
 import { useAuth } from '../context/useAuth'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 
@@ -418,9 +418,9 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
   >([])
   const [selectedOutingId, setSelectedOutingId] = useState<string | null>(null)
   const [editingOutingId, setEditingOutingId] = useState<string | null>(null)
-  // Al empezar a editar, la pantalla va al formulario: si no, el cambio
-  // ocurre debajo de la tabla y parece que el boton no hizo nada.
-  const formulario = useIrAlFormulario(editingOutingId)
+  // El formulario vive en una ventana encima. Medido: abajo de la tabla
+  // quedaba a 41.614 px de la ventana -- cuarenta y dos pantallas.
+  const [formularioAbierto, setFormularioAbierto] = useState(false)
   const [selectedSlotKey, setSelectedSlotKey] = useState<string | null>(null)
   const [activePlannerRowKey, setActivePlannerRowKey] = useState<string | null>(null)
   const [plannerDrafts, setPlannerDrafts] = useState<Record<string, PlannerDraft>>({})
@@ -810,6 +810,19 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
       (outing.scheduleStatus.label === 'Hoy' || outing.scheduleStatus.label === 'Proxima'),
   ).length
 
+  const cerrarFormulario = () => {
+    setFormularioAbierto(false)
+    resetForm()
+    setError(null)
+  }
+
+  const abrirNueva = () => {
+    resetForm()
+    setError(null)
+    setMessage(null)
+    setFormularioAbierto(true)
+  }
+
   const resetForm = () => {
     setEditingOutingId(null)
     setSelectedSlotKey(null)
@@ -840,6 +853,9 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
   }
 
   const handleSelectPlannerSlot = (slot: PlannerSlot) => {
+    // Elegir un horario en la grilla es empezar a cargar una salida, asi
+    // que abre el formulario con ese horario ya puesto.
+    setFormularioAbierto(true)
     setSelectedSlotKey(slot.key)
     setScheduledFor(slot.scheduledForValue)
     setDriverId((currentDriverId) => {
@@ -1002,6 +1018,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
   }, [plannerSlots, scheduledFor, title])
 
   const startEditing = (outing: OutingRecord) => {
+    setFormularioAbierto(true)
     setSelectedOutingId(outing.id)
     setEditingOutingId(outing.id)
     setTitle(outing.title)
@@ -1266,6 +1283,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
         : 'Salida guardada correctamente.',
     )
     resetForm()
+    setFormularioAbierto(false)
     setIsSaving(false)
   }
 
@@ -1664,6 +1682,11 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
             </div>
 
             <div className="module-registry-actions">
+              {canManageOutings ? (
+                <button type="button" className="primary-button" onClick={abrirNueva}>
+                  Nueva salida
+                </button>
+              ) : null}
               <label className="module-search-field">
                 <span className="sr-only">Buscar salidas</span>
                 <input
@@ -1815,16 +1838,13 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
           )}
         </section>
 
-        <section className="two-column-grid module-form-grid" ref={formulario}>
-          <article className="panel">
-            <p className="eyebrow">{editingOutingId ? 'Edicion' : 'Planificacion'}</p>
-            <h3>{editingOutingId ? 'Editar salida' : 'Nueva salida'}</h3>
-            <p>
-              Tilda un horario en la grilla, completa direccion, territorio,
-              conductor y GPS, y descarga el PDF cuando quede lista.
-            </p>
-
-            <form className="form-stack" onSubmit={handleSubmit}>
+        <Modal
+          abierto={formularioAbierto}
+          alCerrar={cerrarFormulario}
+          titulo={editingOutingId ? 'Editar salida' : 'Nueva salida'}
+          bajada="Direccion, territorio, conductor y punto de encuentro."
+        >
+          <form className="form-stack" onSubmit={handleSubmit}>
               {selectedPlannerSlot ? (
                 <div className="module-detail-card">
                   <span>Slot elegido</span>
@@ -2004,16 +2024,14 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                 Descargar PDF
               </button>
 
-              {editingOutingId ? (
-                <button
-                  type="button"
-                  className="secondary-button full-width"
-                  onClick={resetForm}
-                  disabled={isSaving}
-                >
-                  Cancelar edicion
-                </button>
-              ) : null}
+              <button
+                type="button"
+                className="secondary-button full-width"
+                onClick={cerrarFormulario}
+                disabled={isSaving}
+              >
+                Cancelar
+              </button>
 
               <button
                 type="submit"
@@ -2026,9 +2044,10 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                     ? 'Actualizar salida'
                     : 'Guardar salida'}
               </button>
-            </form>
-          </article>
+          </form>
+        </Modal>
 
+        <section className="two-column-grid module-form-grid">
           <article className="panel">
             <p className="eyebrow">
               {selectedOuting ? 'Detalle operativo' : 'Referencia rapida'}

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Falta } from '../components/Falta'
-import { useIrAlFormulario } from '../hooks/useIrAlFormulario'
+import { Modal } from '../components/Modal'
 import { useAuth } from '../context/useAuth'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 
@@ -50,9 +50,9 @@ export function GruposPage() {
   const [drivers, setDrivers] = useState<DriverOption[]>([])
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null)
-  // Al empezar a editar, la pantalla va al formulario: si no, el cambio
-  // ocurre debajo de la tabla y parece que el boton no hizo nada.
-  const formulario = useIrAlFormulario(editingGroupId)
+  // El formulario vive en una ventana encima: abajo de la tabla el cambio
+  // pasaba fuera de la pantalla y parecia que el boton no hacia nada.
+  const [formularioAbierto, setFormularioAbierto] = useState(false)
   const [groupNumber, setGroupNumber] = useState('')
   const [driverId, setDriverId] = useState('')
   const [assignment, setAssignment] = useState<GroupAssignment>('siervo')
@@ -183,6 +183,19 @@ export function GruposPage() {
     return Array.from(grouped.values())
   }, [filteredGroups])
 
+  const cerrarFormulario = () => {
+    setFormularioAbierto(false)
+    resetForm()
+    setError(null)
+  }
+
+  const abrirNuevo = () => {
+    resetForm()
+    setError(null)
+    setMessage(null)
+    setFormularioAbierto(true)
+  }
+
   const resetForm = () => {
     setEditingGroupId(null)
     setGroupNumber('')
@@ -191,6 +204,7 @@ export function GruposPage() {
   }
 
   const startEditing = (group: GroupRecord) => {
+    setFormularioAbierto(true)
     setSelectedGroupId(group.id)
     setEditingGroupId(group.id)
     setGroupNumber(group.group_number ? String(group.group_number) : '')
@@ -322,6 +336,7 @@ export function GruposPage() {
         : 'Asignacion guardada correctamente.',
     )
     resetForm()
+    setFormularioAbierto(false)
     setIsSaving(false)
   }
 
@@ -352,6 +367,11 @@ export function GruposPage() {
             </div>
 
             <div className="module-registry-actions">
+              {canManageGroups ? (
+                <button type="button" className="primary-button" onClick={abrirNuevo}>
+                  Nueva asignacion
+                </button>
+              ) : null}
               <label className="module-search-field">
                 <span className="sr-only">Buscar grupos</span>
                 <input
@@ -486,16 +506,13 @@ export function GruposPage() {
           )}
         </section>
 
-        <section className="two-column-grid module-form-grid" ref={formulario}>
-          <article className="panel">
-            <p className="eyebrow">{editingGroupId ? 'Edicion' : 'Alta'}</p>
-            <h3>{editingGroupId ? 'Editar asignacion' : 'Nueva asignacion'}</h3>
-            <p>
-              Carga una fila por cada hermano asignado al grupo. Para sumar
-              auxiliares, repite el mismo numero de grupo y cambia la asignacion.
-            </p>
-
-            <form className="form-stack" onSubmit={handleSubmit}>
+        <Modal
+          abierto={formularioAbierto}
+          alCerrar={cerrarFormulario}
+          titulo={editingGroupId ? 'Editar asignacion' : 'Nueva asignacion'}
+          bajada="Una fila por hermano. Para sumar un auxiliar, repeti el mismo numero de grupo."
+        >
+          <form className="form-stack" onSubmit={handleSubmit}>
               <label>
                 Numero de Grupo
                 <input
@@ -542,16 +559,14 @@ export function GruposPage() {
               {error ? <div className="form-feedback error">{error}</div> : null}
               {message ? <div className="form-feedback success">{message}</div> : null}
 
-              {editingGroupId ? (
-                <button
-                  type="button"
-                  className="secondary-button full-width"
-                  onClick={resetForm}
-                  disabled={isSaving}
-                >
-                  Cancelar edicion
-                </button>
-              ) : null}
+              <button
+                type="button"
+                className="secondary-button full-width"
+                onClick={cerrarFormulario}
+                disabled={isSaving}
+              >
+                Cancelar
+              </button>
 
               <button
                 type="submit"
@@ -564,9 +579,10 @@ export function GruposPage() {
                     ? 'Actualizar asignacion'
                     : 'Guardar asignacion'}
               </button>
-            </form>
-          </article>
+          </form>
+        </Modal>
 
+        <section className="two-column-grid module-form-grid">
           <article className="panel">
             <p className="eyebrow">
               {selectedGroup ? 'Ficha rapida' : 'Referencia rapida'}

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Falta } from '../components/Falta'
-import { useIrAlFormulario } from '../hooks/useIrAlFormulario'
+import { Modal } from '../components/Modal'
 import { useAuth } from '../context/useAuth'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 
@@ -148,9 +148,11 @@ export function ConductoresPage() {
   const [drivers, setDrivers] = useState<DriverRecord[]>([])
   const [selectedDriverId, setSelectedDriverId] = useState<string | null>(null)
   const [editingDriverId, setEditingDriverId] = useState<string | null>(null)
-  // Al empezar a editar, la pantalla va al formulario: si no, el cambio
-  // ocurre debajo de la tabla y parece que el boton no hizo nada.
-  const formulario = useIrAlFormulario(editingDriverId)
+  // El formulario vive en una ventana encima. Antes estaba debajo de la
+  // tabla y apretar "Editar" no mostraba nada: el cambio pasaba fuera de
+  // la pantalla. Llevar el scroll hasta ahi lo hacia visible pero te sacaba
+  // del lugar donde estabas mirando.
+  const [formularioAbierto, setFormularioAbierto] = useState(false)
   const [fullName, setFullName] = useState('')
   const [phone, setPhone] = useState('')
   const [notes, setNotes] = useState('')
@@ -238,6 +240,19 @@ export function ConductoresPage() {
     })
   }, [drivers, searchTerm, statusFilter])
 
+  const cerrarFormulario = () => {
+    setFormularioAbierto(false)
+    resetForm()
+    setError(null)
+  }
+
+  const abrirNuevo = () => {
+    resetForm()
+    setError(null)
+    setMessage(null)
+    setFormularioAbierto(true)
+  }
+
   const resetForm = () => {
     setEditingDriverId(null)
     setFullName('')
@@ -248,6 +263,7 @@ export function ConductoresPage() {
   }
 
   const startEditing = (driver: DriverRecord) => {
+    setFormularioAbierto(true)
     setSelectedDriverId(driver.id)
     setEditingDriverId(driver.id)
     setFullName(driver.full_name)
@@ -392,6 +408,7 @@ export function ConductoresPage() {
         : 'Conductor guardado correctamente.',
     )
     resetForm()
+    setFormularioAbierto(false)
     setIsSaving(false)
   }
 
@@ -426,6 +443,11 @@ export function ConductoresPage() {
             </div>
 
             <div className="module-registry-actions">
+              {canManageDrivers ? (
+                <button type="button" className="primary-button" onClick={abrirNuevo}>
+                  Nuevo conductor
+                </button>
+              ) : null}
               <label className="module-search-field">
                 <span className="sr-only">Buscar conductores</span>
                 <input
@@ -539,16 +561,13 @@ export function ConductoresPage() {
           )}
         </section>
 
-        <section className="two-column-grid module-form-grid" ref={formulario}>
-          <article className="panel">
-            <p className="eyebrow">{editingDriverId ? 'Edicion' : 'Alta'}</p>
-            <h3>{editingDriverId ? 'Editar conductor' : 'Nuevo conductor'}</h3>
-            <p>
-              Completa los datos básicos y define el estado actual para que el
-              conductor pueda reutilizarse luego en el planificador.
-            </p>
-
-            <form className="form-stack" onSubmit={handleSubmit}>
+        <Modal
+          abierto={formularioAbierto}
+          alCerrar={cerrarFormulario}
+          titulo={editingDriverId ? 'Editar conductor' : 'Nuevo conductor'}
+          bajada="El nombre y el estado alcanzan para poder usarlo en una salida."
+        >
+          <form className="form-stack" onSubmit={handleSubmit}>
               <label>
                 Nombre completo
                 <input
@@ -643,16 +662,14 @@ export function ConductoresPage() {
               {error ? <div className="form-feedback error">{error}</div> : null}
               {message ? <div className="form-feedback success">{message}</div> : null}
 
-              {editingDriverId ? (
-                <button
-                  type="button"
-                  className="secondary-button full-width"
-                  onClick={resetForm}
-                  disabled={isSaving}
-                >
-                  Cancelar edicion
-                </button>
-              ) : null}
+              <button
+                type="button"
+                className="secondary-button full-width"
+                onClick={cerrarFormulario}
+                disabled={isSaving}
+              >
+                Cancelar
+              </button>
 
               <button
                 type="submit"
@@ -665,9 +682,10 @@ export function ConductoresPage() {
                     ? 'Actualizar conductor'
                     : 'Guardar conductor'}
               </button>
-            </form>
-          </article>
+          </form>
+        </Modal>
 
+        <section className="two-column-grid module-form-grid">
           <article className="panel">
             <p className="eyebrow">
               {selectedDriver ? 'Ficha rapida' : 'Referencia rapida'}

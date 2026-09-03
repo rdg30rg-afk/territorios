@@ -1,0 +1,72 @@
+/* La ventana que se abre encima. Los colores salen de los tokens del tema
+   activo; aca solo va la forma. */
+
+.modal {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  max-width: min(560px, calc(100vw - 32px));
+  width: 100%;
+  max-height: calc(100vh - 48px);
+  overflow: visible;
+}
+
+.modal::backdrop {
+  background: rgba(22, 25, 29, 0.45);
+}
+
+.modal-tarjeta {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 48px);
+  background: var(--panel-bg, #fff);
+  border: 1px solid var(--panel-border, #e5e0d4);
+  border-radius: 16px;
+  box-shadow: 0 24px 60px rgba(22, 25, 29, 0.24);
+  overflow: hidden;
+}
+
+.modal-cabecera {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--panel-border, #e5e0d4);
+}
+
+.modal-cabecera h3 { margin: 0; }
+.modal-cabecera p {
+  margin: 4px 0 0;
+  color: var(--text-soft, #6a6e77);
+  font-size: 0.9em;
+}
+
+.modal-cerrar {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--panel-border, #e5e0d4);
+  border-radius: 9px;
+  background: transparent;
+  color: inherit;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.modal-cerrar:hover { background: rgba(127, 127, 127, 0.1); }
+
+/* El cuerpo es lo unico que hace scroll: la cabecera queda siempre a la
+   vista, asi se sabe que se esta editando aunque el formulario sea largo. */
+.modal-cuerpo {
+  padding: 18px 20px 20px;
+  overflow-y: auto;
+}
+
+@media (max-width: 640px) {
+  .modal { max-width: 100vw; max-height: 100vh; }
+  .modal-tarjeta { max-height: 100vh; border-radius: 0; border: 0; }
+}
