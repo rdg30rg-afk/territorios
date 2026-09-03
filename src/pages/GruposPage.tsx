@@ -412,9 +412,12 @@ export function GruposPage() {
 
                       <div className="module-table-body">
                         {assignments.map((group) => (
-                          <button
+                          /* Div y no boton: adentro estan "Editar" y "Eliminar".
+                             El control que recibe el foco es el nombre del
+                             hermano, no el numero de grupo: un boton que se
+                             anuncia como "3" no le dice nada a nadie. */
+                          <div
                             key={group.id}
-                            type="button"
                             className={
                               selectedGroupId === group.id
                                 ? 'module-table module-table-row module-table-row-button group-member-table active'
@@ -423,7 +426,18 @@ export function GruposPage() {
                             onClick={() => setSelectedGroupId(group.id)}
                           >
                             <strong>{group.group_number ?? '-'}</strong>
-                            <span>{group.manager_name}</span>
+                            <span>
+                              <button
+                                type="button"
+                                className="fila-nombre"
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  setSelectedGroupId(group.id)
+                                }}
+                              >
+                                {group.manager_name}
+                              </button>
+                            </span>
                             <span>
                               <span className="status-pill status-pendiente">
                                 {assignmentLabels[group.manager_role]}
@@ -457,7 +471,7 @@ export function GruposPage() {
                                 <span className="table-hint">Solo lectura</span>
                               )}
                             </span>
-                          </button>
+                          </div>
                         ))}
                       </div>
                     </div>

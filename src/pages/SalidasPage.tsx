@@ -50,9 +50,9 @@ type OutingRecord = {
   territory_id: string | null
   driver_id: string | null
   group_id: string | null
-  meeting_point_name: string
-  meeting_point_lat: number
-  meeting_point_lng: number
+  meeting_point_name: string | null
+  meeting_point_lat: number | null
+  meeting_point_lng: number | null
   scheduled_for: string
   notes: string | null
 }
@@ -102,6 +102,11 @@ type PlannerDraft = {
 type SalidasPageProps = {
   groupServiceMode?: boolean
 }
+
+// Cuantas salidas se traen. El tope duro de PostgREST es 1000; mil filas en
+// pantalla eran 14.783 nodos y 132.000 px de alto. Con 300 entran las
+// proximas y varios meses hacia atras, y la pagina sigue siendo usable.
+const SALIDAS_QUE_SE_TRAEN = 300
 
 const dayFormatter = new Intl.DateTimeFormat('es-AR', {
   weekday: 'long',
@@ -403,6 +408,10 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
   const [groups, setGroups] = useState<GroupRecord[]>([])
   const [territories, setTerritories] = useState<TerritoryRecord[]>([])
   const [outings, setOutings] = useState<OutingRecord[]>([])
+  // Cuantas hay en la base, no cuantas se trajeron: sin esto la pantalla no
+  // puede decir que esta mostrando una parte, y una lista recortada en
+  // silencio es una lista que miente.
+  const [cuantasSalidasHay, setCuantasSalidasHay] = useState<number | null>(null)
   const [personalReservations, setPersonalReservations] = useState<
     PersonalTerritoryReservation[]
   >([])
@@ -540,6 +549,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
         { data: groupsData, error: groupsError },
         { data: territoriesData, error: territoriesError },
         { data: outingsData, error: outingsError },
+        { count: totalDeSalidas },
         { data: personalReservationsData, error: personalReservationsError },
       ] = await Promise.all([
         client
@@ -555,12 +565,22 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
           .from('territorios')
           .select('id, name, description, polygon_geojson')
           .order('name', { ascending: true }),
+        // Esta consulta no tenia filtro ni limite y ordenaba ascendente.
+        // PostgREST corta en 1000 filas pase lo que pase, asi que devolvia
+        // las MIL MAS VIEJAS y se comia el cupo entero: medido en el
+        // navegador, las 1000 filas que llegaban a la pantalla decian
+        // "Pasada" -- ni una sola salida futura. La pantalla que existe
+        // para decir cuando y donde se sale no mostraba ninguna.
+        // Descendente y acotada: entran siempre las proximas y el pasado
+        // reciente. El total real se pide aparte para poder decirlo.
         client
           .from('salidas')
           .select(
             'id, title, territory_id, driver_id, group_id, meeting_point_name, meeting_point_lat, meeting_point_lng, scheduled_for, notes',
           )
-          .order('scheduled_for', { ascending: true }),
+          .order('scheduled_for', { ascending: false })
+          .limit(SALIDAS_QUE_SE_TRAEN),
+        client.from('salidas').select('id', { count: 'exact', head: true }),
         client
           .from('territorio_personal_reservas')
           .select('id, territory_id, reserved_for, status, reserved_at')
@@ -592,6 +612,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
         setGroups((groupsData as GroupRecord[]) ?? [])
         setTerritories((territoriesData as TerritoryRecord[]) ?? [])
         setOutings((outingsData as OutingRecord[]) ?? [])
+        setCuantasSalidasHay(totalDeSalidas ?? null)
         setPersonalReservations(
           (personalReservationsData as PersonalTerritoryReservation[]) ?? [],
         )
@@ -983,10 +1004,14 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
     setTerritoryId(outing.territory_id ?? '')
     setDriverId(outing.driver_id ?? '')
     setGroupId(outing.group_id ?? '')
-    setMeetingPointName(outing.meeting_point_name)
+    setMeetingPointName(outing.meeting_point_name ?? '')
     setScheduledFor(new Date(outing.scheduled_for).toISOString().slice(0, 16))
     setNotes(outing.notes ?? '')
-    setMeetingCoords([outing.meeting_point_lng, outing.meeting_point_lat])
+    setMeetingCoords(
+      outing.meeting_point_lng !== null && outing.meeting_point_lat !== null
+        ? [outing.meeting_point_lng, outing.meeting_point_lat]
+        : null,
+    )
     setLastSuggestedTitle(null)
     setError(null)
     setMessage(null)
@@ -1118,13 +1143,17 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
   }
 
   const handleDownloadSavedPdf = async (outing: (typeof outingDetails)[number]) => {
+    if (outing.meeting_point_lat === null || outing.meeting_point_lng === null) {
+      setError('Esta salida histórica no tiene coordenadas; no se puede generar el PDF todavía.')
+      return
+    }
     await buildDraftPdf(
       outing.title,
       new Date(outing.scheduled_for).toISOString().slice(0, 16),
       outing.territoryName,
       outing.driverName,
       outing.groupName,
-      outing.meeting_point_name,
+      outing.meeting_point_name ?? 'Punto histórico sin geolocalizar',
       [outing.meeting_point_lng, outing.meeting_point_lat],
       outing.notes ?? '',
     )
@@ -1618,6 +1647,16 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
             <div>
               <p className="eyebrow">Agenda guardada</p>
               <h3>Salidas programadas</h3>
+              {/* Si hay mas de las que se trajeron, se dice. Una lista
+                  recortada en silencio hace creer que eso es todo lo que
+                  hay, y despues nadie entiende por que "falta" una salida. */}
+              {cuantasSalidasHay !== null && cuantasSalidasHay > outings.length ? (
+                <p className="table-hint">
+                  Se muestran las {outings.length} mas recientes de{' '}
+                  {cuantasSalidasHay.toLocaleString('es-AR')}. Las mas viejas
+                  quedan en el historial de cada territorio.
+                </p>
+              ) : null}
             </div>
 
             <div className="module-registry-actions">
@@ -1699,9 +1738,11 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
 
               <div className="module-table-body">
                 {filteredOutings.map((outing) => (
-                  <button
+                  /* Div y no boton: adentro viven "PDF", "Editar" y
+                     "Eliminar". El titulo de la salida es el control que
+                     recibe el foco de teclado. */
+                  <div
                     key={outing.id}
-                    type="button"
                     className={
                       selectedOutingId === outing.id
                         ? 'module-table module-table-row module-table-row-wide module-table-row-button active'
@@ -1709,7 +1750,16 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                     }
                     onClick={() => setSelectedOutingId(outing.id)}
                   >
-                    <strong>{outing.title}</strong>
+                    <button
+                      type="button"
+                      className="fila-nombre"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        setSelectedOutingId(outing.id)
+                      }}
+                    >
+                      {outing.title}
+                    </button>
                     <span>{outing.territoryName}</span>
                     <span>
                       {outing.driverName}
@@ -1754,7 +1804,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                         </>
                       ) : null}
                     </span>
-                  </button>
+                  </div>
                 ))}
               </div>
             </div>
@@ -1999,7 +2049,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                 </article>
                 <article className="module-detail-card">
                   <span>Punto de encuentro</span>
-                  <strong>{selectedOuting.meeting_point_name}</strong>
+                  <strong>{selectedOuting.meeting_point_name ?? 'Sin dato'}</strong>
                 </article>
                 <article className="module-detail-card">
                   <span>Horario</span>
@@ -2012,13 +2062,19 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                 <article className="module-detail-card">
                   <span>Coordenadas</span>
                   <strong>
-                    {selectedOuting.meeting_point_lat}, {selectedOuting.meeting_point_lng}
+                    {selectedOuting.meeting_point_lat !== null &&
+                    selectedOuting.meeting_point_lng !== null
+                      ? `${selectedOuting.meeting_point_lat}, ${selectedOuting.meeting_point_lng}`
+                      : 'Sin geolocalizar'}
                   </strong>
                 </article>
                 <article className="module-detail-card">
                   <span>Observaciones</span>
                   <strong>{selectedOuting.notes || 'Sin observaciones'}</strong>
                 </article>
+                {selectedOuting.meeting_point_lat !== null &&
+                selectedOuting.meeting_point_lng !== null ? (
+                  <>
                 <div className="map-picker-panel">
                   <div className="map-picker-head">
                     <strong>Vista previa del punto</strong>
@@ -2048,6 +2104,8 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                 >
                   Abrir punto en Google Maps
                 </a>
+                  </>
+                ) : null}
               </div>
             ) : (
               <div className="module-guidance-list">

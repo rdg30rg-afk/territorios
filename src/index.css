@@ -2267,3 +2267,27 @@ button {
     flex-direction: column;
   }
 }
+
+/* Nombre de una fila que se puede seleccionar.
+   Es un <button> de verdad, no un <strong> adentro de un <button>: la fila
+   entera dejo de ser un boton porque tenia los de "Editar" y "Eliminar"
+   adentro -- 54 botones anidados solo en Conductores. Eso es HTML invalido,
+   React lo avisa en cada render, y para un lector de pantalla un control
+   adentro de otro no tiene comportamiento definido.
+   La fila sigue respondiendo al click en cualquier parte, asi que con el
+   mouse no cambia nada; con teclado el foco cae en este nombre. */
+.fila-nombre {
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  font-weight: 700;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fila-nombre:hover {
+  text-decoration: underline;
+}

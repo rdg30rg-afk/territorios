@@ -469,9 +469,13 @@ export function ConductoresPage() {
 
               <div className="module-table-body">
                 {filteredDrivers.map((driver) => (
-                  <button
+                  /* La fila es un div, no un boton: adentro viven "Editar" y
+                     "Eliminar", y un boton dentro de otro es HTML invalido.
+                     El click en cualquier parte sigue seleccionando -- con el
+                     mouse no cambia nada-- y el control que recibe el foco de
+                     teclado es el nombre, que si es un boton de verdad. */
+                  <div
                     key={driver.id}
-                    type="button"
                     className={
                       selectedDriverId === driver.id
                         ? 'module-table module-table-row module-table-row-button driver-availability-table active'
@@ -479,7 +483,16 @@ export function ConductoresPage() {
                     }
                     onClick={() => setSelectedDriverId(driver.id)}
                   >
-                    <strong>{driver.full_name}</strong>
+                    <button
+                      type="button"
+                      className="fila-nombre"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        setSelectedDriverId(driver.id)
+                      }}
+                    >
+                      {driver.full_name}
+                    </button>
                     <span>{driver.phone || 'Sin telefono'}</span>
                     <span>{formatDriverAvailability(driver.availability)}</span>
                     <span>
@@ -515,7 +528,7 @@ export function ConductoresPage() {
                         <span className="table-hint">Solo lectura</span>
                       )}
                     </span>
-                  </button>
+                  </div>
                 ))}
               </div>
             </div>
