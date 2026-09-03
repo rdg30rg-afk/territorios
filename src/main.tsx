@@ -7,6 +7,7 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import './index.css'
 import './styles/theme-mapsi.css'
 import './styles/theme-hermano.css'
+import './styles/theme-ato.css'
 import App from './App.tsx'
 import { AuthProvider } from './context/AuthContext'
 

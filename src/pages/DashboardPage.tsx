@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import type { ModuleKey, ProfileRole } from '../context/AuthTypes'
 import { Desplegable } from '../components/Desplegable'
 import { useAuth } from '../context/useAuth'
+import { decirElError } from '../lib/decirElError'
 import { supabase } from '../lib/supabase'
 import '../styles/inicio-admin.css'
 
@@ -308,7 +309,7 @@ function UserAccessPanel() {
       .order('full_name', { ascending: true })
 
     if (loadError) {
-      setError(loadError.message)
+      setError(decirElError(loadError))
       setDrivers([])
       return
     }
@@ -377,7 +378,7 @@ function UserAccessPanel() {
     if (result.error) {
       setError(result.error)
     } else {
-      setFeedback('Acceso actualizado correctamente.')
+      setFeedback('Listo, ya tiene el acceso actualizado.')
     }
 
     setIsSavingUserId(null)
@@ -396,7 +397,7 @@ function UserAccessPanel() {
       setDraftRoles((current) => ({ ...current, [userId]: 'viewer' }))
       setDraftModules((current) => ({ ...current, [userId]: [] }))
       setDraftDriverIds((current) => ({ ...current, [userId]: '' }))
-      setFeedback('Usuario dado de baja correctamente.')
+      setFeedback('Listo, quedó dado de baja.')
     }
 
     setIsSavingUserId(null)
@@ -440,7 +441,7 @@ function UserAccessPanel() {
           </span>
           {!user.auth_email || isRequestOnly ? (
             <span>
-              Si no puede iniciar sesion, revisa tambien que el email este
+              Si no puede entrar, fijate también que el email esté
               confirmado en Supabase Authentication.
             </span>
           ) : null}
@@ -532,8 +533,8 @@ function UserAccessPanel() {
     <section className="panel admin-access-panel">
       <div className="section-heading">
         <div>
-          <p className="eyebrow">Administracion</p>
-          <h3>Altas, bajas y permisos de usuarios</h3>
+          <p className="eyebrow">Administración</p>
+          <h3>Altas, bajas y permisos</h3>
         </div>
         <button
           type="button"
@@ -552,9 +553,9 @@ function UserAccessPanel() {
         <div className="admin-notification-head">
           <div>
             <p className="eyebrow">Notificaciones</p>
-            <h4>Solicitudes esperando aprobacion</h4>
+            <h4>Esperando que les des acceso</h4>
             <span>
-              Define los modulos permitidos antes de autorizar el acceso.
+              Elegí a qué puede entrar antes de darle el acceso.
             </span>
           </div>
           {/* El contador solo aparece si hay algo que contar. Un globo
@@ -564,7 +565,7 @@ function UserAccessPanel() {
         </div>
 
         {pendingUsers.length === 0 ? (
-          <div className="status-card">No hay usuarios pendientes de aprobacion.</div>
+          <div className="status-card">Nadie está esperando acceso.</div>
         ) : (
           <div className="admin-user-list">
             {pendingUsers.map((user) => renderUserAccessCard(user, true))}
@@ -575,7 +576,7 @@ function UserAccessPanel() {
       <div className="admin-access-subhead">
         <div>
           <p className="eyebrow">Usuarios activos</p>
-          <h4>Gestion completa de accesos</h4>
+          <h4>Quién entra a qué</h4>
         </div>
         <span>{approvedUsers.length} autorizado/s</span>
       </div>

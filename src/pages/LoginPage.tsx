@@ -74,7 +74,7 @@ export function LoginPage() {
           <p className="eyebrow">Acceso seguro</p>
           <h2>Ingresar al gestor territorial</h2>
           <p className="lead">
-            Ingresa con tu usuario o email y contraseña. Los permisos por
+            Entrá con tu usuario o email y tu contraseña. Los permisos por
             modulo y rol siguen controlados desde Supabase.
           </p>
         </div>

@@ -1,11 +1,13 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { Falta } from '../components/Falta'
+import { Vacio } from '../components/Vacio'
 import '../styles/importacion.css'
 import { leerNotasImportadas } from '../lib/notasImportadas'
 import { Desplegable } from '../components/Desplegable'
 import { Modal } from '../components/Modal'
 import { useAuth } from '../context/useAuth'
-import { isSupabaseConfigured, supabase } from '../lib/supabase'
+import { decirElError } from '../lib/decirElError'
+import { supabase } from '../lib/supabase'
 
 const MeetingPointPickerMap = lazy(() =>
   import('../components/MeetingPointPickerMap').then((module) => ({
@@ -1069,7 +1071,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
       .eq('id', outing.id)
 
     if (deleteError) {
-      setError(deleteError.message)
+      setError(decirElError(deleteError))
       return
     }
 
@@ -1155,7 +1157,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
       !meetingCoords
     ) {
       setError(
-        'Completa titulo, territorio, conductor, direccion, horario y GPS antes de descargar el PDF.',
+        'Para el PDF falta completar título, territorio, conductor, dirección, horario y el punto en el mapa.',
       )
       return
     }
@@ -1199,7 +1201,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
     setMessage(null)
 
     if (!client) {
-      setError('Primero debes configurar Supabase.')
+      setError('Todavía no está configurada la conexión con la base.')
       return
     }
 
@@ -1220,18 +1222,18 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
       !driverId
     ) {
       setError(
-        'Completa titulo, territorio, conductor, punto de encuentro y horario.',
+        'Faltan datos: título, territorio, conductor, punto de encuentro y horario.',
       )
       return
     }
 
     if (groupServiceMode && !lockedGroupId) {
-      setError('Selecciona el grupo de servicio antes de guardar la salida.')
+      setError('Elegí el grupo de servicio antes de guardar la salida.')
       return
     }
 
     if (!meetingCoords) {
-      setError('Debes marcar el punto de encuentro en el mapa.')
+      setError('Falta marcar en el mapa dónde se juntan.')
       return
     }
 
@@ -1277,7 +1279,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
       .single()
 
     if (saveError) {
-      setError(saveError.message)
+      setError(decirElError(saveError))
       setIsSaving(false)
       return
     }
@@ -1306,7 +1308,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
     setMessage(null)
 
     if (!client) {
-      setError('Primero debes configurar Supabase.')
+      setError('Todavía no está configurada la conexión con la base.')
       return
     }
 
@@ -1337,7 +1339,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
       })
 
     if (enabledDrafts.length === 0) {
-      setError('Tilda al menos una salida para guardar.')
+      setError('Tildá al menos una salida para poder guardar.')
       return
     }
 
@@ -1356,7 +1358,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
     }
 
     if (groupServiceMode && !lockedGroupId) {
-      setError('Selecciona el grupo de servicio antes de guardar las salidas.')
+      setError('Elegí el grupo de servicio antes de guardar las salidas.')
       return
     }
 
@@ -1423,7 +1425,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
       )
 
     if (saveError) {
-      setError(saveError.message)
+      setError(decirElError(saveError))
       setIsSaving(false)
       return
     }
@@ -1762,11 +1764,12 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
           {isLoading ? (
             <div className="status-card">Cargando salidas...</div>
           ) : filteredOutings.length === 0 ? (
-            <div className="status-card">
-              {isSupabaseConfigured
-                ? 'No hay salidas para el filtro seleccionado.'
-                : 'Cuando conectes Supabase, aqui apareceran las salidas.'}
-            </div>
+            <Vacio
+              hay={visibleOutingDetails.length}
+              sinNada="Todavía no hay ninguna salida cargada."
+              comoEmpezar={'Tildá un horario en la grilla de arriba, o tocá "Nueva salida".'}
+              filtrados="Ninguna salida coincide con lo que buscás."
+            />
           ) : (
             <div className="module-table-shell">
               <div className="module-table module-table-head module-table-head-wide">

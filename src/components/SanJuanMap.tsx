@@ -2055,7 +2055,7 @@ export function SanJuanMap() {
     }
 
     if (!territoryName.trim() && !editingTerritoryId) {
-      setError('Primero define el numero del territorio y luego comienza el dibujo.')
+      setError('Primero poné el número del territorio y después dibujalo.')
       return
     }
 
@@ -2604,12 +2604,12 @@ export function SanJuanMap() {
     }
 
     if (!currentGeometry) {
-      setError('Debes dibujar un poligono antes de guardar el territorio.')
+      setError('Dibujá el territorio antes de guardarlo.')
       return
     }
 
     if (selectedVertexCount < 3) {
-      setError('Debes marcar al menos 3 puntos para formar un territorio.')
+      setError('Con menos de 3 puntos no se forma un territorio.')
       return
     }
 
@@ -2715,7 +2715,7 @@ export function SanJuanMap() {
           <p className="toolbar-copy">
             {canManageTerritories
               ? 'Crea el numero del territorio, usa la barra lateral de dibujo y deja visibles los territorios guardados para evitar superposiciones.'
-              : 'Puedes consultar territorios existentes. La creacion y edicion quedan reservadas para administradores.'}
+              : 'Podés mirar los territorios. Crearlos y editarlos queda para un administrador.'}
           </p>
         </div>
 

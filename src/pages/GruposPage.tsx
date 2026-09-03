@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Desplegable } from '../components/Desplegable'
 import { Falta } from '../components/Falta'
+import { Vacio } from '../components/Vacio'
 import { Modal } from '../components/Modal'
 import { useAuth } from '../context/useAuth'
-import { isSupabaseConfigured, supabase } from '../lib/supabase'
+import { decirElError } from '../lib/decirElError'
+import { supabase } from '../lib/supabase'
 
 type GroupAssignment = 'superintendente' | 'siervo' | 'auxiliar'
 type DriverStatus = 'activo' | 'pendiente' | 'inactivo'
@@ -237,7 +239,7 @@ export function GruposPage() {
       .eq('id', group.id)
 
     if (deleteError) {
-      setError(deleteError.message)
+      setError(decirElError(deleteError))
       return
     }
 
@@ -269,14 +271,14 @@ export function GruposPage() {
     const parsedGroupNumber = Number(groupNumber)
 
     if (!Number.isInteger(parsedGroupNumber) || parsedGroupNumber <= 0) {
-      setError('Completa un numero de grupo valido.')
+      setError('Poné un número de grupo válido.')
       return
     }
 
     const selectedDriver = drivers.find((driver) => driver.id === driverId)
 
     if (!selectedDriver) {
-      setError('Selecciona un conductor cargado.')
+      setError('Elegí un conductor de los que ya están cargados.')
       return
     }
 
@@ -312,7 +314,7 @@ export function GruposPage() {
       .single()
 
     if (saveError) {
-      setError(saveError.message)
+      setError(decirElError(saveError))
       setIsSaving(false)
       return
     }
@@ -405,11 +407,12 @@ export function GruposPage() {
           {isLoading ? (
             <div className="status-card">Cargando grupos...</div>
           ) : filteredGroups.length === 0 ? (
-            <div className="status-card">
-              {isSupabaseConfigured
-                ? 'No hay grupos para el filtro seleccionado.'
-                : 'Cuando conectes Supabase, aqui apareceran los grupos.'}
-            </div>
+            <Vacio
+              hay={groups.length}
+              sinNada="Todavía no hay ningún grupo armado."
+              comoEmpezar={'Tocá "Nueva asignación" para poner al primer hermano a cargo.'}
+              filtrados="Ningún grupo coincide con lo que buscás."
+            />
           ) : (
             <div className="group-assignment-list">
               {groupedAssignments.map((assignments) => {

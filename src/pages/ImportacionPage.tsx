@@ -6,11 +6,11 @@ import '../styles/importacion.css'
 /**
  * REVISION DE LO IMPORTADO
  *
- * El ETL dejo 3.345 registros del Excel en el staging y ni uno solo paso
- * todavia a las tablas operativas. Eso es a proposito: el origen tiene
- * 4.841 formulas y 33 errores, y hay filas donde la casilla dice una
- * cosa y la observacion escrita dice otra. Ninguna cuenta puede resolver
- * eso; lo resuelve alguien que conoce la congregacion.
+ * El ETL dejo las 3.346 filas del Excel en el staging. Las filas con
+ * evidencia suficiente ya pueden tener un destino historico; las que no
+ * la tienen quedan como cierres auditables y no se ofrecen como datos
+ * operativos. El origen tiene formulas y filas donde la casilla dice una
+ * cosa y la observacion escrita dice otra.
  *
  * Esta pantalla es ese paso. Y tiene una regla que la define:
  *
@@ -302,8 +302,8 @@ export function ImportacionPage() {
           <p className="eyebrow">Importación</p>
           <h2>Revisión del Excel</h2>
           <p className="lead">
-            Nada de esto entró todavía al sistema. Acá se decide fila por fila, y la
-            decisión queda con nombre y fecha.
+            La fuente completa queda conservada para auditarla: acá se ve qué se materializó
+            en el histórico y qué quedó cerrado por falta de evidencia.
           </p>
         </div>
       </section>
@@ -356,12 +356,12 @@ export function ImportacionPage() {
           <article className="module-stat-card">
             <span>Listas para aplicar</span>
             <strong>{resumen.porEstado.pendiente ?? 0}</strong>
-            <small>todavía sin aplicar</small>
+            <small>pendientes de aplicar</small>
           </article>
           <article className="module-stat-card">
             <span>Descartadas</span>
             <strong>{resumen.porEstado.descartado ?? 0}</strong>
-            <small>no entran, y se ve por qué</small>
+            <small>fuera de lo operativo, con motivo</small>
           </article>
           <article className="module-stat-card">
             <span>Sin evidencia</span>
@@ -494,59 +494,68 @@ function FilaRegistro({
             </tbody>
           </table>
 
-          {yaDecidida ? (
-            <p className="imp-alerta">
-              Esta fila ya tiene una decisión tomada. Volver a decidir la reemplaza.
+          {cierreSinEvidencia ? (
+            <p className="imp-pie">
+              Este cierre es de solo lectura. Si aparece nueva evidencia, se agrega una
+              corrección auditada; no se reabre ni se sobreescribe esta fila.
             </p>
-          ) : null}
+          ) : (
+            <>
+              {yaDecidida ? (
+                <p className="imp-alerta">
+                  Esta fila ya tiene una decisión tomada. Volver a decidir la reemplaza.
+                </p>
+              ) : null}
 
-          <p className="eyebrow">Qué hacemos con esta fila</p>
-          <label className="imp-nota">
-            Por qué (queda guardado)
-            <input
-              type="text"
-              value={nota}
-              onChange={(e) => setNota(e.target.value)}
-              placeholder="Ej: el conductor confirmó que ese día llovió"
-            />
-          </label>
+              <p className="eyebrow">Qué hacemos con esta fila</p>
+              <label className="imp-nota">
+                Por qué (queda guardado)
+                <input
+                  type="text"
+                  value={nota}
+                  onChange={(e) => setNota(e.target.value)}
+                  placeholder="Ej: el conductor confirmó que ese día llovió"
+                />
+              </label>
 
-          <div className="imp-acciones">
-            {decision?.opciones.map(([valor, texto]) => (
-              <button
-                key={valor}
-                type="button"
-                className="ghost-button"
-                disabled={guardando}
-                onClick={() => onDecidir(r, decision.campo, valor, nota)}
-              >
-                {texto}
-              </button>
-            ))}
-            {!decision && (
-              <button
-                type="button"
-                className="ghost-button"
-                disabled={guardando}
-                onClick={() => onDecidir(r, 'revisado', 'ok', nota)}
-              >
-                Está bien, que entre
-              </button>
-            )}
-            <button
-              type="button"
-              className="danger-button"
-              disabled={guardando}
-              onClick={() => onDecidir(r, null, null, nota)}
-            >
-              Descartar
-            </button>
-          </div>
+              <div className="imp-acciones">
+                {decision?.opciones.map(([valor, texto]) => (
+                  <button
+                    key={valor}
+                    type="button"
+                    className="ghost-button"
+                    disabled={guardando}
+                    onClick={() => onDecidir(r, decision.campo, valor, nota)}
+                  >
+                    {texto}
+                  </button>
+                ))}
+                {!decision && (
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    disabled={guardando}
+                    onClick={() => onDecidir(r, 'revisado', 'ok', nota)}
+                  >
+                    Está bien, que entre
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="danger-button"
+                  disabled={guardando}
+                  onClick={() => onDecidir(r, null, null, nota)}
+                >
+                  Descartar
+                </button>
+              </div>
 
-          <p className="imp-pie">
-            Se guarda tu decisión, no el dato corregido: al aplicar, el importador vuelve a
-            leer la fila del Excel y usa lo que decidiste en lugar del valor dudoso.
-          </p>
+              <p className="imp-pie">
+                Se guarda tu decisión, no el dato corregido: al aplicar, el importador vuelve a
+                leer la fila del Excel y usa lo que decidiste en lugar del valor dudoso.
+              </p>
+            </>
+          )}
         </div>
       )}
     </li>

@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Desplegable } from '../components/Desplegable'
+import { Vacio } from '../components/Vacio'
 import { useAuth } from '../context/useAuth'
-import { isSupabaseConfigured, supabase } from '../lib/supabase'
+import { decirElError } from '../lib/decirElError'
+import { supabase } from '../lib/supabase'
 
 type TerritoryRecord = {
   id: string
@@ -162,7 +164,7 @@ export function TerritorioPersonalPage() {
     }
 
     if (!territoryId || !reservedFor.trim()) {
-      setError('Selecciona un territorio y escribe el nombre de la persona o familia.')
+      setError('Elegí un territorio y escribí para quién es.')
       return
     }
 
@@ -189,7 +191,7 @@ export function TerritorioPersonalPage() {
       .single()
 
     if (saveError) {
-      setError(saveError.message)
+      setError(decirElError(saveError))
       setIsSaving(false)
       return
     }
@@ -221,7 +223,7 @@ export function TerritorioPersonalPage() {
       .single()
 
     if (releaseError) {
-      setError(releaseError.message)
+      setError(decirElError(releaseError))
       setIsSaving(false)
       return
     }
@@ -284,7 +286,7 @@ export function TerritorioPersonalPage() {
             <p className="eyebrow">Nueva reserva</p>
             <h3>Asignar territorio personal</h3>
             <p>
-              Selecciona el territorio y escribe el nombre de la persona o
+              Elegí el territorio y escribí el nombre de la persona o
               familia que lo tendra reservado.
             </p>
 
@@ -367,11 +369,12 @@ export function TerritorioPersonalPage() {
             {isLoading ? (
               <div className="status-card">Cargando reservas...</div>
             ) : filteredReservations.length === 0 ? (
-              <div className="status-card">
-                {isSupabaseConfigured
-                  ? 'No hay reservas personales activas.'
-                  : 'Cuando conectes Supabase, aqui apareceran las reservas.'}
-              </div>
+              <Vacio
+                hay={activeReservations.length}
+                sinNada="Ningún territorio está reservado para una persona."
+                comoEmpezar="Cargá una reserva abajo para apartar un territorio de las salidas."
+                filtrados="Ninguna reserva coincide con lo que buscás."
+              />
             ) : (
               <div className="personal-reservation-list">
                 {filteredReservations.map((reservation) => {

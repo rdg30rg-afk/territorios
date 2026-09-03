@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Desplegable } from '../components/Desplegable'
 import { Falta } from '../components/Falta'
+import { Vacio } from '../components/Vacio'
 import { Modal } from '../components/Modal'
 import { useAuth } from '../context/useAuth'
-import { isSupabaseConfigured, supabase } from '../lib/supabase'
+import { decirElError } from '../lib/decirElError'
+import { supabase } from '../lib/supabase'
 
 type DriverStatus = 'activo' | 'pendiente' | 'inactivo'
 type DriverAvailabilityTurn = 'manana' | 'tarde' | 'telefonica'
@@ -197,7 +199,7 @@ export function ConductoresPage() {
       }
 
       if (loadError) {
-        setError(loadError.message)
+        setError(decirElError(loadError))
         setDrivers([])
       } else {
         setError(null)
@@ -337,7 +339,7 @@ export function ConductoresPage() {
       .eq('id', driver.id)
 
     if (deleteError) {
-      setError(deleteError.message)
+      setError(decirElError(deleteError))
       return
     }
 
@@ -393,7 +395,7 @@ export function ConductoresPage() {
       .single()
 
     if (saveError) {
-      setError(saveError.message)
+      setError(decirElError(saveError))
       setIsSaving(false)
       return
     }
@@ -479,11 +481,12 @@ export function ConductoresPage() {
           {isLoading ? (
             <div className="status-card">Cargando conductores...</div>
           ) : filteredDrivers.length === 0 ? (
-            <div className="status-card">
-              {isSupabaseConfigured
-                ? 'No hay conductores para el filtro seleccionado.'
-                : 'Cuando conectes Supabase, aqui apareceran los conductores.'}
-            </div>
+            <Vacio
+              hay={drivers.length}
+              sinNada="Todavía no hay ningún conductor cargado."
+              comoEmpezar={'Tocá "Nuevo conductor" para cargar el primero.'}
+              filtrados="Ningún conductor coincide con lo que buscás."
+            />
           ) : (
             <div className="module-table-shell">
               <div className="module-table module-table-head driver-availability-table">

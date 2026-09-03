@@ -23,7 +23,7 @@ export function AppShell() {
             <p className="eyebrow">Base de prueba</p>
             <strong>Entorno de desarrollo</strong>
             <p className="brand-copy">
-              Los cambios de esta UI no afectan la base de produccion.
+              Lo que toques aca no afecta a la base de verdad.
             </p>
           </section>
         )}
@@ -31,13 +31,10 @@ export function AppShell() {
         <div className="brand-panel">
           <p className="eyebrow">Territorios</p>
           <h1>Gestor territorial</h1>
-          <p className="brand-copy">
-            Base del MVP para administrar mapas, conductores, grupos y salidas
-            desde web, PWA o APK.
-          </p>
+          <p className="brand-copy">Congregacion San Juan</p>
         </div>
 
-        <nav className="module-nav" aria-label="Modulos principales">
+        <nav className="module-nav" aria-label="Módulos principales">
           {visibleModules.map((module) => (
             <NavLink
               key={module.path}
@@ -67,7 +64,7 @@ export function AppShell() {
             </span>
             <span>
               <strong>Editor de manzanas</strong>
-              <small>Dibujar, asignar y arreglar caras.</small>
+              <small>Dibujar manzanas y arreglar sus cuadras.</small>
             </span>
           </a>
         )}
@@ -90,15 +87,15 @@ export function AppShell() {
           </span>
           <span>
             <strong>Vista del hermano</strong>
-            <small>Lo que ve un publicador en el telefono.</small>
+            <small>Lo que ve un publicador en el teléfono.</small>
           </span>
         </NavLink>
 
         <section className="user-card">
-          <p className="eyebrow">Sesion</p>
+          <p className="eyebrow">Sesión</p>
           <strong>{profile?.full_name || user?.email || 'Usuario'}</strong>
           <small>
-            Rol: {profile?.role ?? 'pendiente'} · Modulos:{' '}
+            Rol: {profile?.role ?? 'pendiente'} · Módulos:{' '}
             {profile?.role === 'admin'
               ? 'todos'
               : moduleAccess.length > 0
@@ -106,28 +103,19 @@ export function AppShell() {
                 : 'sin acceso asignado'}
           </small>
           <button type="button" className="ghost-button" onClick={() => void signOut()}>
-            Cerrar sesion
+            Cerrar sesión
           </button>
         </section>
 
-        <section className="security-card">
-          <p className="eyebrow">Acceso seguro</p>
-          <ul>
-            <li>Login con Supabase Auth</li>
-            <li>Roles por modulo</li>
-            <li>Reglas RLS en base de datos</li>
-          </ul>
-        </section>
-
         <section className="install-card">
-          <p className="eyebrow">Instalacion</p>
-          <strong>{isInstalled ? 'App instalada' : 'Usala como aplicacion'}</strong>
+          <p className="eyebrow">Instalación</p>
+          <strong>{isInstalled ? 'App instalada' : 'Usala como aplicación'}</strong>
           <p className="brand-copy">
             {isInstalled
-              ? 'Esta sesion ya puede abrirse en modo app independiente.'
+              ? 'Ya la podes abrir como una aplicación aparte.'
               : canInstall
-                ? 'Instala esta PWA para abrirla desde el telefono o la PC sin depender del navegador.'
-                : 'Si el navegador lo permite, aqui aparecera la opcion para instalar la app.'}
+                ? 'Instalala para abrirla desde el teléfono o la PC sin pasar por el navegador.'
+                : 'Si el navegador lo permite, acá va a aparecer la opción para instalarla.'}
           </p>
           <button
             type="button"
@@ -138,7 +126,7 @@ export function AppShell() {
             {isInstalled
               ? 'Instalada'
               : isInstalling
-                ? 'Abriendo instalacion...'
+                ? 'Abriendo instalación…'
                 : 'Instalar app'}
           </button>
         </section>

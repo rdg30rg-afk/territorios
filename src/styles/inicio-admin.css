@@ -62,3 +62,8 @@
   border-radius: 12px;
   background: var(--panel, #fff);
 }
+
+/* El estado vacio: la frase primero, la salida abajo. */
+.vacio { display: grid; gap: 5px; }
+.vacio strong { font-weight: 600; }
+.vacio span { opacity: 0.75; }
