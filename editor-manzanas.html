@@ -281,6 +281,8 @@ import { union } from 'https://esm.sh/@turf/union@7'
 import { centroid } from 'https://esm.sh/@turf/centroid@7'
 import { booleanIntersects } from 'https://esm.sh/@turf/boolean-intersects@7'
 import { booleanPointInPolygon } from 'https://esm.sh/@turf/boolean-point-in-polygon@7'
+import { centerOfMass } from 'https://esm.sh/@turf/center-of-mass@7'
+import { pointOnFeature } from 'https://esm.sh/@turf/point-on-feature@7'
 
 // ---------------------------------------------------------------- estado
 const CLAVE = 'territorios:prototipo'
@@ -330,6 +332,30 @@ let mzFoco = null               // manzana bajo el mouse en la lista
 let ordenSiguiente = 1          // contador del orden en que se van marcando
 
 const fc = (a, b) => ({ type: 'FeatureCollection', features: [a, b] })
+
+// Donde poner el rotulo de una manzana.
+//
+// Antes se usaba centroid(), que es el PROMEDIO DE LOS VERTICES. En una
+// manzana larga, o con mas esquinas de un lado que del otro, ese promedio
+// se corre y la letra aparece fuera de su manzana o encima de la vecina.
+// Se probo con la j y la k del territorio 6.
+//
+// centerOfMass es el centro del area, que ya es mucho mejor, pero en una
+// manzana con forma de L tambien puede caer afuera. Cuando eso pasa,
+// pointOnFeature garantiza un punto ADENTRO. Feo pero adentro, que es lo
+// unico que no se puede negociar en un rotulo.
+function puntoDeRotulo (geom) {
+  const poly = feat(geom)
+  try {
+    const cm = centerOfMass(poly)
+    if (booleanPointInPolygon(cm, poly)) return cm.geometry.coordinates
+  } catch (e) { /* geometria rara: se sigue con el plan B */ }
+  try {
+    return pointOnFeature(poly).geometry.coordinates
+  } catch (e) {
+    return centroid(poly).geometry.coordinates
+  }
+}
 const feat = (geom) => ({ type: 'Feature', properties: {}, geometry: geom })
 
 function guardar () {
@@ -574,7 +600,7 @@ function refrescarMapa () {
     capa.addTo(capaManzanas)
 
     if (verLetras && esActivo && zoom >= ZOOM_LETRAS && m.letra) {
-      const cen = centroid(feat(m.geom)).geometry.coordinates
+      const cen = puntoDeRotulo(m.geom)
       L.marker([cen[1], cen[0]], {
         interactive: false,
         icon: L.divIcon({ className: 'manz-lbl', html: m.letra, iconSize: [18, 18], iconAnchor: [9, 9] }),
@@ -2544,7 +2570,7 @@ function pintarLetrasNuevas () {
   letrasNuevas.forEach((id, i) => {
     const m = manzanas.get(id)
     if (!m) return
-    const c = centroid(feat(m.geom)).geometry.coordinates
+    const c = puntoDeRotulo(m.geom)
     L.marker([c[1], c[0]], {
       interactive: false,
       icon: L.divIcon({
