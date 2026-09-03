@@ -1,34 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import type { ModuleKey, ProfileRole } from '../context/AuthTypes'
 import { useAuth } from '../context/useAuth'
 import { supabase } from '../lib/supabase'
-
-const moduleStatus = [
-  {
-    name: 'Mapas y Territorios',
-    detail: 'Dibujo, edicion, guardado y exportacion de territorios.',
-  },
-  {
-    name: 'Conductores',
-    detail: 'Alta, edicion y administracion de conductores.',
-  },
-  {
-    name: 'Grupos para el Servicio',
-    detail: 'Organizacion de grupos, integrantes y responsables.',
-  },
-  {
-    name: 'Salidas',
-    detail: 'Planificacion de salidas y puntos de encuentro geolocalizados.',
-  },
-  {
-    name: 'Salidas Grupo de Servicio',
-    detail: 'Reservas de territorios por grupo con acceso delegado.',
-  },
-  {
-    name: 'Territorio Personal',
-    detail: 'Reservas de territorios para personas o familias.',
-  },
-]
+import '../styles/inicio-admin.css'
 
 const moduleLabels: Record<ModuleKey, string> = {
   mapas: 'Mapas y Territorios',
@@ -58,60 +33,221 @@ export function DashboardPage() {
 
   return (
     <div className="page">
-      <section className="hero-card">
-        <div>
-          <p className="eyebrow">Gestion territorial</p>
-          <h2>Sistema modular con foco en territorios y salidas</h2>
-          <p className="lead">
-            Administra territorios, conductores, grupos y salidas desde una sola
-            aplicacion conectada a la nube, disponible como web, PWA y Android.
-          </p>
-        </div>
-
-        <div className="hero-highlight">
-          <span>Arquitectura sugerida</span>
-          <strong>React + Capacitor + Supabase + MapLibre</strong>
-        </div>
-      </section>
-
-      <section className="stats-grid">
-        <article className="stat-card">
-          <p className="eyebrow">Base de datos</p>
-          <strong>Supabase</strong>
-          <span>PostgreSQL con Auth y reglas RLS</span>
-        </article>
-        <article className="stat-card">
-          <p className="eyebrow">Mapa</p>
-          <strong>OpenStreetMap</strong>
-          <span>Visualizacion de San Juan con MapLibre</span>
-        </article>
-        <article className="stat-card">
-          <p className="eyebrow">Publicacion</p>
-          <strong>Web + PWA + APK</strong>
-          <span>Un solo codigo para navegador, instalacion web y Android</span>
-        </article>
-      </section>
-
-      <section className="panel">
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">Modulos</p>
-            <h3>Funciones disponibles</h3>
-          </div>
-        </div>
-
-        <div className="checklist">
-          {moduleStatus.map((item) => (
-            <article key={item.name} className="list-card">
-              <strong>{item.name}</strong>
-              <p>{item.detail}</p>
-            </article>
-          ))}
-        </div>
-      </section>
+      <Saludo />
+      <QueNecesitaAtencion />
 
       {profile?.role === 'admin' ? <UserAccessPanel /> : null}
     </div>
+  )
+}
+
+/**
+ * EL INICIO DEL ADMIN
+ *
+ * Antes esta pantalla explicaba el sistema: "arquitectura sugerida",
+ * "React + Capacitor + Supabase", la lista de modulos disponibles. Eso
+ * es un pitch, y le sirve a alguien que todavia no lo compro. Al que
+ * entra todos los dias no le dice nada que no sepa.
+ *
+ * La vista del hermano abre distinto: "Buenas noches, Mateo. Las salidas
+ * de hoy ya pasaron". Contesta que necesita ahora. Esto hace lo mismo
+ * para el que administra: lo que esta esperando una decision suya, y
+ * nada mas. Si no hay nada, lo dice y se calla.
+ */
+function Saludo() {
+  const { profile } = useAuth()
+  const hora = new Date().getHours()
+  const momento = hora < 13 ? 'Buen día' : hora < 20 ? 'Buenas tardes' : 'Buenas noches'
+  const nombre = (profile?.full_name || '').split(' ')[0]
+  return (
+    <section className="page-header">
+      <div>
+        <p className="eyebrow">Inicio</p>
+        <h2>
+          {momento}
+          {nombre ? `, ${nombre}` : ''}.
+        </h2>
+      </div>
+    </section>
+  )
+}
+
+type Pendiente = {
+  clave: string
+  cuantos: number
+  titulo: string
+  detalle: string
+  a: string
+  accion: string
+}
+
+function QueNecesitaAtencion() {
+  const { profile, managedUsers } = useAuth()
+  const [items, setItems] = useState<Pendiente[] | null>(null)
+  const esAdmin = profile?.role === 'admin'
+
+  const enEspera = useMemo(
+    () =>
+      managedUsers.filter(
+        (u) => u.role !== 'admin' && u.access_status !== 'inactive' && u.moduleAccess.length === 0,
+      ).length,
+    [managedUsers],
+  )
+
+  useEffect(() => {
+    if (!supabase || !esAdmin) {
+      setItems([])
+      return
+    }
+    const cliente = supabase
+    let vivo = true
+    void (async () => {
+      // Cada cuenta va por separado y ninguna puede tumbar al resto: si una
+      // tabla todavia no existe en este entorno, esa fila no aparece y las
+      // demas si. Un tablero a medias sirve; uno que no carga, no.
+      const cuenta = async (p: PromiseLike<{ count: number | null; error: unknown }>) => {
+        try {
+          const { count, error } = await p
+          return error ? null : (count ?? 0)
+        } catch {
+          return null
+        }
+      }
+      const cuantas = { count: 'exact', head: true } as const
+
+      // Solo la corrida que vale. La primera importacion fallo a mitad y
+      // quedo marcada 'revertida' con sus 1.800 filas: contarlas aca
+      // inflaba el numero -decia 94 cuando eran 59- y un tablero que
+      // exagera es peor que no tenerlo, porque se le deja de creer.
+      const { data: corridas } = await cliente
+        .from('importaciones')
+        .select('id')
+        .neq('estado', 'revertida')
+        .order('corrida_at', { ascending: false })
+        .limit(1)
+      const corrida = (corridas as { id: string }[] | null)?.[0]?.id ?? null
+
+      const [conflictos, sinConductor, solicitudes] = await Promise.all([
+        corrida
+          ? cuenta(
+              cliente
+                .from('importacion_registros')
+                .select('id', cuantas)
+                .eq('importacion_id', corrida)
+                .eq('estado', 'conflicto'),
+            )
+          : Promise.resolve(null),
+        cuenta(
+          cliente
+            .from('salidas')
+            .select('id', cuantas)
+            .is('driver_id', null)
+            .gte('scheduled_for', new Date().toISOString()),
+        ),
+        cuenta(
+          cliente
+            .from('territorio_personal_reservas')
+            .select('id', cuantas)
+            .eq('status', 'solicitada'),
+        ),
+      ])
+      if (!vivo) return
+
+      const lista: Pendiente[] = []
+      if (enEspera > 0) {
+        lista.push({
+          clave: 'usuarios',
+          cuantos: enEspera,
+          titulo: enEspera === 1 ? 'Una persona espera acceso' : `${enEspera} personas esperan acceso`,
+          detalle: 'Se registraron y todavía no pueden entrar a nada.',
+          a: '/',
+          accion: 'Darles acceso',
+        })
+      }
+      if (solicitudes) {
+        lista.push({
+          clave: 'solicitudes',
+          cuantos: solicitudes,
+          titulo:
+            solicitudes === 1
+              ? 'Un hermano pidió un territorio'
+              : `${solicitudes} hermanos pidieron territorio`,
+          detalle: 'Están esperando que se lo asignes o se lo rechaces.',
+          a: '/territorio-personal',
+          accion: 'Ver los pedidos',
+        })
+      }
+      if (sinConductor) {
+        lista.push({
+          clave: 'conductor',
+          cuantos: sinConductor,
+          titulo:
+            sinConductor === 1
+              ? 'Una salida no tiene conductor'
+              : `${sinConductor} salidas no tienen conductor`,
+          detalle: 'Están programadas y nadie las conduce todavía.',
+          a: '/salidas',
+          accion: 'Asignar conductor',
+        })
+      }
+      if (conflictos) {
+        lista.push({
+          clave: 'excel',
+          cuantos: conflictos,
+          titulo: `${conflictos} filas del Excel esperan tu decisión`,
+          detalle: 'Ninguna cuenta las resuelve: la casilla dice una cosa y la observación otra.',
+          a: '/importacion',
+          accion: 'Revisarlas',
+        })
+      }
+      setItems(lista)
+    })()
+    return () => {
+      vivo = false
+    }
+  }, [esAdmin, enEspera])
+
+  if (!esAdmin) return null
+
+  if (items === null) {
+    return (
+      <section className="panel">
+        <p className="lead">Viendo qué quedó pendiente…</p>
+      </section>
+    )
+  }
+
+  if (!items.length) {
+    return (
+      <section className="panel inicio-tranquilo">
+        <p className="eyebrow">Al día</p>
+        <h3>No hay nada esperándote.</h3>
+        <p>
+          Cuando alguien pida un territorio, se registre una persona nueva o quede una salida
+          sin conductor, te lo vas a encontrar acá.
+        </p>
+      </section>
+    )
+  }
+
+  return (
+    <section className="panel">
+      <p className="eyebrow">Te está esperando</p>
+      <ul className="inicio-lista">
+        {items.map((p) => (
+          <li key={p.clave}>
+            <span className="inicio-cuantos">{p.cuantos}</span>
+            <span className="inicio-texto">
+              <strong>{p.titulo}</strong>
+              <small>{p.detalle}</small>
+            </span>
+            <Link to={p.a} className="inicio-accion">
+              {p.accion} →
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }
 

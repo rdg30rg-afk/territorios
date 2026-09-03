@@ -1,0 +1,49 @@
+/* El inicio del admin: lo que está esperando una decisión, y nada más.
+   Los colores salen del tema; nada fijo acá. */
+
+.inicio-lista { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 10px; }
+
+.inicio-lista li {
+  display: grid;
+  grid-template-columns: 46px 1fr auto;
+  gap: 14px;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px solid var(--linea, #d8dde3);
+  border-radius: 12px;
+  background: var(--panel, #fff);
+}
+
+/* El número primero y grande: cuántos son se lee antes que el texto. */
+.inicio-cuantos {
+  font: 600 20px/1 system-ui, sans-serif;
+  text-align: center;
+  padding: 9px 0;
+  border-radius: 10px;
+  background: rgba(180, 83, 9, 0.12);
+  color: #8a4a06;
+}
+
+.inicio-texto { display: grid; gap: 3px; min-width: 0; }
+.inicio-texto strong { font-weight: 600; }
+.inicio-texto small { opacity: 0.7; }
+
+.inicio-accion {
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  color: inherit;
+  padding: 8px 12px;
+  border: 1px solid var(--linea, #d8dde3);
+  border-radius: 999px;
+}
+.inicio-accion:hover { background: rgba(127, 127, 127, 0.08); }
+
+.inicio-tranquilo h3 { margin: 4px 0 6px; }
+.inicio-tranquilo p { opacity: 0.7; margin: 0; }
+
+@media (max-width: 640px) {
+  .inicio-lista li { grid-template-columns: 46px 1fr; }
+  .inicio-accion { grid-column: 1 / -1; text-align: center; }
+}
