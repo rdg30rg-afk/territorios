@@ -71,6 +71,9 @@ type Manzana = {
   lat: number
   lng: number
   geometry_geojson: Poligono | null
+  // Solo los trae el historial: el mapa de hoy trabaja con lo vigente.
+  geometry_version?: number
+  vigente_hasta?: string | null
 }
 
 type Lado = {
@@ -79,6 +82,7 @@ type Lado = {
   orden: number
   geometry_geojson: Linea
   largo_m: number
+  geometry_version?: number
 }
 
 type Salida = {
@@ -932,12 +936,7 @@ export function PredicacionPage() {
       </nav>
 
       {historial && miTerritorio && (
-        <HojaHistorial
-          territorio={miTerritorio}
-          manzanas={manzanas}
-          ladosDe={ladosDe}
-          onCerrar={() => setHistorial(false)}
-        />
+        <HojaHistorial territorio={miTerritorio} onCerrar={() => setHistorial(false)} />
       )}
 
       {hoja && (
@@ -1147,21 +1146,51 @@ function ListaSalidas({
  */
 function HojaHistorial({
   territorio,
-  manzanas,
-  ladosDe,
   onCerrar,
 }: {
   territorio: Territorio
-  manzanas: Manzana[]
-  ladosDe: (mz: Manzana) => Lado[]
   onCerrar: () => void
 }) {
+  // El historial NO usa el dibujo vigente: usa TODO el dibujo, incluido
+  // el que se retiro. Un territorio redibujado deja sus manzanas viejas
+  // marcadas con vigente_hasta, y los eventos siguen apuntando ahi. Con
+  // el filtro de vigencia, el dia que se informo sobre el dibujo anterior
+  // aparecia vacio: los hechos estaban en la base y la pantalla no los
+  // sabia dibujar. El pasado se mira con la forma que tenia entonces.
+  const [manzanas, setManzanas] = useState<Manzana[]>([])
+  const [lados, setLados] = useState<Lado[]>([])
   const [eventos, setEventos] = useState<Evento[] | null>(null)
   const [dia, setDia] = useState<string | null>(null)
   const [nombres, setNombres] = useState<Record<string, string>>({})
   const caja = useRef<HTMLDivElement | null>(null)
   const mapa = useRef<L.Map | null>(null)
   const capa = useRef<L.LayerGroup | null>(null)
+
+  useEffect(() => {
+    if (!supabase) return
+    let vivo = true
+    void (async () => {
+      const [mzRes, ldRes] = await Promise.all([
+        supabase
+          .from('territorio_manzanas')
+          .select('id, label, lat, lng, geometry_geojson, geometry_version, vigente_hasta')
+          .eq('territory_id', territorio.id)
+          .order('label', { ascending: true }),
+        supabase
+          .from('manzana_lados')
+          .select('id, manzana_id, orden, geometry_geojson, largo_m, geometry_version')
+          .eq('territory_id', territorio.id)
+          .order('orden', { ascending: true }),
+      ])
+      if (!vivo) return
+      setManzanas((mzRes.data as Manzana[]) ?? [])
+      setLados((ldRes.data as Lado[]) ?? [])
+    })()
+    return () => {
+      vivo = false
+    }
+  }, [territorio.id])
+
 
   useEffect(() => {
     if (!supabase) return
@@ -1223,9 +1252,36 @@ function HojaHistorial({
     [eventos, dia],
   )
 
+  // UNA sola version del dibujo por dia. Un territorio redibujado deja el
+  // dibujo viejo retirado y el nuevo vigente, los dos en la misma tabla:
+  // mostrarlos juntos los encima en el mapa y cuenta las manzanas dos
+  // veces. La version del dia es la que apuntan los hechos de ese dia; si
+  // ese dia no se informo nada, la que estaba vigente.
+  const versionDelDia = useMemo(() => {
+    const deLaManzana = new Map(manzanas.map((m) => [m.id, m.geometry_version ?? 1]))
+    const votos = new Map<number, number>()
+    for (const e of delDia) {
+      const v = deLaManzana.get(e.manzana_id)
+      if (v != null) votos.set(v, (votos.get(v) ?? 0) + 1)
+    }
+    if (votos.size) return [...votos.entries()].sort((a, b) => b[1] - a[1])[0][0]
+    const vigentes = manzanas.filter((m) => !m.vigente_hasta)
+    return Math.max(1, ...(vigentes.length ? vigentes : manzanas).map((m) => m.geometry_version ?? 1))
+  }, [manzanas, delDia])
+
+  const manzanasDelDia = useMemo(
+    () => manzanas.filter((m) => (m.geometry_version ?? 1) === versionDelDia),
+    [manzanas, versionDelDia],
+  )
+
+  const ladosDe = useCallback(
+    (mz: Manzana) => lados.filter((l) => l.manzana_id === mz.id),
+    [lados],
+  )
+
   useEffect(() => {
-    if (!caja.current || !manzanas.length) return
-    const pts = manzanas.flatMap((m) => (m.geometry_geojson ? anilloDe(m.geometry_geojson) : []))
+    if (!caja.current || !manzanasDelDia.length) return
+    const pts = manzanasDelDia.flatMap((m) => (m.geometry_geojson ? anilloDe(m.geometry_geojson) : []))
     if (!pts.length) return
     const b = L.latLngBounds(pts)
     if (!mapa.current) {
@@ -1240,8 +1296,8 @@ function HojaHistorial({
       }, 60)
     }
     capa.current!.clearLayers()
-    pintarManzanas(capa.current!, manzanas, ladosDe, hechosAl)
-  }, [manzanas, ladosDe, hechosAl])
+    pintarManzanas(capa.current!, manzanasDelDia, ladosDe, hechosAl)
+  }, [manzanasDelDia, ladosDe, hechosAl])
 
   useEffect(() => {
     document.body.style.overflow = 'hidden'
@@ -1274,7 +1330,7 @@ function HojaHistorial({
     >()
     for (const e of cierreDelDia) {
       if (e.estado !== 'recorrido') continue
-      const mz = manzanas.find((x) => x.id === e.manzana_id)
+      const mz = manzanasDelDia.find((x) => x.id === e.manzana_id)
       if (!mz) continue
       const suyas = ladosDe(mz)
       const fila =
@@ -1290,7 +1346,7 @@ function HojaHistorial({
       m.set(mz.id, fila)
     }
     return [...m.values()].sort((a, b) => a.letra.localeCompare(b.letra))
-  }, [cierreDelDia, manzanas, ladosDe, hechosAl, nombres])
+  }, [cierreDelDia, manzanasDelDia, ladosDe, hechosAl, nombres])
 
   const deshechos = cierreDelDia.filter((e) => e.estado !== 'recorrido').length
 
@@ -1300,7 +1356,7 @@ function HojaHistorial({
   const alCierre = useMemo(() => {
     let completas = 0
     let empezadas = 0
-    for (const mz of manzanas) {
+    for (const mz of manzanasDelDia) {
       const suyas = ladosDe(mz)
       if (!suyas.length) continue
       const n = suyas.filter((l) => hechosAl.has(l.id)).length
@@ -1308,7 +1364,7 @@ function HojaHistorial({
       else if (n > 0) empezadas++
     }
     return { completas, empezadas }
-  }, [manzanas, ladosDe, hechosAl])
+  }, [manzanasDelDia, ladosDe, hechosAl])
 
   return (
     <div className="sobre">
@@ -1366,7 +1422,7 @@ function HojaHistorial({
           <div className="histPie">
             <p className="histResumen">
               <strong>
-                {alCierre.completas} de {manzanas.length} manzanas
+                {alCierre.completas} de {manzanasDelDia.length} manzanas
               </strong>{' '}
               hechas al cierre de ese día
               {alCierre.empezadas > 0 &&
