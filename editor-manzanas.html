@@ -309,6 +309,7 @@ let borradorPendiente = null
 let borradorEstado = 'sin_sesion'   // sin_sesion | vacio | guardando | guardado | local | conflicto
 let borradorHora = null
 let borradorTimer = null            // las escrituras se agrupan, no una por movimiento
+let baseLeida = false               // la base CONTESTO, aunque haya venido vacia
 let paraFusionar = []
 let cortePuntos = []
 let historial = []
@@ -2079,7 +2080,9 @@ try {
 void vinoDe
 
 // La primera vez se cargan solos los territorios reales del sistema actual.
-if (!territorios.size) {
+// Solo si la base CONTESTO y vino vacia: sembrar del archivo cuando en
+// realidad no pudimos leer seria fabricar un estado y despues escribirlo.
+if (!territorios.size && (baseLeida || borradorEstado === 'sin_sesion')) {
   try {
     const sec = await fetch('/datos/sectores.json')
     if (sec.ok) SECTORES = await sec.json()
@@ -2088,8 +2091,13 @@ if (!territorios.size) {
   } catch (e) { /* si no esta el respaldo, se arranca vacio */ }
 }
 
+if (!territorios.size && !baseLeida && borradorEstado !== 'sin_sesion') {
+  avisar('<b>No se pudo leer la base y no hay copia en este navegador.</b><br>' +
+    'No se carga nada para no inventar un estado y despues escribirlo encima del bueno. Recargá.')
+}
+
 refrescar()
-if (!territorios.size) {
+if (!territorios.size && (baseLeida || borradorEstado === 'sin_sesion')) {
   avisar(`<b>${manzanas.size.toLocaleString('es-AR')} manzanas</b> en el área de la congregación.<br>Creá un territorio y hacé clic para sumarle manzanas.`)
 }
 
@@ -2632,6 +2640,7 @@ async function leerBorrador () {
     )
     if (!r.ok) throw new Error(await r.text())
     const filas = await r.json()
+    baseLeida = true
     if (!filas.length) {
       // La tabla existe y contesta, pero todavia nadie guardo nada.
       borradorEstado = 'vacio'
@@ -2662,6 +2671,11 @@ async function escribirBorrador () {
   const token = tokenDeSesion()
   if (!BD_URL || !BD_KEY || !token) { borradorEstado = 'sin_sesion'; pintarEstadoBorrador(); return }
   if (borradorEstado === 'conflicto') return
+  // Si al abrir no pudimos LEER la base, no escribimos. Si no, un corte de
+  // red al arrancar termina subiendo lo que haya en memoria -incluso la
+  // semilla del archivo estatico- encima del trabajo bueno que si esta
+  // guardado alla.
+  if (!baseLeida) { borradorEstado = 'local'; pintarEstadoBorrador(); return }
 
   borradorEstado = 'guardando'
   pintarEstadoBorrador()
