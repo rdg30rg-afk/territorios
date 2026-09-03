@@ -221,12 +221,9 @@
           <span id="estadoArchivo">Sin archivo de respaldo</span>
           <button class="mini" id="bVincular">vincular archivo</button>
         </div>
-        <button class="b pri" id="bTraer" style="width:100%;margin-bottom:8px">Traer del sistema actual</button>
+        <button class="b sec" id="bTraer" style="width:100%;margin-bottom:8px">Volver a traer del sistema</button>
         <button class="b pri" id="bGuardarBD" style="width:100%;margin-bottom:8px">Guardar en la base</button>
         <button class="b sec" id="bComparar" style="width:100%;margin-bottom:8px">Comparar con la base</button>
-        <label class="archivo" style="cursor:pointer;margin-bottom:8px;width:100%;display:flex;align-items:center;gap:8px">
-          <input type="checkbox" id="cCaras"><span>ver las caras que van a salir</span>
-        </label>
         <button class="b sec" id="bExport">Exportar</button>
         <button class="b sec" id="bImport">Importar</button>
         <button class="b dan" id="bReset">Vaciar</button>
@@ -300,7 +297,6 @@ let activo = null               // id de territorio seleccionado
 let herramienta = 'ver'
 let vecinos = 0   // 0 = solo el territorio elegido
 let verLetras = true
-let verCaras = false     // el editor muestra las caras que va a guardar
 let letrasNuevas = []    // ids en el orden en que se van tocando para reletrar
 let enLaBase = null      // numero de territorio -> manzanas que hay hoy en la base
 let paraFusionar = []
@@ -407,7 +403,7 @@ function pintarEstadoArchivo () {
   document.getElementById('bVincular').textContent = manejadorArchivo ? 'cambiar' : 'vincular archivo'
   txt.innerHTML = manejadorArchivo
     ? `Se guarda en <b>${manejadorArchivo.name}</b>` + (ultimoGuardado ? ` · ${ultimoGuardado.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}` : '')
-    : 'Sin archivo de respaldo. Solo vive en este navegador y se puede borrar.'
+    : 'Sin archivo de respaldo. Lo que ya guardaste en la base está a salvo; lo que todavía no, vive solo en este navegador.'
 }
 
 function estadoActual () {
@@ -1575,7 +1571,29 @@ function traerDelSistema (respaldo) {
   console.log('Informe de importación:', informe)
 }
 
-document.getElementById('bTraer').onclick = () => document.getElementById('fTraer').click()
+document.getElementById('bTraer').onclick = async () => {
+  // Esto no agrega: REEMPLAZA. Borra todos los territorios y le saca el
+  // territorio a cada manzana. Mientras era la carga inicial no molestaba;
+  // ahora hay trabajo hecho que todavia no subio a la base, y era el unico
+  // boton destructivo de la pantalla que no preguntaba nada.
+  const conTerritorio = [...manzanas.values()].filter(m => m.territorio).length
+  let sinSubir = 0
+  if (enLaBase) {
+    for (const t of territorios.values()) {
+      const n = [...manzanas.values()].filter(m => m.territorio === t.id).length
+      if (n && enLaBase.get(String(t.numero)) !== n) sinSubir++
+    }
+  }
+  const ok = await confirmar('Volver a traer del sistema',
+    `Se borran los <b>${territorios.size}</b> territorios de este editor y las ` +
+    `<b>${conTerritorio}</b> manzanas asignadas vuelven a quedar libres. ` +
+    'Después se cargan de nuevo desde el archivo que elijas.<br><br>' +
+    (sinSubir
+      ? `<b>Ojo:</b> ${sinSubir} territorio${sinSubir === 1 ? ' tiene' : 's tienen'} cambios que todavía no están en la base. Eso se pierde.`
+      : 'La base de datos de la app no se toca.'),
+    'Sí, traer de nuevo', true)
+  if (ok) document.getElementById('fTraer').click()
+}
 document.getElementById('fTraer').onchange = async (e) => {
   const f = e.target.files[0]; if (!f) return
   avisar('Procesando el respaldo…')
@@ -1909,8 +1927,8 @@ document.getElementById('fImport').onchange = async (e) => {
 }
 
 document.getElementById('bReset').onclick = async () => {
-  if (!await confirmar('Vaciar la prueba',
-    'Se borran <b>todos</b> los territorios de este prototipo. La base de datos de la app no se toca.',
+  if (!await confirmar('Vaciar el editor',
+    'Se borran <b>todos</b> los territorios de este editor. La base de datos de la app no se toca.',
     'Vaciar todo', true)) return
   instantanea()
   territorios.clear()
@@ -2215,8 +2233,11 @@ function corridaAdentro (puntos, centro, metrosAdentro = 7) {
 
 function pintarCaras () {
   capaCaras.clearLayers()
+  // Las caras se ven solo dentro de su herramienta. Antes habia ademas un
+  // tilde en la barra lateral que mostraba lo mismo: dos caminos para una
+  // cosa, y el de la herramienta era mejor porque trae el resumen.
   const editando = herramienta === 'caras'
-  if ((!verCaras && !editando) || !activo) return
+  if (!editando || !activo) return
   const propias = [...manzanas.values()].filter((m) => m.territorio === activo && m.geom)
 
   for (const m of propias) {
@@ -2330,12 +2351,6 @@ function resumenCaras () {
       .map(([k, v]) => v + ' manzana' + (v === 1 ? '' : 's') + ' de ' + k).join(' · ') +
     (aMano ? '<br>' + aMano + ' corregida' + (aMano === 1 ? '' : 's') + ' a mano (en violeta).' : '') +
     '<br><small>Lo que no dé 4 conviene mirarlo.</small>'
-}
-
-document.getElementById('cCaras').onchange = (e) => {
-  verCaras = e.target.checked
-  pintarCaras()
-  if (verCaras && activo) avisar(resumenCaras())
 }
 
 /* ====================================================================
