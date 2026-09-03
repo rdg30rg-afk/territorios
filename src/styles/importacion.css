@@ -49,6 +49,11 @@
   font-size: 13px;
 }
 
+.imp-cierre {
+  background: rgba(29, 78, 216, 0.09);
+  color: inherit;
+}
+
 .imp-tabla { width: 100%; font-size: 13px; }
 .imp-tabla th { width: 34px; text-align: left; opacity: 0.6; font-weight: 600; }
 .imp-tabla td { padding: 2px 6px; vertical-align: top; }
@@ -85,3 +90,8 @@
   .imp-motivo { grid-column: 1 / -1; grid-row: 3; }
   .imp-flecha { grid-column: 2; grid-row: 1; justify-self: end; }
 }
+
+/* Lo que el Excel dejo en una salida. Se lee, no se edita. */
+.del-excel { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 4px; }
+.del-excel li { line-height: 1.45; }
+.del-excel-nota { margin: 10px 0 0; opacity: 0.75; font-size: 0.9em; }

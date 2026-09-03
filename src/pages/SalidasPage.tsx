@@ -1,5 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { Falta } from '../components/Falta'
+import '../styles/importacion.css'
+import { leerNotasImportadas } from '../lib/notasImportadas'
 import { Desplegable } from '../components/Desplegable'
 import { Modal } from '../components/Modal'
 import { useAuth } from '../context/useAuth'
@@ -433,6 +435,9 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
   const [meetingPointName, setMeetingPointName] = useState('')
   const [scheduledFor, setScheduledFor] = useState('')
   const [notes, setNotes] = useState('')
+  // El JSON de procedencia que dejo la importacion, si esta salida lo
+  // tiene. Vive fuera del cuadro editable para que guardar no lo pise.
+  const [notasDelExcel, setNotasDelExcel] = useState<string | null>(null)
   const [meetingCoords, setMeetingCoords] = useState<[number, number] | null>(null)
   const [territoryFilter, setTerritoryFilter] = useState('todos')
   const [scheduleFilter, setScheduleFilter] = useState<ScheduleFilter>('todos')
@@ -825,6 +830,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
   }
 
   const resetForm = () => {
+    setNotasDelExcel(null)
     setEditingOutingId(null)
     setSelectedSlotKey(null)
     setLastSuggestedTitle(null)
@@ -1028,7 +1034,11 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
     setGroupId(outing.group_id ?? '')
     setMeetingPointName(outing.meeting_point_name ?? '')
     setScheduledFor(new Date(outing.scheduled_for).toISOString().slice(0, 16))
-    setNotes(outing.notes ?? '')
+    // Si lo que hay en notes es el JSON de la importacion, no entra al
+    // cuadro de texto: se guarda aparte y se muestra como frases.
+    const importadas = leerNotasImportadas(outing.notes)
+    setNotasDelExcel(importadas ? importadas.crudo : null)
+    setNotes(importadas ? '' : (outing.notes ?? ''))
     setMeetingCoords(
       outing.meeting_point_lng !== null && outing.meeting_point_lat !== null
         ? [outing.meeting_point_lng, outing.meeting_point_lat]
@@ -1250,7 +1260,10 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
       meeting_point_lat: Number(meetingCoords[1].toFixed(6)),
       meeting_point_lng: Number(meetingCoords[0].toFixed(6)),
       scheduled_for: new Date(scheduledFor).toISOString(),
-      notes: notes.trim() || null,
+      // Si venia del Excel, se escribe de vuelta igual. Perder la
+      // procedencia por haber abierto el formulario no es una opcion, y
+      // hoy no hay columna donde poner una observacion escrita a mano.
+      notes: notasDelExcel ?? (notes.trim() || null),
     }
 
     const query = editingOutingId
@@ -1988,16 +2001,58 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                 />
               </label>
 
-              <label>
-                Observaciones
-                <textarea
-                  value={notes}
-                  onChange={(event) => setNotes(event.target.value)}
-                  placeholder="Indicaciones adicionales"
-                  rows={4}
-                  disabled={!canManageOutings}
-                />
-              </label>
+              {(() => {
+                const delExcel = leerNotasImportadas(notasDelExcel)
+                if (!delExcel) {
+                  return (
+                    <label>
+                      Observaciones
+                      <textarea
+                        value={notes}
+                        onChange={(event) => setNotes(event.target.value)}
+                        placeholder="Indicaciones adicionales"
+                        rows={4}
+                        disabled={!canManageOutings}
+                      />
+                    </label>
+                  )
+                }
+
+                return (
+                  <div className="module-detail-card">
+                    <span>Lo que decia el Excel</span>
+                    <ul className="del-excel">
+                      {delExcel.conductorSegunElExcel ? (
+                        <li>
+                          Figura <strong>{delExcel.conductorSegunElExcel}</strong> como
+                          conductor.
+                        </li>
+                      ) : null}
+                      {delExcel.priorizar ? (
+                        <li>
+                          Habia que priorizar <strong>{delExcel.priorizar}</strong>.
+                        </li>
+                      ) : null}
+                      {delExcel.narrativa.map((linea) => (
+                        <li key={linea}>{linea}</li>
+                      ))}
+                      {delExcel.laCasillaDecia !== null ? (
+                        <li>
+                          La casilla de territorio completado estaba{' '}
+                          <strong>{delExcel.laCasillaDecia ? 'tildada' : 'sin tildar'}</strong>
+                          {delExcel.resolucion === 'sin_confirmar'
+                            ? ', y todavia nadie lo confirmo.'
+                            : '.'}
+                        </li>
+                      ) : null}
+                    </ul>
+                    <p className="del-excel-nota">
+                      Esto vino de la importacion y no se edita: es de donde salio la
+                      salida. Se guarda igual aunque cambies el resto.
+                    </p>
+                  </div>
+                )
+              })()}
 
               <div className="map-picker-panel">
                 <div className="map-picker-head">
