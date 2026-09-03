@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import { Falta } from '../components/Falta'
 import { useAuth } from '../context/useAuth'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 
@@ -106,6 +107,15 @@ const dayFormatter = new Intl.DateTimeFormat('es-AR', {
   weekday: 'long',
   day: '2-digit',
   month: '2-digit',
+})
+
+// El rotulo del planificador ("Lunes 07-09") sirve como encabezado de una
+// columna, pero dentro de una frase se lee como un registro. Para la bajada
+// va la fecha dicha como se dice en voz alta: "lunes 7 de septiembre".
+const diaEnFrase = new Intl.DateTimeFormat('es-AR', {
+  weekday: 'long',
+  day: 'numeric',
+  month: 'long',
 })
 
 const shortDateFormatter = new Intl.DateTimeFormat('es-AR', {
@@ -638,7 +648,14 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
   const lockedGroupId = isGroupServiceDelegate ? currentServiceGroup?.id ?? '' : groupId
   const canManageOutings =
     canManageGeneralOutings || (groupServiceMode && serviceGroupAssignments.length > 0)
-  const plannerStartLabel = plannerSlotsByDay[0]?.dayLabel ?? 'el proximo lunes'
+  const arranqueEnFrase = (() => {
+    const clave = plannerSlotsByDay[0]?.dateKey
+    if (!clave) return 'el proximo lunes'
+    const [anio, mes, dia] = clave.split('-').map(Number)
+    // Intl en es-AR devuelve "lunes, 7 de septiembre". La coma esta bien
+    // cuando la fecha va sola, pero adentro de una frase corta la lectura.
+    return diaEnFrase.format(new Date(anio, mes - 1, dia)).replace(',', '')
+  })()
 
   const outingDetails = useMemo(
     () =>
@@ -757,12 +774,15 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
     [selectedOutingId, visibleOutingDetails],
   )
 
-  const outingsWithGroup = visibleOutingDetails.filter((outing) => outing.group_id).length
-  const scheduledTodayCount = visibleOutingDetails.filter(
-    (outing) => outing.scheduleStatus.label === 'Hoy',
-  ).length
-  const upcomingCount = visibleOutingDetails.filter(
-    (outing) => outing.scheduleStatus.label === 'Proxima',
+  // Antes se mostraban cuatro cifras: total, hoy, con grupo y proximas. La
+  // unica que pedia hacer algo era "con grupo", y dicha al reves: lo que
+  // hay que resolver no son las que ya tienen, son las que no. Una salida
+  // que ya paso sin conductor no se arregla, asi que solo cuentan las que
+  // todavia no ocurrieron.
+  const proximasSinConductor = visibleOutingDetails.filter(
+    (outing) =>
+      !outing.driver_id &&
+      (outing.scheduleStatus.label === 'Hoy' || outing.scheduleStatus.label === 'Proxima'),
   ).length
 
   const resetForm = () => {
@@ -1374,57 +1394,22 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
     <div className="page">
       <section className="page-header">
         <div>
-          <p className="eyebrow">{groupServiceMode ? 'Modulo 6' : 'Modulo 4'}</p>
-          <h2>{groupServiceMode ? 'Salidas Grupo de Servicio' : 'Salidas'}</h2>
+          <h2>{groupServiceMode ? 'Salidas del grupo' : 'Salidas'}</h2>
           <p className="lead">
             {groupServiceMode
-              ? 'Planificador para que cada grupo reserve territorios sin pisarse con otros grupos.'
-              : 'Planificador operativo para 2 semanas, con horarios por franja, predicacion telefonica y ficha PDF de cada salida.'}
+              ? 'Los territorios que reserva tu grupo, sin pisarse con los demas.'
+              : `Desde el ${arranqueEnFrase} y por dos semanas: donde y a que hora se sale, y quien conduce.`}
           </p>
         </div>
       </section>
 
       <div className="module-console">
-        <section className="module-hero">
-          <div className="module-hero-copy">
-            <p className="eyebrow">Planificador quincenal</p>
-            <h3>
-              {isGroupServiceDelegate && currentServiceGroup
-                ? `${getGroupLabel(currentServiceGroup)} - agenda de servicio`
-                : `Agenda desde ${plannerStartLabel} por 2 semanas`}
-            </h3>
-            <p>
-              {canManageOutings
-                ? 'Elige un slot del calendario, completa territorio, conductor y GPS, y descarga la ficha en PDF cuando quede lista.'
-                : groupServiceMode
-                  ? 'Tu usuario debe estar asociado como superintendente o auxiliar en Grupos para el Servicio.'
-                  : 'Puedes consultar la agenda de salidas. La planificacion queda reservada para administradores.'}
-            </p>
-          </div>
-
-          <div className="module-hero-stats">
-            <article className="module-stat-card">
-              <span>Total salidas</span>
-              <strong>{visibleOutingDetails.length}</strong>
-              <small>{groupServiceMode ? 'Del grupo' : 'Agenda acumulada'}</small>
-            </article>
-            <article className="module-stat-card">
-              <span>Hoy</span>
-              <strong>{scheduledTodayCount}</strong>
-              <small>Programadas hoy</small>
-            </article>
-            <article className="module-stat-card">
-              <span>Con grupo</span>
-              <strong>{outingsWithGroup}</strong>
-              <small>Asignadas</small>
-            </article>
-            <article className="module-stat-card">
-              <span>Proximas</span>
-              <strong>{upcomingCount}</strong>
-              <small>Fuera de hoy</small>
-            </article>
-          </div>
-        </section>
+        <Falta
+          cuantos={proximasSinConductor}
+          uno="Una salida no tiene conductor"
+          varios="{n} salidas no tienen conductor"
+          detalle="Estan programadas y todavia nadie las lleva."
+        />
 
         <section className="panel">
           <div className="module-registry-toolbar">

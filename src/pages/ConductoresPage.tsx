@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Falta } from '../components/Falta'
 import { useAuth } from '../context/useAuth'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 
@@ -159,9 +160,10 @@ export function ConductoresPage() {
   const [message, setMessage] = useState<string | null>(null)
 
   const canManageDrivers = profile?.role === 'admin'
-  const activeCount = drivers.filter((driver) => driver.status === 'activo').length
+  // Solo se cuenta lo que hay que hacer. Activos e inactivos se veian en
+  // las cifras de arriba y no cambiaban ninguna decision: el estado de
+  // cada conductor ya esta en su fila, y el filtro de arriba los separa.
   const pendingCount = drivers.filter((driver) => driver.status === 'pendiente').length
-  const inactiveCount = drivers.filter((driver) => driver.status === 'inactivo').length
 
   const selectedDriver = useMemo(
     () => drivers.find((driver) => driver.id === selectedDriverId) ?? null,
@@ -393,50 +395,24 @@ export function ConductoresPage() {
     <div className="page">
       <section className="page-header">
         <div>
-          <p className="eyebrow">Modulo 2</p>
           <h2>Conductores</h2>
           <p className="lead">
-            Consola de conductores para registrar disponibilidad y dejar cada
-            perfil listo para usarlo en las salidas.
+            Quien puede llevar hermanos al territorio, y cuando esta disponible.
           </p>
         </div>
       </section>
 
       <div className="module-console">
-        <section className="module-hero">
-          <div className="module-hero-copy">
-            <p className="eyebrow">Movilidad del servicio</p>
-            <h3>Organiza conductores por disponibilidad y estado real</h3>
-            <p>
-              {canManageDrivers
-                ? 'Mantén una base confiable de conductores con teléfono, observaciones y estado para asignarlos rápido en cada salida.'
-                : 'Puedes revisar los conductores registrados. La gestión queda reservada para administradores.'}
-            </p>
-          </div>
-
-          <div className="module-hero-stats">
-            <article className="module-stat-card">
-              <span>Total conductores</span>
-              <strong>{drivers.length}</strong>
-              <small>Base general</small>
-            </article>
-            <article className="module-stat-card">
-              <span>Activos</span>
-              <strong>{activeCount}</strong>
-              <small>Disponibles para salida</small>
-            </article>
-            <article className="module-stat-card">
-              <span>Pendientes</span>
-              <strong>{pendingCount}</strong>
-              <small>Requieren confirmacion</small>
-            </article>
-            <article className="module-stat-card">
-              <span>Inactivos</span>
-              <strong>{inactiveCount}</strong>
-              <small>Fuera de asignacion</small>
-            </article>
-          </div>
-        </section>
+        {/* Antes habia aca un bloque de venta ("Manten una base confiable
+            de conductores...") y cuatro cifras: Total, Activos, Pendientes
+            e Inactivos, donde Total era la suma de las otras tres. Ninguna
+            cambiaba una decision salvo Pendientes, que es la que quedo. */}
+        <Falta
+          cuantos={pendingCount}
+          uno="Un conductor esta sin confirmar"
+          varios="{n} conductores estan sin confirmar"
+          detalle="Todavia no se puede contar con ellos para una salida."
+        />
 
         <section className="panel module-registry-panel">
           <div className="module-registry-toolbar">

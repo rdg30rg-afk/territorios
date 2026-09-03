@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Falta } from '../components/Falta'
 import { useAuth } from '../context/useAuth'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 
@@ -59,12 +60,22 @@ export function GruposPage() {
   const [message, setMessage] = useState<string | null>(null)
 
   const canManageGroups = profile?.role === 'admin'
-  const uniqueGroupCount = new Set(groups.map(getGroupKey)).size
-  const superintendentCount = groups.filter(
-    (group) => group.manager_role === 'superintendente',
-  ).length
-  const servantCount = groups.filter((group) => group.manager_role === 'siervo').length
-  const auxiliaryCount = groups.filter((group) => group.manager_role === 'auxiliar').length
+  // Antes se contaban grupos, superintendentes, siervos y auxiliares. Son
+  // cuatro numeros que no cambian ninguna decision: saber que hay tres
+  // siervos no le dice a nadie que hacer. Lo que si hay que hacer algo al
+  // respecto es un grupo sin nadie a cargo -- ni superintendente ni
+  // siervo. Un auxiliar solo no alcanza: es apoyo, no responsable.
+  const gruposSinResponsable = useMemo(() => {
+    const aCargo = new Set(
+      groups
+        .filter(
+          (group) =>
+            group.manager_role === 'superintendente' || group.manager_role === 'siervo',
+        )
+        .map(getGroupKey),
+    )
+    return [...new Set(groups.map(getGroupKey))].filter((key) => !aCargo.has(key)).length
+  }, [groups])
 
   const selectedGroup = useMemo(
     () => groups.find((group) => group.id === selectedGroupId) ?? null,
@@ -314,50 +325,20 @@ export function GruposPage() {
     <div className="page">
       <section className="page-header">
         <div>
-          <p className="eyebrow">Modulo 3</p>
           <h2>Grupos para el Servicio</h2>
           <p className="lead">
-            Consola para armar cada grupo con su numero, responsables y
-            auxiliares usando los conductores ya cargados.
+            Cada grupo con su numero, quien esta a cargo y quien lo acompania.
           </p>
         </div>
       </section>
 
       <div className="module-console">
-        <section className="module-hero">
-          <div className="module-hero-copy">
-            <p className="eyebrow">Coordinacion interna</p>
-            <h3>Un grupo, sus hermanos asignados y sus funciones</h3>
-            <p>
-              {canManageGroups
-                ? 'Selecciona el numero de grupo, el conductor y su asignacion. Cada grupo puede tener un superintendente o siervo, mas uno o dos auxiliares.'
-                : 'Puedes revisar los grupos existentes y sus asignaciones. La gestion queda reservada para administradores.'}
-            </p>
-          </div>
-
-          <div className="module-hero-stats">
-            <article className="module-stat-card">
-              <span>Total grupos</span>
-              <strong>{uniqueGroupCount}</strong>
-              <small>Numeros creados</small>
-            </article>
-            <article className="module-stat-card">
-              <span>Superintendentes</span>
-              <strong>{superintendentCount}</strong>
-              <small>Responsables principales</small>
-            </article>
-            <article className="module-stat-card">
-              <span>Siervos</span>
-              <strong>{servantCount}</strong>
-              <small>Responsables de grupo</small>
-            </article>
-            <article className="module-stat-card">
-              <span>Auxiliares</span>
-              <strong>{auxiliaryCount}</strong>
-              <small>Apoyo asignado</small>
-            </article>
-          </div>
-        </section>
+        <Falta
+          cuantos={gruposSinResponsable}
+          uno="Un grupo no tiene a nadie a cargo"
+          varios="{n} grupos no tienen a nadie a cargo"
+          detalle="Sin superintendente ni siervo asignado."
+        />
 
         <section className="panel module-registry-panel">
           <div className="module-registry-toolbar">

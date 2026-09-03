@@ -238,45 +238,19 @@ export function TerritorioPersonalPage() {
     <div className="page">
       <section className="page-header">
         <div>
-          <p className="eyebrow">Modulo 7</p>
           <h2>Territorio Personal</h2>
           <p className="lead">
-            Reserva territorios para personas o familias y evita que se usen en
-            salidas mientras sigan activos.
+            Territorios reservados para una persona o una familia. Mientras esten
+            reservados no se usan en las salidas.
           </p>
         </div>
       </section>
 
       <div className="module-console">
-        <section className="module-hero">
-          <div className="module-hero-copy">
-            <p className="eyebrow">Reservas personales</p>
-            <h3>Control simple para territorios asignados fuera de salidas</h3>
-            <p>
-              Al cumplirse un mes, el sistema avisa para consultar si ya fue
-              abarcado y si la persona desea otro territorio.
-            </p>
-          </div>
-
-          <div className="module-hero-stats">
-            <article className="module-stat-card">
-              <span>Disponibles</span>
-              <strong>{territories.length - activeReservations.length}</strong>
-              <small>Sin reserva personal</small>
-            </article>
-            <article className="module-stat-card">
-              <span>Reservados</span>
-              <strong>{activeReservations.length}</strong>
-              <small>No utilizables en salidas</small>
-            </article>
-            <article className="module-stat-card">
-              <span>Avisos</span>
-              <strong>{overdueReservations.length}</strong>
-              <small>Con mas de un mes</small>
-            </article>
-          </div>
-        </section>
-
+        {/* Aca habia tres cifras: Disponibles, Reservados y Avisos. Las dos
+            primeras son complementarias -- juntas dan el total, asi que la
+            segunda no agrega nada. La tercera contaba exactamente lo que el
+            panel de abajo ya lista uno por uno, con nombre y territorio. */}
         {overdueReservations.length > 0 ? (
           <section className="panel personal-alert-panel">
             <p className="eyebrow">Avisos de seguimiento</p>

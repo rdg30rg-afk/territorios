@@ -47,3 +47,18 @@
   .inicio-lista li { grid-template-columns: 46px 1fr; }
   .inicio-accion { grid-column: 1 / -1; text-align: center; }
 }
+
+/* El aviso que abre cada modulo. Mismo objeto que las filas del Inicio
+   -numero adelante, frase al lado- para que se lea sin volver a
+   aprenderlo. Sin enlace: la accion esta en la misma pantalla, abajo. */
+.falta {
+  display: grid;
+  grid-template-columns: 46px 1fr;
+  gap: 14px;
+  align-items: center;
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--linea, #d8dde3);
+  border-radius: 12px;
+  background: var(--panel, #fff);
+}
