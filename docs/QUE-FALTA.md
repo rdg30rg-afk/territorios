@@ -78,10 +78,14 @@ en los tres.
 
 ### UI del admin — es donde estábamos
 
-- [ ] **Pantallas de vacío, cargando y error.** Los tres, en cada módulo. El
-      vacío es la primera pantalla que ve alguien nuevo y hoy en varios módulos
-      es una tabla sin filas y nada más. *Este era el próximo paso acordado.*
-- [ ] **Barrido de voz.** Queda español peninsular y sin acentos en los
+- [x] Pantallas de vacío y de error. (`a929f60`)
+- [x] Barrido de voz en mensajes, barra lateral y nombres de módulos. (`a929f60`)
+- [x] Desplegables propios, con teclado y buscador. (`489cac7`, `b158149`)
+- [x] Formulario en ventana modal en vez de al pie de la tabla. (`9fc80ec`)
+- [x] Salidas traía las 1.000 más viejas y no mostraba ninguna futura. (`f298dab`)
+- [x] El JSON del Excel en Observaciones: se lee, y guardar ya no lo borra. (`c8c54b8`)
+- [x] El mapa del modal se dibujaba con la medida vieja. (`7fd256a`)
+- [ ] **Barrido de voz, lo que falta:** Queda español peninsular y sin acentos en los
       formularios y en la barra lateral: "Selecciona un territorio", "Mantén una
       base confiable", "Puedes revisar", "Gestion completa de accesos",
       "Solicitudes esperando aprobacion", "Modulo", "poligonos", "aprobacion".
@@ -124,6 +128,18 @@ escritorio desde el teléfono.
 - [ ] `reserved_for` sigue siendo texto libre.
 - [ ] Territorio 57: le faltan al menos 5 manzanas; 3 manzanas muestran 2 caras.
 - [ ] Mateo tiene ~24 territorios con cambios sin publicar en el editor.
+
+### Salió de la auditoría, sin resolver
+
+- [ ] **Las 1.790 salidas importadas no se pueden editar.** El formulario exige
+      territorio, conductor, punto de encuentro y horario; la importación no
+      trajo ninguno. Apretar "Editar" en cualquiera es un callejón sin salida.
+      Hay que decidir qué se espera de una salida vieja: ¿se edita?, ¿sólo se
+      mira?, ¿se completa de a poco?
+- [ ] **`salidas.notes` guarda datos que no son una observación.** La interfaz
+      ya los protege, pero el lugar correcto son columnas propias
+      (`conductor_alias` ya existe como tabla). Es del pipeline — Codex.
+      Mientras tanto nadie puede escribir una observación a mano en esas salidas.
 
 ### Riesgo real
 
