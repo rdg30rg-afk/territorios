@@ -542,6 +542,13 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
   const [territoryFilter, setTerritoryFilter] = useState('todos')
   const [scheduleFilter, setScheduleFilter] = useState<ScheduleFilter>('todos')
   const [grupoConsulta, setGrupoConsulta] = useState('todos')
+  // La procedencia del Excel se traia entera al entrar: dos consultas de mil
+  // filas y dieciseis columnas, la espera mas larga de la pantalla, para
+  // llenar una ficha que se abre de a una. Ahora se pide por salida y se
+  // guarda; null cacheado significa "esta no tiene".
+  const [procedencias, setProcedencias] = useState<Map<string, OutingProvenance | null>>(
+    () => new Map(),
+  )
   const [pagina, setPagina] = useState(0)
   const [armarPrograma, setArmarPrograma] = useState(false)
   const [programa, setPrograma] = useState(() => crearEstadoPrograma())
@@ -674,8 +681,6 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
         { data: outingsData, error: outingsError },
         { count: totalDeSalidas },
         { data: personalReservationsData, error: personalReservationsError },
-        { data: provenanceDataFirst, error: provenanceErrorFirst },
-        { data: provenanceDataSecond, error: provenanceErrorSecond },
       ] = await Promise.all([
         client
           .from('conductores')
@@ -713,20 +718,6 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
           .select('id, territory_id, reserved_for, status, reserved_at')
           .eq('status', 'activa')
           .order('reserved_at', { ascending: false }),
-        client
-          .from('salida_importacion_procedencia')
-          .select(
-            'id, salida_id, importacion_id, registro_id, application_id, source_sha256, parser_version, source_sheet, source_row, source_range, source_conductor_text, source_conductor_alias_id, source_priorizar, source_narrative, source_status, source_resolution_status',
-          )
-          .order('source_row', { ascending: true })
-          .range(0, 999),
-        client
-          .from('salida_importacion_procedencia')
-          .select(
-            'id, salida_id, importacion_id, registro_id, application_id, source_sha256, parser_version, source_sheet, source_row, source_range, source_conductor_text, source_conductor_alias_id, source_priorizar, source_narrative, source_status, source_resolution_status',
-          )
-          .order('source_row', { ascending: true })
-          .range(1000, 1999),
       ])
 
       const faltaColumna =
@@ -754,9 +745,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
         territoriesError?.message ||
         meetingPointsError?.message ||
         outingsErrorFinal?.message ||
-        personalReservationsError?.message ||
-        provenanceErrorFirst?.message ||
-        provenanceErrorSecond?.message
+        personalReservationsError?.message
 
       if (loadError) {
         setError(loadError)
@@ -772,18 +761,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
         setGroups((groupsData as GroupRecord[]) ?? [])
         setTerritories((territoriesData as TerritoryRecord[]) ?? [])
         setMeetingPoints((meetingPointsData as MeetingPointRecord[]) ?? [])
-        const provenanceByOuting = new Map(
-          [
-            ...((provenanceDataFirst as OutingProvenance[]) ?? []),
-            ...((provenanceDataSecond as OutingProvenance[]) ?? []),
-          ].map((item) => [item.salida_id, item]),
-        )
-        setOutings(
-          ((outingsResueltas as OutingRecord[]) ?? []).map((outing) => ({
-            ...outing,
-            provenance: provenanceByOuting.get(outing.id) ?? null,
-          })),
-        )
+        setOutings((outingsResueltas as OutingRecord[]) ?? [])
         setCuantasSalidasHay(totalDeSalidas ?? null)
         setPersonalReservations(
           (personalReservationsData as PersonalTerritoryReservation[]) ?? [],
@@ -903,9 +881,10 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
           }),
           groupName: selectedGroup ? getGroupLabel(selectedGroup) : 'Sin grupo',
           scheduleStatus: getOutingScheduleStatus(outing.scheduled_for),
+          provenance: procedencias.get(outing.id) ?? null,
         }
       }),
-    [drivers, groups, outings, territories],
+    [drivers, groups, outings, procedencias, territories],
   )
 
   const visibleOutingDetails = useMemo(
@@ -1014,8 +993,10 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
         outing.conductor_texto ?? '',
         outing.territorio_codigo ?? '',
         outing.notes ?? '',
-        outing.provenance?.source_conductor_text ?? '',
-        outing.provenance?.source_priorizar ?? '',
+        // La procedencia del Excel ya no se busca: se carga al abrir la
+        // ficha, y buscar en un campo que solo tienen las salidas que
+        // alguien miro antes da resultados que cambian sin motivo. El texto
+        // de conductor del Excel vive igual en conductor_texto, mas arriba.
       ]
         .join(' ')
         .toLowerCase()
@@ -1080,14 +1061,49 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
     [selectedOutingId, visibleOutingDetails],
   )
 
+  // Desde outingDetails y no desde outings, para que la procedencia que se
+  // trae a pedido tambien llegue al formulario de "Completar".
   const editingOuting = useMemo(
-    () => outings.find((outing) => outing.id === editingOutingId) ?? null,
-    [editingOutingId, outings],
+    () => outingDetails.find((outing) => outing.id === editingOutingId) ?? null,
+    [editingOutingId, outingDetails],
   )
   const resultadoOuting = useMemo(
     () => outings.find((outing) => outing.id === resultadoOutingId) ?? null,
     [outings, resultadoOutingId],
   )
+
+  // Solo las salidas que alguien esta mirando de verdad.
+  useEffect(() => {
+    const client = supabase
+    if (!client) return
+    const pedir = [selectedOutingId, editingOutingId].filter(
+      (id): id is string => Boolean(id) && !procedencias.has(id as string),
+    )
+    if (pedir.length === 0) return
+
+    let vivo = true
+    void client
+      .from('salida_importacion_procedencia')
+      .select(
+        'id, salida_id, importacion_id, registro_id, application_id, source_sha256, parser_version, source_sheet, source_row, source_range, source_conductor_text, source_conductor_alias_id, source_priorizar, source_narrative, source_status, source_resolution_status',
+      )
+      .in('salida_id', pedir)
+      .then(({ data }) => {
+        if (!vivo) return
+        const encontradas = new Map(
+          ((data as OutingProvenance[]) ?? []).map((fila) => [fila.salida_id, fila]),
+        )
+        setProcedencias((previas) => {
+          const siguiente = new Map(previas)
+          // Se cachea tambien la ausencia: sin esto, una salida cargada a
+          // mano vuelve a preguntar cada vez que se la toca.
+          for (const id of pedir) siguiente.set(id, encontradas.get(id) ?? null)
+          return siguiente
+        })
+      })
+
+    return () => { vivo = false }
+  }, [editingOutingId, procedencias, selectedOutingId])
   const editingHistorical = Boolean(editingOuting && esSalidaHistorica(editingOuting))
   const canReportSelectedResult = Boolean(
     resultadoOuting &&
