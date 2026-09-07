@@ -10,6 +10,7 @@ import { intersect } from '@turf/intersect'
 import { union } from '@turf/union'
 import { Modal } from './Modal'
 import { useAuth } from '../context/useAuth'
+import { canOpenAdminPanel } from '../lib/access'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 import { ordenarTerritorios } from '../lib/ordenarTerritorios'
 import { getTerritoryDeepLinkTransition } from '../lib/territoryDeepLink'
@@ -115,6 +116,7 @@ type TerritoryListItem = TerritoryRecord & {
 
 type SanJuanMapProps = {
   initialTerritoryId?: string | null
+  editingEnabled?: boolean
 }
 
 type PdfPoint = {
@@ -917,11 +919,11 @@ function useHasta(px: number) {
   return si
 }
 
-export function SanJuanMap({ initialTerritoryId = null }: SanJuanMapProps) {
-  const { profile } = useAuth()
+export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }: SanJuanMapProps) {
+  const { profile, contexto } = useAuth()
   const estrecho = useHasta(1280)
   const client = supabase
-  const canManageTerritories = profile?.role === 'admin'
+  const canManageTerritories = editingEnabled && canOpenAdminPanel(profile, contexto)
 
   const mapContainerRef = useRef<HTMLDivElement | null>(null)
   const mapFrameRef = useRef<HTMLDivElement | null>(null)
@@ -2229,6 +2231,12 @@ export function SanJuanMap({ initialTerritoryId = null }: SanJuanMapProps) {
     window.setTimeout(() => renderTerritoriesOnMap('all'), 0)
   }, [disableActiveDrawHandler, renderTerritoriesOnMap])
 
+  const previousEditingEnabled = useRef(editingEnabled)
+  useEffect(() => {
+    if (previousEditingEnabled.current && !editingEnabled) resetEditor()
+    previousEditingEnabled.current = editingEnabled
+  }, [editingEnabled, resetEditor])
+
   const handlePrepareNewTerritory = () => {
     resetEditor()
     setModoCrear(true)
@@ -2917,7 +2925,7 @@ export function SanJuanMap({ initialTerritoryId = null }: SanJuanMapProps) {
   }
 
   return (
-    <div className="territory-console">
+    <div className={editingEnabled ? 'territory-console is-editing-map' : 'territory-console'}>
       <div className="territory-stage">
       <details
         key={estrecho ? 'lista-movil' : 'lista-escritorio'}
