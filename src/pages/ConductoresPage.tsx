@@ -359,7 +359,7 @@ export function ConductoresPage() {
     setMessage(null)
 
     if (!client) {
-      setError('Primero debes configurar Supabase.')
+      setError('Falta conectar la base para cargar conductores.')
       return
     }
 
@@ -693,20 +693,17 @@ export function ConductoresPage() {
           </form>
         </Modal>
 
-        <section className="two-column-grid module-form-grid">
-          <article className="panel">
-            <p className="eyebrow">
-              {selectedDriver ? 'Ficha rapida' : 'Referencia rapida'}
-            </p>
-            <h3>
-              {selectedDriver ? selectedDriver.full_name : 'Buenas practicas para usar conductores'}
-            </h3>
-
-            {selectedDriver ? (
+        <Modal
+          abierto={Boolean(selectedDriver)}
+          alCerrar={() => setSelectedDriverId(null)}
+          titulo={selectedDriver?.full_name ?? 'Ficha del conductor'}
+          bajada="Teléfono, disponibilidad y observaciones."
+        >
+          {selectedDriver ? (
               <div className="module-detail-list">
                 <div className="module-detail-card">
                   <span>Teléfono</span>
-                  <strong>{selectedDriver.phone || 'Sin telefono cargado'}</strong>
+                  <strong>{selectedDriver.phone || 'Sin teléfono cargado'}</strong>
                 </div>
                 <div className="module-detail-card">
                   <span>Estado</span>
@@ -721,24 +718,8 @@ export function ConductoresPage() {
                   <strong>{selectedDriver.notes || 'Sin observaciones'}</strong>
                 </div>
               </div>
-            ) : (
-              <div className="module-guidance-list">
-                <div className="module-guidance-item">
-                  <strong>1. Mantén el estado actualizado</strong>
-                  <span>Así el planificador mostrará quién está disponible.</span>
-                </div>
-                <div className="module-guidance-item">
-                  <strong>2. Guarda el teléfono</strong>
-                  <span>Sirve para contacto rápido antes de una salida.</span>
-                </div>
-                <div className="module-guidance-item">
-                  <strong>3. Usa observaciones</strong>
-                  <span>Allí puedes dejar notas útiles para coordinación interna.</span>
-                </div>
-              </div>
-            )}
-          </article>
-        </section>
+            ) : null}
+        </Modal>
       </div>
     </div>
   )

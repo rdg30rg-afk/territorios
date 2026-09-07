@@ -624,7 +624,13 @@ button {
 }
 
 .group-member-table {
-  grid-template-columns: 120px minmax(0, 1fr) minmax(190px, 0.75fr) 220px;
+  grid-template-columns: minmax(0, 1fr) minmax(190px, 0.75fr) 220px;
+}
+
+.personal-tabs [role='tab'][aria-selected='true'] {
+  border-color: var(--accent, #7c4a34);
+  background: var(--accent, #7c4a34);
+  color: #fff;
 }
 
 .group-assignment-list {

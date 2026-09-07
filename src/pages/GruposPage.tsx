@@ -262,7 +262,14 @@ export function GruposPage() {
       grouped.set(key, current)
     })
 
-    return Array.from(grouped.values())
+    const order: Record<GroupAssignment, number> = {
+      superintendente: 0,
+      siervo: 1,
+      auxiliar: 2,
+    }
+    return Array.from(grouped.values()).map((assignments) =>
+      [...assignments].sort((left, right) => order[left.manager_role] - order[right.manager_role]),
+    )
   }, [filteredGroups])
 
   const cerrarFormulario = () => {
@@ -513,7 +520,6 @@ export function GruposPage() {
 
                     <div className="module-table-shell">
                       <div className="module-table module-table-head group-member-table">
-                        <span>Numero</span>
                         <span>Nombre y Apellido</span>
                         <span>Asignacion</span>
                         <span>Acciones</span>
@@ -534,7 +540,6 @@ export function GruposPage() {
                             }
                             onClick={() => setSelectedGroupId(group.id)}
                           >
-                            <strong>{group.group_number ?? '-'}</strong>
                             <span>
                               <button
                                 type="button"
@@ -667,15 +672,12 @@ export function GruposPage() {
           </form>
         </Modal>
 
-        <section className="two-column-grid module-form-grid">
-          <article className="panel">
-            <p className="eyebrow">
-              {selectedGroup ? 'Ficha rapida' : 'Referencia rapida'}
-            </p>
-            <h3>
-              {selectedGroup ? getGroupDisplayName(selectedGroup) : 'Como conviene usar este modulo'}
-            </h3>
-
+        <Modal
+          abierto={Boolean(selectedGroup)}
+          alCerrar={() => setSelectedGroupId(null)}
+          titulo={selectedGroup ? getGroupDisplayName(selectedGroup) : 'Ficha del grupo'}
+          bajada="Responsable, hermanos, punto de encuentro y código."
+        >
             {selectedGroup ? (
               <div className="module-detail-list">
                 <div className="module-detail-card">
@@ -687,35 +689,9 @@ export function GruposPage() {
                   <strong>{assignmentLabels[selectedGroup.manager_role]}</strong>
                 </div>
                 {profile ? <GrupoFichaExtra group={selectedGroup} profile={profile} /> : null}
-                <div className="module-detail-card">
-                  <span>Uso esperado</span>
-                  <strong>
-                    {selectedGroup.manager_role === 'superintendente'
-                      ? 'Coordina el grupo como responsable principal.'
-                      : selectedGroup.manager_role === 'siervo'
-                        ? 'Responsable directo del grupo para la organizacion.'
-                        : 'Auxilia al responsable cuando se necesita apoyo adicional.'}
-                  </strong>
-                </div>
               </div>
-            ) : (
-              <div className="module-guidance-list">
-                <div className="module-guidance-item">
-                  <strong>1. Usa el numero del grupo</strong>
-                  <span>El mismo numero agrupa al responsable y sus auxiliares.</span>
-                </div>
-                <div className="module-guidance-item">
-                  <strong>2. Elige el nombre desde conductores</strong>
-                  <span>Asi evitamos duplicar personas y mantenemos una sola base.</span>
-                </div>
-                <div className="module-guidance-item">
-                  <strong>3. Reutiliza en salidas</strong>
-                  <span>Luego podremos usar estos grupos para asignaciones mas rapidas.</span>
-                </div>
-              </div>
-            )}
-          </article>
-        </section>
+            ) : null}
+        </Modal>
       </div>
     </div>
   )
