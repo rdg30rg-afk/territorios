@@ -1,0 +1,204 @@
+{
+  "description": "Casos sintéticos para futuros tests de extracción de geometrías del editor. Las coordenadas usan un plano abstracto y no representan ubicaciones reales.",
+  "fixtures": [
+    {
+      "id": "cuadrado-simple",
+      "purpose": "Extraer un polígono básico con un contorno cerrado y sin vértices innecesarios.",
+      "expectedResult": "Debe extraerse un único polígono válido y cerrado, con forma cuadrada y sin geometrías adicionales.",
+      "geojson": {
+        "type": "FeatureCollection",
+        "features": [
+          {
+            "type": "Feature",
+            "id": "cuadrado-simple-poligono",
+            "properties": {},
+            "geometry": {
+              "type": "Polygon",
+              "coordinates": [
+                [
+                  [0, 0],
+                  [4, 0],
+                  [4, 4],
+                  [0, 4],
+                  [0, 0]
+                ]
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "rectangulo-vertices-redundantes",
+      "purpose": "Extraer un rectángulo que contiene vértices colineales redundantes en sus lados.",
+      "expectedResult": "Debe extraerse un único polígono válido y cerrado con forma rectangular; los vértices redundantes no deben cambiar el contorno ni crear quiebres o polígonos extra.",
+      "geojson": {
+        "type": "FeatureCollection",
+        "features": [
+          {
+            "type": "Feature",
+            "id": "rectangulo-vertices-redundantes-poligono",
+            "properties": {},
+            "geometry": {
+              "type": "Polygon",
+              "coordinates": [
+                [
+                  [0, 0],
+                  [3, 0],
+                  [6, 0],
+                  [6, 1.5],
+                  [6, 3],
+                  [0, 3],
+                  [0, 0]
+                ]
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "forma-l",
+      "purpose": "Extraer una única figura poligonal cóncava con forma de L.",
+      "expectedResult": "Debe extraerse un único polígono válido y cerrado que conserve la concavidad en forma de L, sin fragmentarse en polígonos adicionales.",
+      "geojson": {
+        "type": "FeatureCollection",
+        "features": [
+          {
+            "type": "Feature",
+            "id": "forma-l-poligono",
+            "properties": {},
+            "geometry": {
+              "type": "Polygon",
+              "coordinates": [
+                [
+                  [0, 0],
+                  [4, 0],
+                  [4, 1],
+                  [1, 1],
+                  [1, 4],
+                  [0, 4],
+                  [0, 0]
+                ]
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "dos-adyacentes-borde-compartido",
+      "purpose": "Extraer dos polígonos independientes que comparten exactamente un borde.",
+      "expectedResult": "Debe extraerse una pareja de polígonos válidos y cerrados, separados pero adyacentes, con un borde común y sin solapamiento de área.",
+      "geojson": {
+        "type": "FeatureCollection",
+        "features": [
+          {
+            "type": "Feature",
+            "id": "adyacente-a",
+            "properties": {},
+            "geometry": {
+              "type": "Polygon",
+              "coordinates": [
+                [
+                  [0, 0],
+                  [2, 0],
+                  [2, 2],
+                  [0, 2],
+                  [0, 0]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "id": "adyacente-b",
+            "properties": {},
+            "geometry": {
+              "type": "Polygon",
+              "coordinates": [
+                [
+                  [2, 0],
+                  [4, 0],
+                  [4, 2],
+                  [2, 2],
+                  [2, 0]
+                ]
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "dos-superpuestos",
+      "purpose": "Extraer dos polígonos independientes cuyas áreas se intersectan.",
+      "expectedResult": "Debe extraerse una pareja de polígonos válidos y cerrados que permanezcan separados y presenten un solapamiento de área; no debe tratarse como simple adyacencia.",
+      "geojson": {
+        "type": "FeatureCollection",
+        "features": [
+          {
+            "type": "Feature",
+            "id": "superpuesto-a",
+            "properties": {},
+            "geometry": {
+              "type": "Polygon",
+              "coordinates": [
+                [
+                  [0, 0],
+                  [4, 0],
+                  [4, 4],
+                  [0, 4],
+                  [0, 0]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "id": "superpuesto-b",
+            "properties": {},
+            "geometry": {
+              "type": "Polygon",
+              "coordinates": [
+                [
+                  [2, 1],
+                  [5, 1],
+                  [5, 3],
+                  [2, 3],
+                  [2, 1]
+                ]
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "poligono-invalido-no-cerrado",
+      "purpose": "Verificar el manejo de un anillo lineal cuyo último vértice no coincide con el primero.",
+      "expectedResult": "Debe identificarse como inválido o rechazarse por tener el anillo sin cerrar; no debe considerarse un polígono válido.",
+      "geojson": {
+        "type": "FeatureCollection",
+        "features": [
+          {
+            "type": "Feature",
+            "id": "poligono-invalido-no-cerrado-poligono",
+            "properties": {},
+            "geometry": {
+              "type": "Polygon",
+              "coordinates": [
+                [
+                  [0, 0],
+                  [3, 0],
+                  [3, 3],
+                  [0, 3]
+                ]
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

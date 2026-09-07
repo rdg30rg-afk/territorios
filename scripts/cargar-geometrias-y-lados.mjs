@@ -13,9 +13,8 @@
 // La función de la base se niega a reemplazar un territorio que ya tenga
 // cobertura informada.
 //
-// El cálculo de lados es UNA COPIA EXACTA del que hace vista-hermano.html.
-// Si los dos se separan, el cliente y la base dejan de hablar del mismo
-// lado y la cobertura apunta a otra calle. Cualquier cambio va en los dos.
+// El cálculo de lados usa el módulo canónico compartido con el editor.
+// Así la vista previa y lo que finalmente se guarda no pueden divergir.
 //
 //   Ensayo (no escribe nada, no necesita credenciales):
 //     node scripts/cargar-geometrias-y-lados.mjs --dry-run
@@ -30,92 +29,19 @@
 
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
+import {
+  polygonAreaSquareMeters,
+  polygonCenter,
+  sidesForBlock,
+} from '../src/features/map-editor/geometry/blockGeometry.ts'
 
 const dryRun = process.argv.includes('--dry-run')
 const repoRoot = path.resolve(import.meta.dirname, '..')
-
-// ---------------------------------------------------- geometría (lados)
-// Copia literal de vista-hermano.html. No tocar de un solo lado.
-const TOL_GRADOS = 25
-const LARGO_MINIMO = 12
-
-const metros = (a, b) =>
-  Math.hypot((b[1] - a[1]) * Math.cos((a[0] * Math.PI) / 180) * 111320, (b[0] - a[0]) * 110540)
-
-const rumbo = (a, b) =>
-  (Math.atan2(b[0] - a[0], (b[1] - a[1]) * Math.cos((a[0] * Math.PI) / 180)) * 180) / Math.PI
-
-const difAngulo = (x, y) => Math.abs((((x - y) + 180) % 360) - 180)
-
-function anilloDe (geom) {
-  const anillo = geom.coordinates[0].map(([x, y]) => [y, x])
-  const cerrado =
-    anillo[0][0] === anillo[anillo.length - 1][0] && anillo[0][1] === anillo[anillo.length - 1][1]
-  return cerrado ? anillo.slice(0, -1) : anillo
-}
-
-function ladosDe (geom) {
-  const pts = anilloDe(geom)
-  const n = pts.length
-  let grupos = [[pts[0], pts[1 % n]]]
-  for (let i = 1; i < n; i++) {
-    const a = pts[i]
-    const b = pts[(i + 1) % n]
-    const g = grupos[grupos.length - 1]
-    if (difAngulo(rumbo(a, b), rumbo(g[g.length - 2], g[g.length - 1])) <= TOL_GRADOS) g.push(b)
-    else grupos.push([a, b])
-  }
-  if (grupos.length > 2) {
-    const pri = grupos[0]
-    const ult = grupos[grupos.length - 1]
-    if (difAngulo(rumbo(pri[0], pri[1]), rumbo(ult[ult.length - 2], ult[ult.length - 1])) <= TOL_GRADOS) {
-      grupos[0] = ult.concat(pri.slice(1))
-      grupos.pop()
-    }
-  }
-  const largo = (g) => g.slice(1).reduce((t, q, i) => t + metros(g[i], q), 0)
-  const res = grupos.filter((g) => largo(g) >= LARGO_MINIMO)
-  return (res.length ? res : [grupos[0]]).map((g) => ({
-    puntos: g,
-    largo_m: Number(largo(g).toFixed(2)),
-    // Rumbo de punta a punta: sirve para reconocer el mismo lado después
-    // de un redibujado. Normalizado a [0,180) porque una calle no tiene
-    // sentido de circulación.
-    rumbo_grados: Number((((rumbo(g[0], g[g.length - 1]) % 180) + 180) % 180).toFixed(2)),
-    medio: g[Math.floor(g.length / 2)],
-  }))
-}
-
-// Área por fórmula del zapatero, en metros locales. Sin PostGIS es lo
-// único que hace falta para ponderar el heatmap por superficie.
-function areaM2 (geom) {
-  const pts = anilloDe(geom)
-  const lat0 = pts.reduce((t, p) => t + p[0], 0) / pts.length
-  const k = Math.cos((lat0 * Math.PI) / 180) * 111320
-  let s = 0
-  for (let i = 0; i < pts.length; i++) {
-    const a = pts[i]
-    const b = pts[(i + 1) % pts.length]
-    s += (a[1] * k) * (b[0] * 110540) - (b[1] * k) * (a[0] * 110540)
-  }
-  return Number(Math.abs(s / 2).toFixed(2))
-}
 
 const lineString = (puntos) => ({
   type: 'LineString',
   coordinates: puntos.map(([lat, lng]) => [lng, lat]),
 })
-
-// La base guarda lat/lng por manzana. Se deriva del polígono en vez de
-// heredarse de la fila vieja: la fila vieja puede ser otra manzana.
-function centroide (geom) {
-  const pts = anilloDe(geom)
-  const n = pts.length
-  return [
-    Number((pts.reduce((t, q) => t + q[0], 0) / n).toFixed(6)),
-    Number((pts.reduce((t, q) => t + q[1], 0) / n).toFixed(6)),
-  ]
-}
 
 // ------------------------------------------------------------- carga
 const formas = JSON.parse(
@@ -158,8 +84,8 @@ const cargas = []
 for (const [nombre, lista] of Object.entries(formas.territorios)) {
   resumen.territorios++
   const manzanas = lista.map((mz, orden) => {
-    const lados = ladosDe(mz.geom)
-    const [lat, lng] = centroide(mz.geom)
+    const lados = sidesForBlock({ geometry: mz.geom })
+    const [lat, lng] = polygonCenter(mz.geom)
     resumen.manzanas++
     resumen.lados += lados.length
     resumen.histograma[lados.length] = (resumen.histograma[lados.length] || 0) + 1
@@ -169,14 +95,14 @@ for (const [nombre, lista] of Object.entries(formas.territorios)) {
       lat,
       lng,
       geom: mz.geom,
-      area_m2: areaM2(mz.geom),
+      area_m2: polygonAreaSquareMeters(mz.geom),
       lados: lados.map((lado, i) => ({
         orden: i,
-        geom: lineString(lado.puntos),
-        largo_m: lado.largo_m,
-        rumbo_grados: lado.rumbo_grados,
-        medio_lat: Number(lado.medio[0].toFixed(6)),
-        medio_lng: Number(lado.medio[1].toFixed(6)),
+        geom: lineString(lado.points),
+        largo_m: lado.lengthMeters,
+        rumbo_grados: lado.bearingDegrees,
+        medio_lat: Number(lado.midpoint[0].toFixed(6)),
+        medio_lng: Number(lado.midpoint[1].toFixed(6)),
       })),
     }
   })
