@@ -282,8 +282,17 @@
 .vh .salida[aria-expanded='true'] { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 .vh .salidaDetalle {
   background: var(--surface); border: 1px solid var(--line); border-top: 0;
-  border-radius: 0 0 18px 18px; padding: 0 16px 16px;
+  border-radius: 0 0 18px 18px; padding: 14px 16px 16px;
 }
+/* El detalle es la continuacion de la fila, no otra tarjeta. Cuando la fila
+   de arriba es la de hoy -2 px de oliva sobre verde tenue- el detalle
+   seguia con 1 px beige sobre blanco: en el encuentro quedaba un escalon de
+   1 px a cada lado y el fondo cambiaba de color al medio de la caja. */
+.vh .salida.esHoy[aria-expanded='true'] + .salidaDetalle {
+  border: 2px solid var(--olive); border-top: 0; background: var(--olive-bg);
+}
+/* El relleno de arriba ya separa el mapa del encabezado: antes se tocaban y
+   la foto arrancaba de golpe pegada al texto. */
 .vh .salidaDetalle .mapaMini { margin-top: 0; }
 
 /* Auto y colectivo son dos viajes distintos: no se esconden en un solo
@@ -362,7 +371,11 @@
    El z-index: 0 encierra las capas de Leaflet adentro de su propia caja. */
 .vh #mapa,
 .vh .mapaMini { position: relative; z-index: 0; isolation: isolate; }
-.vh .mapaMini { height: 190px; border-radius: 16px; overflow: hidden; margin-top: 16px; background: var(--line); cursor: pointer; }
+/* clip-path ademas de overflow: Leaflet mueve sus capas con translate3d y
+   un descendiente transformado se escapa del border-radius del padre --
+   el mapa terminaba en cuatro esquinas cuadradas adentro de una caja
+   redondeada. clip-path si recorta lo transformado. */
+.vh .mapaMini { height: 190px; border-radius: 16px; overflow: hidden; clip-path: inset(0 round 16px); margin-top: 16px; background: var(--line); cursor: pointer; }
 .vh .tarjeta .mapaMini { border: 1px solid rgba(255,255,255,.16); }
 .vh .mapaPie { display: flex; gap: 9px; align-items: flex-start; margin: 9px 2px 0; font-size: var(--t-label); color: var(--fg-3); line-height: 1.4; }
 .vh .mapaPie .llave { width: 15px; height: 15px; border-radius: 4px; background: var(--lime); border: 2px solid var(--ink); flex: 0 0 auto; margin-top: 3px; }
@@ -570,11 +583,25 @@
 .vh .tarjeta.lima .rotulo { color: var(--olive-ink); }
 .vh .tarjeta.lima .boton.principal { background: var(--ink); color: #fff; }
 
+/* El disparador es un campo, no un boton de accion. Heredaba de .boton el
+   piso de 56 px pero ningun relleno propio, asi que tomaba el del navegador
+   -1px 6px- y el texto quedaba pegado al borde; y .boton fija line-height
+   en 1, con lo cual el rotulo y el valor se montaban uno sobre otro. */
 .vh .elegir-lista,
 .vh .elegir-territorio {
   width: 100%;
   justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 16px;
   text-align: left;
+  line-height: 1.25;
+}
+.vh .elegir-lista > span:first-child,
+.vh .elegir-territorio > span:first-child {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
 }
 .vh .elegir-lista small,
 .vh .elegir-territorio small {
@@ -582,6 +609,25 @@
   font-size: var(--t-label);
   color: var(--fg-3);
   font-weight: 500;
+  line-height: 1.2;
+}
+/* Un nombre largo -los territorios de prueba llevan el uuid en el nombre-
+   no puede empujar la flecha fuera del campo ni partirse en tres renglones. */
+.vh .elegir-lista > span:first-child strong,
+.vh .elegir-territorio > span:first-child strong {
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* La flecha dice "esto se abre": gris y del cuerpo del rotulo. En negrita
+   de 21 px le competia al valor, que es el dato. */
+.vh .elegir-lista > [aria-hidden],
+.vh .elegir-territorio > [aria-hidden] {
+  flex: 0 0 auto;
+  font-size: var(--t-label);
+  font-weight: 400;
+  color: var(--fg-3);
 }
 .vh .elegir-lista-cuerpo,
 .vh .elegir-territorio-cuerpo {
