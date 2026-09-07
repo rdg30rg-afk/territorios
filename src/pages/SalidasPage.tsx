@@ -25,7 +25,9 @@ import {
 } from '../lib/programaRango'
 import { BuscadorPunto } from '../components/BuscadorPunto'
 import { saleSinConductor, textoConductor, textoPuntoSalida, textoTerritorio } from '../lib/salidaEtiquetas'
+import { agruparPorDia, etiquetaDelDia, partirAgenda } from '../lib/agendaPorDia'
 import { supabase } from '../lib/supabase'
+import '../styles/agenda-salidas.css'
 
 const MeetingPointPickerMap = lazy(() =>
   import('../components/MeetingPointPickerMap').then((module) => ({
@@ -359,6 +361,15 @@ function formatLocalDate(value: string) {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(value))
+}
+
+// Dentro de un dia la fecha ya la dice el encabezado del grupo: en la
+// tarjeta alcanza la hora.
+const horaCorta = new Intl.DateTimeFormat('es-AR', { hour: '2-digit', minute: '2-digit' })
+
+function formatLocalTime(value: string) {
+  const fecha = new Date(value)
+  return Number.isFinite(fecha.getTime()) ? horaCorta.format(fecha) : 'Sin hora'
 }
 
 function formatDateForPlanner(date: Date) {
@@ -1044,15 +1055,25 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
     })
   }, [plannerRows])
 
-  const paginasAgenda = Math.max(
-    1,
-    Math.ceil(filteredOutings.length / SALIDAS_POR_PAGINA) || 1,
+  // La agenda abre en lo que viene. Lo anterior existe y se dice cuanto hay,
+  // pero se trae a pedido: son 25 tarjetas por tanda y nadie entra a esta
+  // pantalla para leer el mes pasado.
+  const { proximas, anteriores } = useMemo(
+    () => partirAgenda(filteredOutings),
+    [filteredOutings],
   )
-  const paginaActual = Math.min(pagina, paginasAgenda - 1)
-  const salidasEnPagina = filteredOutings.slice(
-    paginaActual * SALIDAS_POR_PAGINA,
-    paginaActual * SALIDAS_POR_PAGINA + SALIDAS_POR_PAGINA,
+  // Si no hay nada por delante -filtro "Pasadas", o una congregacion que no
+  // programo todavia- lo anterior se muestra de entrada: si no, la pantalla
+  // abria vacia con un boton para ver lo unico que hay.
+  const anterioresAMostrar =
+    (proximas.length === 0 ? pagina + 1 : pagina) * SALIDAS_POR_PAGINA
+  const diasProximas = useMemo(() => agruparPorDia(proximas), [proximas])
+  const diasAnteriores = useMemo(
+    () => agruparPorDia(anteriores.slice(0, anterioresAMostrar)),
+    [anteriores, anterioresAMostrar],
   )
+  const anterioresQueFaltan = Math.max(0, anteriores.length - anterioresAMostrar)
+  const filtrosActivos = territoryFilter !== 'todos' || scheduleFilter !== 'todos'
 
   const selectedOuting = useMemo(
     () => visibleOutingDetails.find((outing) => outing.id === selectedOutingId) ?? null,
@@ -2462,23 +2483,114 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
 
         {!armarPrograma ? (
         <section className="panel module-registry-panel salidas-agenda">
-          <div className="module-registry-toolbar">
-            <div>
+          <div className="agenda-encabezado">
+            <div className="agenda-titulo">
               <p className="eyebrow">Agenda guardada</p>
               <h3>Salidas programadas</h3>
               {/* Si hay mas de las que se trajeron, se dice. Una lista
                   recortada en silencio hace creer que eso es todo lo que
-                  hay, y despues nadie entiende por que "falta" una salida. */}
+                  hay, y despues nadie entiende por que "falta" una salida.
+                  Pero se dice con un numero: el parrafo de tres renglones
+                  que habia aca explicaba el recorte en el lugar donde se
+                  busca una salida. */}
               {cuantasSalidasHay !== null && cuantasSalidasHay > outings.length ? (
-                <p className="table-hint">
-                  Se muestran las {outings.length} mas recientes de{' '}
-                  {cuantasSalidasHay.toLocaleString('es-AR')}. Las mas viejas
-                  quedan en el historial de cada territorio.
+                <p
+                  className="table-hint"
+                  title={`Se traen las ${outings.length} más recientes. Las más viejas quedan en el historial de cada territorio.`}
+                >
+                  {outings.length} de {cuantasSalidasHay.toLocaleString('es-AR')} · las más recientes
                 </p>
               ) : null}
             </div>
 
-            <div className="module-registry-actions">
+            <div className="agenda-controles">
+              <label className="module-search-field">
+                <span className="sr-only">Buscar salidas</span>
+                <input
+                  type="search"
+                  value={searchTerm}
+                  onChange={(event) => setSearchTerm(event.target.value)}
+                  placeholder="Buscar salida, territorio, conductor o punto"
+                />
+              </label>
+
+              {/* Los dos filtros viven plegados: estaban siempre abiertos y
+                  ocupaban el mismo lugar que las acciones, aunque casi
+                  siempre dicen "Todos" y "Todas". */}
+              <details className="agenda-filtros">
+                <summary className="secondary-button">
+                  Filtros
+                  {filtrosActivos ? <span className="agenda-filtros-marca" aria-hidden="true" /> : null}
+                  <span className="sr-only">{filtrosActivos ? ' (hay filtros puestos)' : ''}</span>
+                </summary>
+                <div className="agenda-filtros-caja">
+                  <label className="inline-filter">
+                    Territorio
+                    <Desplegable
+                      etiqueta="Territorio"
+                      valor={territoryFilter}
+                      alElegir={setTerritoryFilter}
+                      opciones={[
+                        { valor: 'todos', texto: 'Todos' },
+                        ...territories.map((territory) => {
+                          const reservadoPorGrupo = reservedTerritoriesByOtherGroups.get(
+                            territory.id,
+                          )
+                          const reservadoPersonal = reservedTerritoriesByPersonalUse.get(
+                            territory.id,
+                          )
+
+                          return {
+                            valor: territory.id,
+                            texto: reservadoPorGrupo
+                              ? `${territory.name} — reservado por ${reservadoPorGrupo}`
+                              : reservadoPersonal
+                                ? `${territory.name} — reservado para ${reservadoPersonal}`
+                                : territory.name,
+                          }
+                        }),
+                      ]}
+                    />
+                  </label>
+
+                  <label className="inline-filter">
+                    Agenda
+                    <Desplegable
+                      etiqueta="Agenda"
+                      valor={scheduleFilter}
+                      alElegir={(valor) => setScheduleFilter(valor as ScheduleFilter)}
+                      opciones={[
+                        { valor: 'todos', texto: 'Todas' },
+                        { valor: 'hoy', texto: 'Hoy' },
+                        { valor: 'proximas', texto: 'Próximas' },
+                        { valor: 'pasadas', texto: 'Pasadas' },
+                        { valor: 'sin-conductor', texto: 'Sin conductor' },
+                      ]}
+                    />
+                  </label>
+
+                  {filtrosActivos ? (
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      onClick={() => {
+                        setTerritoryFilter('todos')
+                        setScheduleFilter('todos')
+                      }}
+                    >
+                      Quitar los filtros
+                    </button>
+                  ) : null}
+                </div>
+              </details>
+
+              {canManageOutings ? (
+                <button type="button" className="secondary-button" onClick={abrirNueva}>
+                  Nueva salida
+                </button>
+              ) : null}
+              {/* Un solo boton principal en la pantalla: armar el programa es
+                  lo que se viene a hacer aca. */}
               {canManageOutings ? (
                 <button
                   type="button"
@@ -2489,65 +2601,6 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                   Armar programa
                 </button>
               ) : null}
-              {canManageOutings ? (
-                <button type="button" className="secondary-button" onClick={abrirNueva}>
-                  Nueva salida
-                </button>
-              ) : null}
-              <label className="module-search-field">
-                <span className="sr-only">Buscar salidas</span>
-                <input
-                  type="search"
-                  value={searchTerm}
-                  onChange={(event) => setSearchTerm(event.target.value)}
-                  placeholder="Buscar por salida, territorio, conductor o punto"
-                />
-              </label>
-
-              <label className="inline-filter">
-                Territorio
-                <Desplegable
-                  etiqueta="Territorio"
-                  valor={territoryFilter}
-                  alElegir={setTerritoryFilter}
-                  opciones={[
-                    { valor: 'todos', texto: 'Todos' },
-                          ...territories.map((territory) => {
-                            const reservadoPorGrupo = reservedTerritoriesByOtherGroups.get(
-                              territory.id,
-                            )
-                            const reservadoPersonal = reservedTerritoriesByPersonalUse.get(
-                              territory.id,
-                            )
-
-                            return {
-                              valor: territory.id,
-                              texto: reservadoPorGrupo
-                                ? `${territory.name} — reservado por ${reservadoPorGrupo}`
-                                : reservadoPersonal
-                                  ? `${territory.name} — reservado para ${reservadoPersonal}`
-                                  : territory.name,
-                            }
-                          }),
-                  ]}
-                />
-              </label>
-
-              <label className="inline-filter">
-                Agenda
-                <Desplegable
-                  etiqueta="Agenda"
-                  valor={scheduleFilter}
-                  alElegir={(valor) => setScheduleFilter(valor as ScheduleFilter)}
-                  opciones={[
-                    { valor: 'todos', texto: 'Todas' },
-                    { valor: 'hoy', texto: 'Hoy' },
-                    { valor: 'proximas', texto: 'Próximas' },
-                    { valor: 'pasadas', texto: 'Pasadas' },
-                    { valor: 'sin-conductor', texto: 'Sin conductor' },
-                  ]}
-                />
-              </label>
             </div>
           </div>
 
@@ -2569,7 +2622,10 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
           ) : null}
 
           {isLoading ? (
-            <div className="status-card">Cargando salidas...</div>
+            <div className="agenda-esqueleto" role="status">
+              <span className="sr-only">Cargando salidas…</span>
+              <i /><i /><i /><i />
+            </div>
           ) : filteredOutings.length === 0 ? (
             <Vacio
               hay={visibleOutingDetails.length}
@@ -2578,141 +2634,181 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
               filtrados="Ninguna salida coincide con lo que buscás."
             />
           ) : (
-            <div className="module-table-shell">
-              <div className="module-table module-table-head module-table-head-wide">
-                <span>Salida</span>
-                <span>Punto</span>
-                <span>Conductor</span>
-                <span>Horario</span>
-                <span>Acciones</span>
-              </div>
+            <div className="agenda-lista">
+              {[
+                ...diasProximas.map((dia) => ({ ...dia, pasado: false })),
+                ...diasAnteriores.map((dia) => ({ ...dia, pasado: true })),
+              ].map((dia) => (
+                <section key={`${dia.pasado ? 'ant' : 'prox'}-${dia.clave}`} className="agenda-dia">
+                  <h4 className={dia.pasado ? 'agenda-dia-titulo pasado' : 'agenda-dia-titulo'}>
+                    {etiquetaDelDia(dia.clave)}
+                    <small>
+                      {dia.salidas.length} {dia.salidas.length === 1 ? 'salida' : 'salidas'}
+                    </small>
+                  </h4>
 
-              <div className="module-table-body">
-                {salidasEnPagina.map((outing) => (
-                  /* Div y no boton: adentro viven "PDF", "Editar" y
-                     "Eliminar". El titulo de la salida es el control que
-                     recibe el foco de teclado. */
-                  <div
-                    key={outing.id}
-                    className={
-                      selectedOutingId === outing.id
-                        ? 'module-table module-table-row module-table-row-wide module-table-row-button active'
-                        : 'module-table module-table-row module-table-row-wide module-table-row-button'
-                    }
-                    onClick={() => setSelectedOutingId(outing.id)}
-                  >
-                    <button
-                      type="button"
-                      className="fila-nombre"
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        setSelectedOutingId(outing.id)
-                      }}
-                    >
-                      {outing.title}
-                      {groupServiceMode ? (
-                        <span className="table-hint">{outing.groupName}</span>
-                      ) : null}
-                      {esSalidaHistorica(outing) ? (
-                        <span className="history-badge">Histórica · Excel</span>
-                      ) : null}
-                    </button>
-                    <span>
-                      {textoPuntoSalida({
-                        codigo: outing.territorio_codigo,
-                        nombre: outing.meeting_point_name ?? outing.territoryName,
-                      })}
-                    </span>
-                    <span>
-                      {outing.driverName}
-                      <span className={`status-pill status-${outing.scheduleStatus.key}`}>
-                        {outing.scheduleStatus.label}
-                      </span>
-                    </span>
-                    <span>{formatLocalDate(outing.scheduled_for)}</span>
-                    <span className="module-table-actions">
-                      <button
-                        type="button"
-                        className="secondary-button"
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          handleDownloadSavedPdf(outing)
-                        }}
+                  {dia.salidas.map((outing) => {
+                    const historica = esSalidaHistorica(outing)
+                    // Por hora y no por dia: a las 11 de la manana, lo que
+                    // queda por hacer con la salida de las 9:30 de hoy es
+                    // informar como fue, no editarla.
+                    const yaPaso = new Date(outing.scheduled_for).getTime() < Date.now()
+                    const faltaConductor = saleSinConductor(outing)
+                    return (
+                      /* Div y no boton: adentro viven las acciones. El
+                         titulo de la salida es el control que recibe el foco
+                         de teclado. */
+                      <div
+                        key={outing.id}
+                        className={
+                          selectedOutingId === outing.id
+                            ? 'agenda-salida activa'
+                            : 'agenda-salida'
+                        }
+                        onClick={() => setSelectedOutingId(outing.id)}
                       >
-                        PDF
-                      </button>
-                      <button
-                        type="button"
-                        className="secondary-button"
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          openResultFor(outing)
-                        }}
-                      >
-                        Resultado
-                      </button>
-                      {canManageOutings ? (
-                        <>
+                        <span className="agenda-hora">
+                          {formatLocalTime(outing.scheduled_for)}
+                        </span>
+
+                        <span className="agenda-donde">
                           <button
                             type="button"
-                            className="secondary-button"
+                            className="fila-nombre"
                             onClick={(event) => {
                               event.stopPropagation()
-                              startEditing(outing)
+                              setSelectedOutingId(outing.id)
                             }}
                           >
-                            {esSalidaHistorica(outing) ? 'Completar' : 'Editar'}
+                            {outing.title}
                           </button>
-                          {esSalidaHistorica(outing) ? (
-                            <span className="history-protection">Histórica · no se borra</span>
+                          {/* Punto, conductor y estado en un renglon que se
+                              parte solo si no entra: eran tres lineas
+                              apiladas y la tarjeta media cuatro. */}
+                          <span className="agenda-linea">
+                            <span>
+                              {textoPuntoSalida({
+                                codigo: outing.territorio_codigo,
+                                nombre: outing.meeting_point_name ?? outing.territoryName,
+                              })}
+                            </span>
+                            <span>{outing.driverName}</span>
+                            {groupServiceMode ? <span>{outing.groupName}</span> : null}
+                            {/* Un solo distintivo por tarjeta. "Historica ·
+                                Excel" y "Historica · no se borra" decian dos
+                                veces lo mismo al lado del estado, y en una
+                                lista de veinte salidas eran sesenta
+                                pastillas. La procedencia esta en la ficha. */}
+                            <span className={`status-pill status-${outing.scheduleStatus.key}`}>
+                              {outing.scheduleStatus.label}
+                            </span>
+                          </span>
+                        </span>
+
+                        <span className="agenda-acciones">
+                          {/* Una sola accion a la vista, y es la que falta:
+                              si ya paso, informar como fue; si viene y no
+                              tiene quien la lleve, poner conductor; si no,
+                              editarla. El resto vive en el menu. */}
+                          {yaPaso || !canManageOutings ? (
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                openResultFor(outing)
+                              }}
+                            >
+                              Resultado
+                            </button>
                           ) : (
                             <button
                               type="button"
-                              className="danger-button"
+                              className="secondary-button"
                               onClick={(event) => {
                                 event.stopPropagation()
-                                void handleDelete(outing)
+                                startEditing(outing)
                               }}
                             >
-                              Eliminar
+                              {faltaConductor
+                                ? 'Asignar conductor'
+                                : historica
+                                  ? 'Completar'
+                                  : 'Editar'}
                             </button>
                           )}
-                        </>
-                      ) : null}
-                    </span>
-                  </div>
-                ))}
-              </div>
-              {filteredOutings.length > SALIDAS_POR_PAGINA ? (
-                <div className="module-registry-actions" style={{ marginTop: '1rem' }}>
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    disabled={paginaActual <= 0}
-                    onClick={() => setPagina((p) => Math.max(0, p - 1))}
-                  >
-                    Anteriores
-                  </button>
-                  <span className="table-hint">
-                    {paginaActual * SALIDAS_POR_PAGINA + 1}–
-                    {Math.min(
-                      (paginaActual + 1) * SALIDAS_POR_PAGINA,
-                      filteredOutings.length,
-                    )}{' '}
-                    de {filteredOutings.length}
-                  </span>
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    disabled={paginaActual >= paginasAgenda - 1}
-                    onClick={() => setPagina((p) => Math.min(paginasAgenda - 1, p + 1))}
-                  >
-                    Siguientes
-                  </button>
-                </div>
+
+                          <details
+                            className="agenda-mas"
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            <summary aria-label={`Más acciones de ${outing.title}`}>
+                              <span aria-hidden="true">⋯</span>
+                            </summary>
+                            <div className="agenda-mas-caja">
+                              <button
+                                type="button"
+                                className="ghost-button"
+                                onClick={() => handleDownloadSavedPdf(outing)}
+                              >
+                                Descargar PDF
+                              </button>
+                              <button
+                                type="button"
+                                className="ghost-button"
+                                onClick={() => openResultFor(outing)}
+                              >
+                                Resultado
+                              </button>
+                              {canManageOutings ? (
+                                <button
+                                  type="button"
+                                  className="ghost-button"
+                                  onClick={() => startEditing(outing)}
+                                >
+                                  {historica ? 'Completar' : 'Editar'}
+                                </button>
+                              ) : null}
+                              {canManageOutings ? (
+                                historica ? (
+                                  <p className="agenda-mas-nota">
+                                    Viene del Excel: no se borra.
+                                  </p>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="danger-button"
+                                    onClick={() => void handleDelete(outing)}
+                                  >
+                                    Eliminar
+                                  </button>
+                                )
+                              ) : null}
+                            </div>
+                          </details>
+                        </span>
+                      </div>
+                    )
+                  })}
+                </section>
+              ))}
+
+              {/* Lo anterior existe y se dice cuanto hay, pero no se pinta
+                  hasta que alguien lo pide. */}
+              {anterioresQueFaltan > 0 ? (
+                <button
+                  type="button"
+                  className="secondary-button agenda-ver-mas"
+                  onClick={() => setPagina((p) => p + 1)}
+                >
+                  {anterioresAMostrar === 0
+                    ? `Ver anteriores (${anteriores.length})`
+                    : `Ver ${Math.min(SALIDAS_POR_PAGINA, anterioresQueFaltan)} anteriores más (quedan ${anterioresQueFaltan})`}
+                </button>
               ) : null}
             </div>
           )}
+
         </section>
         ) : null}
 

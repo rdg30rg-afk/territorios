@@ -12,6 +12,9 @@
   -moz-osx-font-smoothing: grayscale;
   --page-bg: rgba(255, 252, 247, 0.8);
   --panel-bg: rgba(255, 255, 255, 0.88);
+  /* Opaco. Los dos de arriba son translucidos y sirven mientras nada pase
+     por debajo; un encabezado pegajoso deja ver la fila que se le cruza. */
+  --panel-solid: #fdfcfa;
   --panel-border: rgba(109, 76, 65, 0.14);
   --text-main: #2f241f;
   --text-soft: #6c5b53;
