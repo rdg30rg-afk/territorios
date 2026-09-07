@@ -3,7 +3,9 @@ import { Desplegable } from '../components/Desplegable'
 import { Falta } from '../components/Falta'
 import { Vacio } from '../components/Vacio'
 import { Modal } from '../components/Modal'
+import { HojaMiGrupo } from '../components/HojaMiGrupo'
 import { useAuth } from '../context/useAuth'
+import type { Profile } from '../context/AuthTypes'
 import { decirElError } from '../lib/decirElError'
 import { supabase } from '../lib/supabase'
 
@@ -46,20 +48,22 @@ function getGroupKey(group: GroupRecord) {
   return group.group_number ? `number-${group.group_number}` : `legacy-${group.group_name}`
 }
 
-function GrupoFichaExtra({ groupId }: { groupId: string }) {
+function GrupoFichaExtra({ group, profile }: { group: GroupRecord; profile: Profile }) {
   const client = supabase
   const [codigo, setCodigo] = useState<string | null>(null)
   const [miembros, setMiembros] = useState(0)
   const [pendientes, setPendientes] = useState(0)
   const [punto, setPunto] = useState<string | null>(null)
+  const [administrando, setAdministrando] = useState(false)
+  const [revision, setRevision] = useState(0)
 
   useEffect(() => {
     if (!client) return
     let vivo = true
     void Promise.all([
-      client.from('grupo_invitaciones').select('codigo').eq('group_id', groupId).maybeSingle(),
-      client.from('grupo_miembros').select('id, estado').eq('group_id', groupId).is('hasta', null),
-      client.from('puntos_encuentro').select('nombre').eq('group_id', groupId).eq('tipo', 'grupo').eq('activo', true).maybeSingle(),
+      client.from('grupo_invitaciones').select('codigo').eq('group_id', group.id).maybeSingle(),
+      client.from('grupo_miembros').select('id, estado').eq('group_id', group.id).is('hasta', null),
+      client.from('puntos_encuentro').select('nombre').eq('group_id', group.id).eq('tipo', 'grupo').eq('activo', true).maybeSingle(),
     ]).then(([inv, miembrosRes, puntoRes]) => {
       if (!vivo) return
       setCodigo(inv.data?.codigo ?? null)
@@ -71,7 +75,25 @@ function GrupoFichaExtra({ groupId }: { groupId: string }) {
     return () => {
       vivo = false
     }
-  }, [client, groupId])
+  }, [client, group.id, revision])
+
+  const contextoAdmin = {
+    profile_id: profile.id,
+    role: profile.role,
+    access_status: profile.access_status,
+    driver_id: profile.driver_id,
+    full_name: profile.full_name,
+    group_id: group.id,
+    group_number: group.group_number,
+    group_name: group.group_name,
+    rol_en_grupo: 'superintendente' as const,
+    miembro_estado: 'confirmado' as const,
+    punto_grupo_id: null,
+    punto_grupo_nombre: punto,
+    punto_grupo_lat: null,
+    punto_grupo_lng: null,
+    es_super_de_grupo: true,
+  }
 
   return (
     <>
@@ -90,6 +112,15 @@ function GrupoFichaExtra({ groupId }: { groupId: string }) {
         <span>Código de invitación</span>
         <strong>{codigo ?? 'Se crea al aplicar la migración'}</strong>
       </div>
+      <button type="button" className="primary-button full-width" onClick={() => setAdministrando(true)}>
+        Administrar hermanos, punto y código
+      </button>
+      <HojaMiGrupo
+        contexto={contextoAdmin}
+        abierto={administrando}
+        onCerrar={() => setAdministrando(false)}
+        onCambio={() => setRevision((actual) => actual + 1)}
+      />
     </>
   )
 }
@@ -655,7 +686,7 @@ export function GruposPage() {
                   <span>Asignacion</span>
                   <strong>{assignmentLabels[selectedGroup.manager_role]}</strong>
                 </div>
-                <GrupoFichaExtra groupId={selectedGroup.id} />
+                {profile ? <GrupoFichaExtra group={selectedGroup} profile={profile} /> : null}
                 <div className="module-detail-card">
                   <span>Uso esperado</span>
                   <strong>

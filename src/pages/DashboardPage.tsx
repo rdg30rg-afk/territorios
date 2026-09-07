@@ -329,6 +329,10 @@ function UserAccessPanel() {
     () => managedUsers.filter((user) => user.access_status === 'inactive'),
     [managedUsers],
   )
+  const pendingGroupMembers = useMemo(
+    () => managedUsers.filter((user) => user.miembroEstado === 'pendiente').length,
+    [managedUsers],
+  )
 
   const loadDrivers = useCallback(async () => {
     if (!supabase || profile?.role !== 'admin') {
@@ -613,6 +617,13 @@ function UserAccessPanel() {
       {error ? <div className="form-feedback error">{error}</div> : null}
       {managedUsersError ? <div className="form-feedback error" role="alert">{managedUsersError}</div> : null}
       {feedback ? <div className="form-feedback success">{feedback}</div> : null}
+
+      {pendingGroupMembers > 0 ? (
+        <div className="status-card">
+          <strong>{pendingGroupMembers} {pendingGroupMembers === 1 ? 'persona espera' : 'personas esperan'} confirmación de su grupo.</strong>
+          <Link to="/grupos">Abrir Grupos</Link>
+        </div>
+      ) : null}
 
       <div className="admin-notification-panel">
         <div className="admin-notification-head">

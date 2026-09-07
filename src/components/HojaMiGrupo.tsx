@@ -1,5 +1,9 @@
 import { useEffect, useState } from 'react'
+import { BuscadorPunto } from './BuscadorPunto'
+import { ElegirDeLista } from './ElegirDeLista'
+import { MeetingPointPickerMap } from './MeetingPointPickerMap'
 import { supabase } from '../lib/supabase'
+import type { PuntoEncuentro } from '../lib/puntosEncuentro'
 import { rotuloRolGrupo, type ContextoHermano, type RolEnGrupo } from '../lib/vistaHermano'
 
 type Miembro = {
@@ -10,6 +14,8 @@ type Miembro = {
   created_at: string
   full_name: string
 }
+
+type TerritorioDisponible = { id: string; name: string }
 
 type HojaMiGrupoProps = {
   contexto: ContextoHermano
@@ -31,13 +37,23 @@ export function HojaMiGrupo({ contexto, abierto, onCerrar, onCambio }: HojaMiGru
   const [aviso, setAviso] = useState<string | null>(null)
   const [ocupado, setOcupado] = useState(false)
   const [puntoNombre, setPuntoNombre] = useState(contexto.punto_grupo_nombre ?? '')
+  const [puntoId, setPuntoId] = useState<string | null>(null)
+  const [puntoCoordenadas, setPuntoCoordenadas] = useState<[number, number] | null>(
+    contexto.punto_grupo_lng != null && contexto.punto_grupo_lat != null
+      ? [contexto.punto_grupo_lng, contexto.punto_grupo_lat]
+      : null,
+  )
+  const [puntos, setPuntos] = useState<PuntoEncuentro[]>([])
+  const [territorios, setTerritorios] = useState<TerritorioDisponible[]>([])
+  const [miembroParaTerritorio, setMiembroParaTerritorio] = useState<Miembro | null>(null)
+  const [territorioElegido, setTerritorioElegido] = useState('')
   const [editandoPunto, setEditandoPunto] = useState(false)
 
   useEffect(() => {
     if (!abierto || !supabase || !contexto.group_id) return
     let vivo = true
     void (async () => {
-      const [{ data: filas }, { data: inv }] = await Promise.all([
+      const [{ data: filas }, { data: inv }, { data: puntoGrupo }, { data: puntosData }, { data: territoriosData }] = await Promise.all([
         supabase
           .from('grupo_miembros')
           .select('id, profile_id, rol_en_grupo, estado, created_at')
@@ -49,6 +65,20 @@ export function HojaMiGrupo({ contexto, abierto, onCerrar, onCambio }: HojaMiGru
           .select('codigo')
           .eq('group_id', contexto.group_id)
           .maybeSingle(),
+        supabase
+          .from('puntos_encuentro')
+          .select('id, nombre, barrio, lat, lng, maps_url, territory_id, activo, codigo, tipo')
+          .eq('group_id', contexto.group_id)
+          .eq('tipo', 'grupo')
+          .eq('activo', true)
+          .maybeSingle(),
+        supabase
+          .from('puntos_encuentro')
+          .select('id, nombre, barrio, lat, lng, maps_url, territory_id, activo, codigo, tipo')
+          .eq('activo', true)
+          .in('tipo', ['territorial', 'especial'])
+          .order('codigo', { ascending: true }),
+        supabase.rpc('territorios_disponibles_para_grupo', { p_group_id: contexto.group_id }),
       ])
       const ids = [...new Set((filas ?? []).map((fila) => fila.profile_id))]
       const { data: perfiles } = ids.length
@@ -78,6 +108,14 @@ export function HojaMiGrupo({ contexto, abierto, onCerrar, onCambio }: HojaMiGru
         })),
       )
       setCodigo(inv?.codigo ?? null)
+      const punto = puntoGrupo as PuntoEncuentro | null
+      setPuntoNombre(punto?.nombre ?? '')
+      setPuntoId(null)
+      setPuntoCoordenadas(
+        punto?.lng != null && punto.lat != null ? [punto.lng, punto.lat] : null,
+      )
+      setPuntos((puntosData as PuntoEncuentro[] | null) ?? [])
+      setTerritorios((territoriosData as TerritorioDisponible[] | null) ?? [])
     })()
     return () => {
       vivo = false
@@ -127,8 +165,9 @@ export function HojaMiGrupo({ contexto, abierto, onCerrar, onCambio }: HojaMiGru
     const { error } = await supabase.rpc('definir_punto_de_grupo', {
       p_group_id: contexto.group_id,
       p_nombre: puntoNombre.trim(),
-      p_lat: contexto.punto_grupo_lat,
-      p_lng: contexto.punto_grupo_lng,
+      p_lat: puntoCoordenadas?.[1] ?? null,
+      p_lng: puntoCoordenadas?.[0] ?? null,
+      p_maps_url: null,
     })
     setOcupado(false)
     if (error) {
@@ -136,6 +175,27 @@ export function HojaMiGrupo({ contexto, abierto, onCerrar, onCambio }: HojaMiGru
       return
     }
     setEditandoPunto(false)
+    onCambio()
+  }
+
+  const darTerritorio = async () => {
+    if (!supabase || !miembroParaTerritorio || !territorioElegido || ocupado) return
+    setOcupado(true)
+    setAviso(null)
+    const { error } = await supabase.rpc('asignar_territorio', {
+      p_territory_id: territorioElegido,
+      p_assigned_to: miembroParaTerritorio.profile_id,
+      p_nota: null,
+    })
+    setOcupado(false)
+    if (error) {
+      setAviso(error.message)
+      return
+    }
+    setTerritorios((actuales) => actuales.filter((territorio) => territorio.id !== territorioElegido))
+    setMiembroParaTerritorio(null)
+    setTerritorioElegido('')
+    setAviso(`Territorio asignado a ${miembroParaTerritorio.full_name}.`)
     onCambio()
   }
 
@@ -210,10 +270,10 @@ export function HojaMiGrupo({ contexto, abierto, onCerrar, onCambio }: HojaMiGru
 
         <section className="panel">
           <h2>La salida del grupo</h2>
-          {contexto.punto_grupo_nombre ? (
+          {puntoNombre && !editandoPunto ? (
             <p>
-              {contexto.punto_grupo_nombre}
-              {contexto.punto_grupo_lat != null ? ' · GPS listo' : ' · Falta el GPS'}
+              {puntoNombre}
+              {puntoCoordenadas ? ' · GPS listo' : ' · Falta el GPS'}
             </p>
           ) : (
             <p className="sub">Todavía no cargaron dónde se junta el grupo.</p>
@@ -222,13 +282,27 @@ export function HojaMiGrupo({ contexto, abierto, onCerrar, onCambio }: HojaMiGru
             <>
               <label className="sub">
                 Dónde se juntan
-                <input
-                  className="boton secundario"
-                  value={puntoNombre}
-                  onChange={(evento) => setPuntoNombre(evento.target.value)}
+                <BuscadorPunto
+                  puntos={puntos}
+                  valorId={puntoId}
+                  textoLibre={puntoNombre}
+                  etiqueta="Dónde se junta el grupo"
+                  alElegir={(punto, texto) => {
+                    setPuntoId(punto?.id ?? null)
+                    setPuntoNombre(texto)
+                    setPuntoCoordenadas(
+                      punto?.lng != null && punto.lat != null ? [punto.lng, punto.lat] : null,
+                    )
+                  }}
                 />
               </label>
-              <button type="button" className="boton principal" disabled={ocupado} onClick={() => void guardarPunto()}>
+              <p className="sub">Elegí un punto existente o escribí una esquina. Tocá el mapa para marcar la ubicación exacta.</p>
+              <MeetingPointPickerMap
+                markerPosition={puntoCoordenadas}
+                onPick={setPuntoCoordenadas}
+                zoom={13}
+              />
+              <button type="button" className="boton principal" disabled={ocupado || puntoNombre.trim().length < 2} onClick={() => void guardarPunto()}>
                 Guardar el punto
               </button>
             </>
@@ -259,6 +333,17 @@ export function HojaMiGrupo({ contexto, abierto, onCerrar, onCambio }: HojaMiGru
                   <strong>{m.full_name}</strong>
                   <span className="sub"> · {rotuloRolGrupo(m.rol_en_grupo)}</span>
                 </p>
+                <button
+                  type="button"
+                  className="boton secundario"
+                  disabled={ocupado}
+                  onClick={() => {
+                    setMiembroParaTerritorio(m)
+                    setTerritorioElegido('')
+                  }}
+                >
+                  Darle un territorio
+                </button>
                 {m.rol_en_grupo === 'publicador' ? (
                   <button
                     type="button"
@@ -290,6 +375,26 @@ export function HojaMiGrupo({ contexto, abierto, onCerrar, onCambio }: HojaMiGru
             ))}
           </div>
         </section>
+
+        {miembroParaTerritorio ? (
+          <section className="panel" aria-label={`Darle un territorio a ${miembroParaTerritorio.full_name}`}>
+            <h2>Darle un territorio</h2>
+            <p className="sub">Para {miembroParaTerritorio.full_name}. Sólo aparecen territorios sin una asignación activa.</p>
+            <ElegirDeLista
+              etiqueta="Territorio libre"
+              valor={territorioElegido}
+              vacio="Elegí un territorio"
+              opciones={territorios.map((territorio) => ({ valor: territorio.id, texto: territorio.name }))}
+              alElegir={setTerritorioElegido}
+            />
+            <button type="button" className="boton principal" disabled={ocupado || !territorioElegido} onClick={() => void darTerritorio()}>
+              Asignar territorio
+            </button>
+            <button type="button" className="boton secundario" disabled={ocupado} onClick={() => setMiembroParaTerritorio(null)}>
+              Cancelar
+            </button>
+          </section>
+        ) : null}
       </div>
     </div>
   )
