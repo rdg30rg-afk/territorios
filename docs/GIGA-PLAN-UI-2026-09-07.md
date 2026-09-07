@@ -108,7 +108,14 @@ Objetivo: que ninguna pantalla se vea **rota**. Sin cambios de estructura.
 
 ---
 
-## 3. Fase 1 — Vista del hermano: pulido
+## 3. Fase 1 — Vista del hermano: pulido — **HECHA** (`ab130d5`)
+
+Se hizo F1-1, F1-3 y la parte de borde de F1-2. Dos desvíos:
+- **F1-2, el mini mapa** quedó en `height: 190px` y no en `aspect-ratio: 16/10`. Leaflet mide el contenedor cuando inicializa, y el cambio ganaba 16 px de alto a cambio de un riesgo real de mapa a cero. El corte que se veía era otra cosa y está arreglado en Fase 0 (`clip-path` + borde lima continuo).
+- **F1-4** no se toca: la grilla de manzanas usa `font: 700 26px/1` fijo, que el paso A+ no escala, así que el paso 1.3 no la rompe. Si aparece un desborde, medirlo antes de limitar el paso.
+
+Además: las tres hojas (`elegir territorio`, `elegir de una lista`, `código de grupo`) comparten la clase `.hoja-cuerpo`, y las reglas de columna de escritorio se definen una sola vez.
+
 
 **F1-1 · Mi cuenta deja de ser un cajón de sastre.**
 El popover actual mezcla 6 acciones (`MiCuenta.tsx:63-115`). Queda así:
@@ -127,7 +134,19 @@ Commit: `UI fase 1: Mi cuenta en tres pasos y tarjeta de salida`.
 
 ---
 
-## 4. Fase 2 — Admin Salidas: la agenda manda
+## 4. Fase 2 — Admin Salidas: la agenda manda — **HECHA** (`8a91570`, `6ef88c7`)
+
+Medido en el navegador: la pantalla abre con **12 salidas en 5 días** en lugar de las 300 en una tabla, y las dos consultas de procedencia (2.000 filas × 16 columnas, lo más lento de la carga) salieron del arranque.
+
+Se hizo F2-1, F2-2 y F2-3. La lista vive en `agenda-salidas.css` y el reparto por día en `src/lib/agendaPorDia.ts` (con tests).
+
+Desvíos y decisiones:
+- **La acción contextual va por hora, no por día ni por procedencia.** Con la regla del plan ("`Completar` si es histórica") las 300 salidas decían *Completar*, porque todas vienen del Excel. Queda: ya pasó → `Resultado`; falta conductor → `Asignar conductor`; si no → `Editar`/`Completar`. Y sigue siendo `secondary-button`: el único primario de la pantalla es *Armar programa*.
+- **Buscar por procedencia del Excel se quitó.** Al cargarse a pedido, buscar en ese campo sólo encontraría las salidas que alguien abrió antes. El texto de conductor del Excel ya está en `conductor_texto`, que sí se busca.
+- **F2-4 no hacía falta**: `armarPrograma` ya reemplaza la agenda por el planificador.
+
+Pendiente que apareció midiendo: **`loadData` de `SalidasPage` corre dos veces al entrar** (cada consulta aparece duplicada en el panel de red). No es de esta fase, pero duplica la espera y conviene mirarlo en Fase 5.
+
 
 Hoy la página es un formulario de 3.218 líneas con la lista al final. La reestructuración autorizada:
 
