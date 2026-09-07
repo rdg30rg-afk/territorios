@@ -227,8 +227,17 @@ button {
   color: rgba(248, 237, 227, 0.78);
 }
 
+/* La unica superficie oscura de la aplicacion, y por eso la unica que da
+   vuelta el boton fantasma. */
 .sidebar .ghost-button {
   margin-top: 0.9rem;
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.28);
+  color: #fff7f0;
+}
+
+.sidebar .ghost-button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .security-card {
@@ -2173,10 +2182,20 @@ button {
   opacity: 0.7;
 }
 
+/* Neutro. Esto decia `color: #fff7f0` sobre un fondo casi transparente:
+   estaba escrito para la barra lateral oscura, que es donde nacio, y en el
+   contenido -papel claro- quedaba blanco sobre blanco. El tema lo tapaba,
+   asi que el error solo se veia si el tema no cargaba. La barra lateral
+   pide su version clara mas abajo, donde el fondo sí es oscuro. */
 .ghost-button {
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff7f0;
+  background: transparent;
+  border: 1px solid var(--panel-border);
+  color: var(--text-main);
   font-weight: 700;
+}
+
+.ghost-button:hover:not(:disabled) {
+  background: rgba(109, 76, 65, 0.08);
 }
 
 .secondary-button {
@@ -2473,7 +2492,7 @@ button {
   }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 720px) {
   .content,
   .sidebar {
     padding: 1rem;

@@ -171,7 +171,21 @@ Commit: `UI fase 2: Salidas agrupadas por día con ventana y una acción por tar
 
 ---
 
-## 5. Fase 3 — Admin Mapas: dos paneles, no tres
+## 5. Fase 3 — Admin Mapas: dos paneles, no tres — **HECHA** (`605eaf7`)
+
+Medido en el navegador a 1920 px: el mapa pasó de compartir el ancho con una tercera columna a **1118 px**. Fuera del modo dibujo el mapa tiene sólo `Zoom in` y `Zoom out`; no queda ningún otro control encima.
+
+Se hizo F3-1 a F3-5. Desvíos:
+
+- **La ficha del territorio se abre en `Modal` también en escritorio**, no sólo en móvil. Era la única forma de que "dos paneles" fuera cierto: la tercera columna contenía tres cosas, y el plan sólo nombraba una. Con la ficha en ventana, el formulario de edición subió a la barra de arriba del mapa (número, referencia, dibujar, deshacer, **guardar**, cancelar) y la columna desapareció entera.
+- **No hay desplegable `[Territorio seleccionado: 12 ▾]`** en la barra. La lista de la izquierda ya es ese selector; el desplegable habría sido un segundo control para lo mismo, a 30 cm de distancia.
+- **El lápiz y el tacho se ocultan por CSS** (`.territory-leaflet-canvas:not(.dibujando) .leaflet-draw`), no montando y desmontando el control de Leaflet. Esconder dos iconos no justifica tocar el ciclo de vida del mapa.
+- **En móvil la lista no es un `<details>`**: queda debajo del mapa con `max-height: 60vh` y scroll propio. El mapa va primero y a `70dvh` (medido: 591 px de 844). Un `<details>` requería cambiar el elemento según el ancho, que en CSS no se puede.
+- Se eliminaron del panel: "Refrescar territorios" (ahora `Volver a dibujar los territorios`, dentro de `⋯`), los tres pasos del panel "Herramientas", la rejilla "01 Define el numero / 02 Dibuja la zona", el "Resumen" de tres filas y el "Color activo #4f772d" del pie. Con ellos se fueron **25 reglas de CSS** que ya no tenían dueño.
+
+---
+
+## 5-bis. Fase 3 — texto original del plan
 
 **F3-1 · Composición.** Izquierda 320 px: buscador + lista de territorios (una línea por fila: número, color, y a la derecha `%` de cobertura si existe). Derecha: mapa ocupando `calc(100dvh - cabecera)`. El tercer panel "Herramientas · Exportar y ver ayuda" desaparece: sus acciones van a un botón `⋯` en la barra del mapa (Exportar GeoJSON, Ver cobertura, Ayuda, Pantalla completa).
 
@@ -187,7 +201,34 @@ Commit: `UI fase 3: Mapas en dos paneles con modo dibujo`.
 
 ---
 
-## 6. Fase 4 — Dashboard y AppShell
+## 6. Fase 4 — Dashboard y AppShell — **HECHA** (`1ca1c2a`)
+
+**F4-1, con un desvío grande: no se pusieron los tres números.** El Inicio ya había sido rehecho con otra regla —"lo que espera una decisión tuya, y nada más; si no hay nada, lo dice y se calla"—, escrita en el comentario de cabecera de `DashboardPage.tsx`. "Territorios activos" y "Salidas esta semana" no esperan una decisión de nadie: son dos números para mirar. Poner tres cifras grandes arriba de "Te está esperando" habría contradicho la pantalla en su propio encabezado. Los pendientes reales ya se cuentan en las filas de `QueNecesitaAtencion`.
+
+Lo que sí se hizo de F4-1: **"Qué territorios conviene revisar" → "Para revisar"**. Era `ul`/`li`/`strong` sin una sola clase: cada propuesta ocupaba tres renglones y el único enlace era "Abrir en el mapa", escrito chico al final del tercero. Ahora cada propuesta es **una fila de 52 px que entera es el enlace al mapa** (`Territorio 57 · 19 de 48 lados · 37.8% · Hace 4 días · →`), "Actualizar cobertura" es secundario a la derecha del título, y los dos enlaces del pie —que estaban separados por un `·` de texto— son botones de 44 px. Mientras carga hay tres bloques grises con la altura de las filas, no un renglón que hace saltar todo cuando llegan los datos.
+
+**F4-2.** El aviso "Base de prueba" abría la barra lateral, arriba del nombre de la aplicación y de los módulos: el primer objeto de la pantalla era una nota sobre en qué base estás. Junto con la invitación a instalar bajaron a un `<details>` cerrado al pie. Desvío: **la instalación no se elimina en producción**, se guarda ahí; borrarla dejaba sin manera de instalar la aplicación desde la interfaz, y la regla 7 permite mover a un `<details>` cerrado lo que está en duda. En producción sin entorno de prueba y sin instalación disponible, el desplegable no se dibuja.
+
+El menú móvil ya existía y funcionaba (`.sidebar-menu.is-open`); se dejó como estaba. Las pestañas Resumen/Usuarios pasaron al mismo `.segmentado` de la Fase 3.
+
+---
+
+## 7. Fase 5 — Rendimiento percibido y limpieza de CSS — **HECHA**
+
+- **Breakpoints a tres.** Quedaban 640 (×5), 767 y 900, repartidos en cinco hojas. Ahora la escalera es **720 / 1024 / 1280** y nada más, salvo los tres retoques de teléfono chico de la vista del hermano (390/380/340), que son otra cosa: no son la escalera móvil-tableta-escritorio.
+- **`.ghost-button`.** La definición base decía `color: #fff7f0` sobre un fondo casi transparente. Estaba escrita para la barra lateral oscura, donde nació, y en el contenido —papel claro— era blanco sobre blanco; el tema lo tapaba, así que el error sólo aparecía si el tema no cargaba. Ahora la base es neutra (borde + texto oscuro) y la barra lateral pide su versión clara con `.sidebar .ghost-button`, que es donde el fondo sí es oscuro.
+- **`inicio-admin.css`.** `font: 600 20px/1 system-ui` era la única tipografía distinta de la aplicación y caía justo sobre el número que se mira primero; pasó a Urbanist. El naranja quemado `#8a4a06` pasó a `--h-olive-ink`/`--h-olive-bg`.
+- **`loadData` de Salidas corre dos veces: no es un error y no se tocó.** Es `StrictMode` (`main.tsx:13`) duplicando los efectos **en desarrollo**. El `build` de producción no lo hace, y el efecto ya descarta la primera respuesta con `isMounted`. Lo que se midió en la Fase 2 fue el servidor de desarrollo, no lo que ve nadie.
+
+### Lo que queda de esta fase, y por qué
+
+- **Los 54 `rgba(109, 76, 65, …)` y `rgba(187, 62, 3, …)` de `index.css` siguen ahí.** Son la paleta propia de esa hoja y son coherentes entre sí; `theme-hermano.css` pinta encima todas las superficies que se ven. Cambiarlos por tokens es mover 54 valores con transparencias distintas, uno por uno, sin que cambie un solo píxel para nadie —y con la posibilidad de que alguno sí cambie.
+- **Partir `index.css` en cuatro hojas no se hizo.** Es mover 2.500 líneas sin cambiar un selector: mucho diff para revisar y ningún efecto visible. Conviene hacerlo solo, en su propio commit, cuando no haya cambios de UI encima.
+- **`TerritorySuggestions` sigue llamando a `readAllRows('cobertura_territorio')` al montar el Inicio**, contra la regla de F5-1. Para ordenar las propuestas hay que ver todos los territorios; una ventana daría el peor de la ventana, no el peor de todos. Se puede resolver, pero con una vista o una RPC que ordene en la base, y eso cae en la regla 6 (parar y documentar antes de improvisar).
+
+---
+
+## 7-bis. Fase 4 — texto original del plan
 
 **F4-1 · Inicio del admin.**
 - Arriba: tres números grandes (Territorios activos · Salidas esta semana · Accesos pendientes) en una fila; en móvil, tres en columna de 72 px.
@@ -202,7 +243,7 @@ Commit: `UI fase 4: inicio con tres números y menú móvil`.
 
 ---
 
-## 7. Fase 5 — Rendimiento percibido y limpieza de CSS
+## 7-ter. Fase 5 — texto original del plan
 
 **F5-1 · Consultas.** Ver el anexo A (auditoría de `useEffect` por página) y aplicar:
 - Todo listado: primero `count` con `head:true`, después la ventana. Nunca `readAllRows` en el primer render de una página de lista.

@@ -15,13 +15,16 @@
 }
 
 /* El número primero y grande: cuántos son se lee antes que el texto. */
+/* Urbanist y no system-ui: era la unica tipografia distinta de la
+   aplicacion, y caia justo sobre el numero que se mira primero, al lado de
+   un texto en Urbanist. El naranja quemado tampoco es de esta paleta. */
 .inicio-cuantos {
-  font: 600 20px/1 system-ui, sans-serif;
+  font: 600 20px/1 Urbanist, -apple-system, sans-serif;
   text-align: center;
   padding: 9px 0;
   border-radius: 10px;
-  background: rgba(180, 83, 9, 0.12);
-  color: #8a4a06;
+  background: var(--h-olive-bg, rgba(180, 83, 9, 0.12));
+  color: var(--h-olive-ink, #3f5219);
 }
 
 .inicio-texto { display: grid; gap: 3px; min-width: 0; }
@@ -43,14 +46,8 @@
 .inicio-tranquilo h3 { margin: 4px 0 6px; }
 .inicio-tranquilo p { opacity: 0.7; margin: 0; }
 
-.dashboard-sections {
-  justify-content: flex-start;
-}
-
-.dashboard-sections [aria-selected='true'] {
-  border-color: var(--accent, #8a4a06);
-  background: color-mix(in srgb, var(--accent, #8a4a06) 12%, white);
-}
+/* Las pestañas del Inicio usan `.segmentado`, que ya pinta la puesta. Aca
+   quedaban dos reglas para teñir el aria-selected de dos botones sueltos. */
 
 .admin-users-toolbar {
   margin: 1rem 0;
@@ -61,7 +58,7 @@
   margin-top: 0.4rem;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 720px) {
   .inicio-lista li { grid-template-columns: 46px 1fr; }
   .inicio-accion { grid-column: 1 / -1; text-align: center; }
 }

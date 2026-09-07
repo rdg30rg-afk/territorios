@@ -80,7 +80,7 @@
 /* Angosto: todo se apila en una sola columna y la flecha se queda
    arriba a la derecha. Sin esto el motivo caia en una columna implicita
    de 40px y se leia una letra por renglon. */
-@media (max-width: 900px) {
+@media (max-width: 1024px) {
   .imp-cabecera {
     grid-template-columns: 1fr 24px;
     gap: 4px 12px;

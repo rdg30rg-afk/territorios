@@ -1035,7 +1035,7 @@
   border-color: var(--h-lime-deep);
 }
 
-@media (max-width: 640px) {
+@media (max-width: 720px) {
   :root[data-theme='hermano'] body { overflow-x: clip; }
   :root[data-theme='hermano'] .content { padding: 1rem 0.75rem 2rem; }
   :root[data-theme='hermano'] .module-table-head,

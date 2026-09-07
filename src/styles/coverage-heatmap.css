@@ -11,7 +11,7 @@
 .coverage-table-wrap table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 .coverage-table-wrap th, .coverage-table-wrap td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #d5d3c9; }
 .coverage-table-wrap caption { text-align: left; padding-bottom: 12px; }
-@media (max-width: 767px) {
+@media (max-width: 720px) {
   .coverage-controls { display: grid; grid-template-columns: 1fr; }
   .coverage-controls input, .coverage-controls select { width: 100%; }
 }
