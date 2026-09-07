@@ -7,24 +7,32 @@ import {
   type ReactNode,
 } from 'react'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
-import { hasActiveAccess, hasModuleAccess } from '../lib/access'
+import {
+  canManageAdministrators,
+  canOpenAdminPanel,
+  hasActiveAccess,
+  hasModuleAccess,
+  isSystemRole,
+} from '../lib/access'
 import { readAllRows } from '../lib/readAllRows'
 import { pendingBeforeLogout } from '../lib/pendingBeforeLogout'
 import {
   AuthContext,
   type AuthContextValue,
+  type AccessContext,
   type ManagedUser,
   type ModuleKey,
   type PendingUserRequest,
   type Profile,
   type ProfileRole,
 } from './AuthTypes'
-import type { ContextoHermano } from '../lib/vistaHermano'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 function contextoDesdeFila(
-  fila: ContextoHermano | null,
+  fila: AccessContext | null,
   profileRow: Profile | null,
-): ContextoHermano | null {
+): AccessContext | null {
+  const legacyAdmin = profileRow ? canOpenAdminPanel(profileRow) : false
   if (fila) {
     return {
       role: fila.role,
@@ -41,6 +49,22 @@ function contextoDesdeFila(
       punto_grupo_lat: fila.punto_grupo_lat,
       punto_grupo_lng: fila.punto_grupo_lng,
       es_super_de_grupo: Boolean(fila.es_super_de_grupo),
+      system_role: fila.system_role ?? profileRow?.system_role,
+      es_conductor: typeof fila.es_conductor === 'boolean'
+        ? fila.es_conductor
+        : Boolean(fila.driver_id),
+      puede_administrar_grupo: typeof fila.puede_administrar_grupo === 'boolean'
+        ? fila.puede_administrar_grupo
+        : Boolean(fila.es_super_de_grupo),
+      puede_informar_salidas: typeof fila.puede_informar_salidas === 'boolean'
+        ? fila.puede_informar_salidas
+        : Boolean(fila.driver_id || fila.es_super_de_grupo || legacyAdmin),
+      puede_abrir_panel: typeof fila.puede_abrir_panel === 'boolean'
+        ? fila.puede_abrir_panel
+        : legacyAdmin,
+      puede_administrar_admins: typeof fila.puede_administrar_admins === 'boolean'
+        ? fila.puede_administrar_admins
+        : profileRow?.system_role === 'superadmin',
     }
   }
   if (!profileRow) return null
@@ -59,7 +83,39 @@ function contextoDesdeFila(
     punto_grupo_lat: null,
     punto_grupo_lng: null,
     es_super_de_grupo: false,
+    system_role: profileRow.system_role,
+    es_conductor: Boolean(profileRow.driver_id),
+    puede_administrar_grupo: false,
+    puede_informar_salidas: Boolean(profileRow.driver_id || legacyAdmin),
+    puede_abrir_panel: legacyAdmin,
+    puede_administrar_admins: profileRow.system_role === 'superadmin',
   }
+}
+
+function esErrorDeColumnaAusente(error: { code?: string; message?: string } | null) {
+  if (!error) return false
+  return error.code === '42703'
+    || error.code === 'PGRST204'
+    || /system_role|could not find the .*column/i.test(error.message ?? '')
+}
+
+async function leerPerfil(
+  client: SupabaseClient,
+  userId: string,
+) {
+  const current = await client
+    .from('profiles')
+    .select('id, full_name, role, system_role, driver_id, access_status')
+    .eq('id', userId)
+    .maybeSingle()
+
+  if (!esErrorDeColumnaAusente(current.error)) return current
+
+  return client
+    .from('profiles')
+    .select('id, full_name, role, driver_id, access_status')
+    .eq('id', userId)
+    .maybeSingle()
 }
 
 type PendingUserRow = {
@@ -72,7 +128,7 @@ type PendingUserRow = {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
-  const [contexto, setContexto] = useState<ContextoHermano | null>(null)
+  const [contexto, setContexto] = useState<AccessContext | null>(null)
   const [moduleAccess, setModuleAccess] = useState<ModuleKey[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [authError, setAuthError] = useState<string | null>(null)
@@ -159,55 +215,61 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       deadline = setTimeout(expire, 15000)
 
       try {
-      const [{ data: profileRow, error: profileError }, { data: accessRows, error: accessError }, contextoRes] = await Promise.all([
-        client
-          .from('profiles')
-          .select('id, full_name, role, driver_id, access_status')
-          .eq('id', activeSession.user.id)
-          .maybeSingle(),
-        client
-          .from('user_module_access')
-          .select('module_key')
-          .eq('user_id', activeSession.user.id),
-        client.from('mi_contexto').select('*').maybeSingle(),
-      ])
-      const contextoRow = contextoRes.error?.code === '42P01' || contextoRes.error?.code === '42703'
-        ? null
-        : (contextoRes.data as ContextoHermano | null)
+        const [{ data: profileRow, error: profileError }, { data: accessRows, error: accessError }, contextoRes] = await Promise.all([
+          leerPerfil(client, activeSession.user.id),
+          client
+            .from('user_module_access')
+            .select('module_key')
+            .eq('user_id', activeSession.user.id),
+          client.from('mi_contexto').select('*').maybeSingle(),
+        ])
+        const contextoNoDisponible = contextoRes.error?.code === '42P01'
+          || esErrorDeColumnaAusente(contextoRes.error)
+        const contextoRow = contextoNoDisponible
+          ? null
+          : (contextoRes.data as AccessContext | null)
 
       if (!mounted || request !== generation) {
         return
       }
 
-      if (profileError || accessError) throw profileError ?? accessError
+        if (profileError || accessError || (contextoRes.error && !contextoNoDisponible)) {
+          throw profileError ?? accessError ?? contextoRes.error
+        }
 
-      clearTimeout(deadline)
-      pendingUser = null
-      verifiedUser.current = userId
+        clearTimeout(deadline)
+        pendingUser = null
+        verifiedUser.current = userId
+        const profileFromQuery = (profileRow ?? null) as Profile | null
+        const contextSystemRole = isSystemRole(contextoRow?.system_role)
+        const profileForSession = profileFromQuery && contextSystemRole
+          ? { ...profileFromQuery, system_role: contextoRow.system_role }
+          : profileFromQuery
       // No reiniciar efectos/formularios que dependen del perfil cuando
       // Supabase devuelve los mismos valores con otra identidad de objeto.
-      setProfile(previous => {
-        const next = (profileRow ?? null) as Profile | null
-        if (previous && next && previous.id === next.id &&
-          previous.full_name === next.full_name && previous.role === next.role &&
-          previous.driver_id === next.driver_id && previous.access_status === next.access_status) return previous
-        return next
-      })
-      setContexto(contextoDesdeFila(contextoRow, (profileRow ?? null) as Profile | null))
-      setModuleAccess(
-        (accessRows ?? [])
-          .map((row) => row.module_key)
-          .filter(
-            (value): value is ModuleKey =>
-              value === 'mapas' ||
-              value === 'conductores' ||
-              value === 'grupos' ||
-              value === 'salidas' ||
-              value === 'salidas_grupo' ||
-              value === 'territorio_personal',
-          ),
-      )
-      setIsLoading(false)
+        setProfile(previous => {
+          const next = profileForSession
+          if (previous && next && previous.id === next.id &&
+            previous.full_name === next.full_name && previous.role === next.role &&
+            previous.system_role === next.system_role && previous.driver_id === next.driver_id &&
+            previous.access_status === next.access_status) return previous
+          return next
+        })
+        setContexto(contextoDesdeFila(contextoRow, profileForSession))
+        setModuleAccess(
+          (accessRows ?? [])
+            .map((row) => row.module_key)
+            .filter(
+              (value): value is ModuleKey =>
+                value === 'mapas' ||
+                value === 'conductores' ||
+                value === 'grupos' ||
+                value === 'salidas' ||
+                value === 'salidas_grupo' ||
+                value === 'territorio_personal',
+            ),
+        )
+        setIsLoading(false)
       } catch {
         if (!mounted || request !== generation) return
         clearTimeout(deadline)
@@ -326,7 +388,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loadManagedUsers = useCallback(async () => {
     const request = ++managedGeneration.current
-    if (!supabase || profile?.role !== 'admin' || !hasActiveAccess(profile) || authIdentity.current !== profile.id) {
+    const profileId = profile?.id
+    if (!supabase || !profileId || !canOpenAdminPanel(profile, contexto) || authIdentity.current !== profileId) {
       setManagedUsers([])
       setPendingRequests([])
       return
@@ -357,7 +420,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         })(),
       ])
-    if (request !== managedGeneration.current || authIdentity.current !== profile.id) return
+    if (request !== managedGeneration.current || authIdentity.current !== profileId) return
 
     const gruposPorPersona = new Map<string, { groupName: string | null; groupNumber: number | null; miembroEstado: ManagedUser['miembroEstado'] }>()
     for (const fila of memberRows as Array<{
@@ -429,13 +492,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         })),
     )
     } catch {
-      if (request !== managedGeneration.current || authIdentity.current !== profile.id) return
+      if (request !== managedGeneration.current || authIdentity.current !== profileId) return
       setManagedUsersError('No pudimos actualizar los accesos. La lista puede estar desactualizada; volvé a intentar.')
     }
-  }, [profile])
+  }, [contexto, profile])
 
   useEffect(() => {
-    if (profile?.role === 'admin' && hasActiveAccess(profile)) {
+    if (canOpenAdminPanel(profile, contexto)) {
       void loadManagedUsers()
       return
     }
@@ -443,7 +506,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setPendingRequests([])
     setManagedUsers([])
     setManagedUsersError(null)
-  }, [loadManagedUsers, profile])
+  }, [contexto, loadManagedUsers, profile])
 
   const signUp = async (
     fullName: string,
@@ -502,8 +565,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     modules: ModuleKey[],
     driverId?: string | null,
   ) => {
-    if (!supabase || profile?.role !== 'admin') {
+    if (!supabase || !canOpenAdminPanel(profile, contexto)) {
       return { error: 'No tiene permisos de admin.' }
+    }
+    if (role === 'admin' && !canManageAdministrators(profile, contexto)) {
+      return { error: 'Sólo un superadmin puede administrar cuentas administrativas.' }
     }
 
     const { error } = await supabase.rpc('administrar_acceso', {
@@ -518,7 +584,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const deactivateUser = async (userId: string) => {
-    if (!supabase || profile?.role !== 'admin') {
+    if (!supabase || !canOpenAdminPanel(profile, contexto)) {
       return { error: 'No tiene permisos de admin.' }
     }
 
@@ -533,7 +599,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: null }
   }
 
-  const canAccessModule = (moduleKey: ModuleKey) => hasModuleAccess(profile, moduleAccess, moduleKey)
+  const canAccessModule = (moduleKey: ModuleKey) => hasModuleAccess(profile, moduleAccess, moduleKey, contexto)
 
   const value: AuthContextValue = {
     isConfigured: isSupabaseConfigured,

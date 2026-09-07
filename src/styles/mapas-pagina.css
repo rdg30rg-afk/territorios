@@ -1,0 +1,174 @@
+/* Mapas es un taller, no una pagina con titulo, bajada y dos tarjetas.
+   El mapa ocupa lo que queda de pantalla; la lista es un directorio. */
+
+.mapas-pagina {
+  gap: 0.75rem;
+}
+
+.mapas-pagina > .page-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem 1rem;
+  padding: 0;
+  background: transparent;
+}
+
+.mapas-pagina > .page-header h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+/* Una fila: cuantos hay, el buscador y Nuevo. El boton lima de 56 px
+   apilado debajo del buscador era la accion mas ruidosa de una lista
+   que se usa para elegir, no para crear. Crear esta en Dibujar. */
+.territory-lista-cabeza {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.55rem;
+}
+
+.territory-lista-cabeza > strong {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  font-size: 1.05rem;
+}
+
+.territory-lista-cabeza .territory-search-field {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.territory-lista-cabeza .territory-search-field input {
+  min-height: 40px;
+  border-radius: 10px;
+  padding: 0.4rem 0.7rem;
+}
+
+.territory-lista-cabeza .ghost-button {
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 0 0.75rem;
+}
+
+.territory-lista-resumen {
+  display: none;
+}
+
+.territory-registry-panel {
+  padding: 0.7rem 0.75rem 0.8rem;
+}
+
+.territory-table-shell {
+  border-radius: 12px;
+}
+
+.mapas-pagina .map-toolbar {
+  position: relative;
+  z-index: 5;
+  padding: 0.55rem 0.85rem 0;
+  align-items: center;
+  overflow: visible;
+}
+
+.mapas-pagina .territory-toolbar.solo-acciones {
+  justify-content: flex-end;
+  padding-bottom: 0;
+}
+
+.mapas-pagina .territory-toolbar.solo-acciones .map-toolbar-acciones {
+  margin-left: auto;
+}
+
+/* Leaflet pone z-index 400-800 en sus paneles. Sin aislar el lienzo, esos
+   numeros ganan a la lista y el menu ⋯ se mete debajo del +/−. */
+.mapas-pagina .map-panel {
+  overflow: visible;
+}
+
+.mapas-pagina .map-canvas {
+  isolation: isolate;
+  z-index: 0;
+  height: calc(100dvh - 8.5rem);
+  min-height: 420px;
+  margin-top: 0.4rem;
+  border-radius: 16px;
+}
+
+.mapas-pagina .map-mas {
+  position: relative;
+  z-index: 6;
+  flex: 0 0 auto;
+}
+
+.mapas-pagina .map-mas-caja {
+  right: 0;
+  left: auto;
+  min-width: 196px;
+}
+
+.mapas-pagina .territory-map-stage {
+  padding: 0 0.75rem 0.75rem;
+}
+
+.mapas-pagina .territory-map-footer {
+  padding-top: 0.55rem;
+}
+
+/* En telefono el mapa es la pantalla. La lista era otra pagina completa
+   debajo: 70 filas despues de un mapa de 70dvh. Queda cerrada, un renglon. */
+@media (max-width: 1280px) {
+  .territory-lista-resumen {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 48px;
+    padding: 0 0.15rem;
+    cursor: pointer;
+    list-style: none;
+    font-weight: 700;
+  }
+
+  .territory-lista-resumen::-webkit-details-marker {
+    display: none;
+  }
+
+  .territory-lista-resumen::after {
+    content: '▾';
+    font-weight: 500;
+    opacity: 0.55;
+  }
+
+  .territory-registry-panel[open] > .territory-lista-resumen::after {
+    content: '▴';
+  }
+
+  /* En el flujo, no fixed. Leaflet se pintaba encima (z-index 400+) y el
+     mapa tapaba el 70, los puntos y el "Sin dato". Cerrada es un renglon
+     debajo del mapa; abierta, una lista con scroll propio. */
+  .territory-stage .territory-registry-panel {
+    position: relative;
+    z-index: 4;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .territory-registry-panel[open] .territory-table-body {
+    max-height: 38vh;
+    overflow: auto;
+  }
+
+  .mapas-pagina .map-canvas,
+  .territory-stage .map-canvas {
+    height: min(48dvh, calc(100dvh - 16rem));
+    min-height: 220px;
+  }
+}
+
+@media (min-width: 1281px) {
+  .territory-stage .territory-registry-panel {
+    max-height: calc(100dvh - 6rem);
+  }
+}

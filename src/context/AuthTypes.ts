@@ -2,6 +2,8 @@ import { createContext } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
 import type { ContextoHermano } from '../lib/vistaHermano'
 
+export type SystemRole = 'miembro' | 'admin_territorios' | 'superadmin'
+
 export type ProfileRole =
   | 'admin'
   | 'superintendente'
@@ -21,8 +23,22 @@ export type Profile = {
   id: string
   full_name: string | null
   role: ProfileRole
+  /**
+   * Nivel global nuevo. Es opcional durante la transición porque DEV/local
+   * puede seguir teniendo el esquema anterior.
+   */
+  system_role?: SystemRole | null
   driver_id: string | null
   access_status: 'pending' | 'active' | 'inactive'
+}
+
+export type AccessContext = ContextoHermano & {
+  system_role?: SystemRole | null
+  es_conductor?: boolean
+  puede_administrar_grupo?: boolean
+  puede_informar_salidas?: boolean
+  puede_abrir_panel?: boolean
+  puede_administrar_admins?: boolean
 }
 
 export type PendingUserRequest = {
@@ -37,6 +53,7 @@ export type ManagedUser = {
   username: string | null
   auth_email: string | null
   role: ProfileRole
+  system_role?: SystemRole | null
   driver_id: string | null
   access_status: 'pending' | 'active' | 'inactive'
   moduleAccess: ModuleKey[]
@@ -55,7 +72,7 @@ export type AuthContextValue = {
   session: Session | null
   user: User | null
   profile: Profile | null
-  contexto: ContextoHermano | null
+  contexto: AccessContext | null
   moduleAccess: ModuleKey[]
   isApproved: boolean
   pendingRequests: PendingUserRequest[]

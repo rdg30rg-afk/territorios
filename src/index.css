@@ -1355,6 +1355,57 @@ button {
   outline-offset: 2px;
 }
 
+/* Filas de la lista de territorios. Median 69 px para mostrar un numero y
+   un punto de color: 70 territorios eran 4.800 px de scroll. */
+.territory-fila {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.35rem 0.7rem;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.territory-fila:hover { background: rgba(109, 76, 65, 0.06); }
+
+.territory-fila.active {
+  background: var(--h-olive-bg, rgba(109, 76, 65, 0.1));
+  color: var(--h-olive-ink, inherit);
+}
+
+.territory-fila:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.territory-fila > strong {
+  min-width: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  /* Los territorios de prueba tienen un UUID por nombre y partian la fila
+     en dos renglones. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.territory-fila .territory-color-dot { width: 10px; height: 10px; }
+
+.territory-pct {
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-soft);
+}
+
+.territory-pct.sin-dato { opacity: 0.6; }
+
 /* ---------------------------------------- barra y menu del mapa (fase 3) */
 .map-toolbar-acciones {
   display: flex;
@@ -1482,6 +1533,7 @@ button {
 }
 
 .territory-leaflet-canvas {
+  isolation: isolate;
   background: #f5ede7;
 }
 

@@ -11,6 +11,7 @@ import { union } from '@turf/union'
 import { Modal } from './Modal'
 import { useAuth } from '../context/useAuth'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
+import { ordenarTerritorios } from '../lib/ordenarTerritorios'
 import { getTerritoryDeepLinkTransition } from '../lib/territoryDeepLink'
 import { ponerFondo } from '../lib/fondoMapa'
 
@@ -904,8 +905,21 @@ function downloadBackupFile(filename: string, contents: string, mimeType: string
   window.setTimeout(() => URL.revokeObjectURL(url), 0)
 }
 
+function useHasta(px: number) {
+  const [si, setSi] = useState(false)
+  useEffect(() => {
+    const consulta = window.matchMedia(`(max-width: ${px}px)`)
+    const sync = () => setSi(consulta.matches)
+    sync()
+    consulta.addEventListener('change', sync)
+    return () => consulta.removeEventListener('change', sync)
+  }, [px])
+  return si
+}
+
 export function SanJuanMap({ initialTerritoryId = null }: SanJuanMapProps) {
   const { profile } = useAuth()
+  const estrecho = useHasta(1280)
   const client = supabase
   const canManageTerritories = profile?.role === 'admin'
 
@@ -931,6 +945,10 @@ export function SanJuanMap({ initialTerritoryId = null }: SanJuanMapProps) {
   // piden de a un territorio y sólo cuando se lo va a dibujar: son el 90%
   // del peso de esta pantalla y sirven a partir del zoom 15.
   const [formasBase, setFormasBase] = useState<Map<string, ManzanaForma[]>>(() => new Map())
+  // Cuánto se recorrió de cada territorio. La vista `cobertura_territorio`
+  // ya lo tiene calculado y pesa 12 kB para los 70: es lo único por lo que
+  // uno elige un territorio y no otro, y la lista no lo decía.
+  const [cobertura, setCobertura] = useState<Map<string, number | null>>(() => new Map())
   const [selectedTerritoryId, setSelectedTerritoryId] = useState<string | null>(null)
   // La ficha del territorio vivia en una tercera columna a la derecha del
   // mapa. Entre la lista, el mapa y ella, el mapa -que es la pantalla- se
@@ -997,14 +1015,19 @@ export function SanJuanMap({ initialTerritoryId = null }: SanJuanMapProps) {
     [territories],
   )
 
+  // Se ordena acá, para mostrar, y no el arreglo de arriba: el color de
+  // respaldo y el código de cada territorio salen de su posición en
+  // `territoriesWithIndex` (`getTerritoryColor(index)`), así que reordenar
+  // ese arreglo le cambiaría el color a los territorios que no lo tienen
+  // guardado.
   const filteredTerritories = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase()
 
     if (!normalizedSearch) {
-      return territoriesWithIndex
+      return ordenarTerritorios(territoriesWithIndex)
     }
 
-    return territoriesWithIndex.filter((territory) => {
+    return ordenarTerritorios(territoriesWithIndex).filter((territory) => {
       const haystack = [
         territory.name,
         territory.description ?? '',
@@ -1832,6 +1855,25 @@ export function SanJuanMap({ initialTerritoryId = null }: SanJuanMapProps) {
     return () => {
       isMounted = false
     }
+  }, [client])
+
+  useEffect(() => {
+    if (!client) return
+    void client
+      .from('cobertura_territorio')
+      .select('territory_id, pct_metros, tiene_dato')
+      .then(({ data }) => {
+        if (!data) return
+        setCobertura(
+          new Map(
+            (data as Array<{ territory_id: string; pct_metros: number | null; tiene_dato: boolean }>)
+              .map((fila) => [
+                fila.territory_id,
+                fila.tiene_dato && fila.pct_metros !== null ? Math.round(fila.pct_metros) : null,
+              ]),
+          ),
+        )
+      })
   }, [client])
 
   useEffect(() => {
@@ -2877,33 +2919,34 @@ export function SanJuanMap({ initialTerritoryId = null }: SanJuanMapProps) {
   return (
     <div className="territory-console">
       <div className="territory-stage">
-      <section className="panel territory-registry-panel">
-        <div className="territory-registry-toolbar">
-          <div>
-            <p className="eyebrow">Territorios</p>
-            <h3>{territoryCount} guardados</h3>
-          </div>
-
-          <div className="territory-registry-actions">
-            <label className="territory-search-field">
-              <span className="sr-only">Buscar territorios</span>
-              <input
-                type="search"
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
-                placeholder="Buscar por número o referencia"
-              />
-            </label>
-
+      <details
+        key={estrecho ? 'lista-movil' : 'lista-escritorio'}
+        className="panel territory-registry-panel"
+        {...(!estrecho ? { open: true } : {})}
+      >
+        <summary className="territory-lista-resumen">
+          {territoryCount} territorios
+        </summary>
+        <div className="territory-lista-cabeza">
+          <strong>{territoryCount}</strong>
+          <label className="territory-search-field">
+            <span className="sr-only">Buscar territorios</span>
+            <input
+              type="search"
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              placeholder="Buscar"
+            />
+          </label>
+          {canManageTerritories ? (
             <button
               type="button"
-              className="primary-button"
+              className="ghost-button"
               onClick={handlePrepareNewTerritory}
-              disabled={!canManageTerritories}
             >
-              Nuevo territorio
+              Nuevo
             </button>
-          </div>
+          ) : null}
         </div>
 
         {isLoading ? (
@@ -2916,38 +2959,42 @@ export function SanJuanMap({ initialTerritoryId = null }: SanJuanMapProps) {
           </div>
         ) : (
           <div className="territory-table-shell">
-            <div className="territory-table territory-table-head territory-table-compact">
-              <span>Territorio</span>
-              <span>Color</span>
-            </div>
-
+            {/* Se fue el encabezado "Territorio | Color": dos palabras fijas
+                arriba de una lista donde cada fila es un número y un punto
+                de color. Lo que sí faltaba -cuánto se recorrió- ahora está
+                en la fila. */}
             <div className="territory-table-body">
-              {filteredTerritories.map((territory) => (
+              {filteredTerritories.map((territory) => {
+                const pct = cobertura.get(territory.id)
+                return (
                 <button
                   key={territory.id}
                   type="button"
                   className={
                     selectedTerritoryId === territory.id
-                      ? 'territory-table territory-table-row territory-table-compact active'
-                      : 'territory-table territory-table-row territory-table-compact'
+                      ? 'territory-fila active'
+                      : 'territory-fila'
                   }
                   onClick={() => handleFocusTerritory(territory)}
                 >
+                  <span
+                    className="territory-color-dot"
+                    style={{ backgroundColor: territory.color }}
+                    aria-hidden="true"
+                  />
                   <strong>{territory.name}</strong>
-                  <span className="territory-color-cell">
-                    <span
-                      className="territory-color-dot"
-                      style={{ backgroundColor: territory.color }}
-                      aria-hidden="true"
-                    />
-                    <span className="sr-only">{territory.color}</span>
-                  </span>
+                  {pct === undefined ? null : pct === null ? (
+                    <small className="territory-pct sin-dato">Sin dato</small>
+                  ) : (
+                    <small className="territory-pct">{pct}%</small>
+                  )}
                 </button>
-              ))}
+                )
+              })}
             </div>
           </div>
         )}
-      </section>
+      </details>
 
       <div className="map-workspace">
         <div className="territory-studio">
@@ -2955,28 +3002,26 @@ export function SanJuanMap({ initialTerritoryId = null }: SanJuanMapProps) {
             {/* Una sola fila arriba del mapa. Antes habia tres capas de
                 controles -el titulo, una barra de acciones y la barra de
                 preparacion- y las tres estaban siempre, dibujando o no. */}
-            <div className="map-toolbar territory-toolbar">
+            <div
+              className={modoEdicion ? 'map-toolbar territory-toolbar' : 'map-toolbar territory-toolbar solo-acciones'}
+              aria-label="Mapa de territorios de San Juan"
+            >
+              {modoEdicion ? (
               <div className="territory-toolbar-copy">
-                <p className="eyebrow">Mapa</p>
                 <h3>
-                  {modoEdicion
-                    ? editingTerritoryId
-                      ? `Editando ${territoryName.trim() || 'territorio'}`
-                      : 'Nuevo territorio'
-                    : 'San Juan'}
+                  {editingTerritoryId
+                    ? `Editando ${territoryName.trim() || 'territorio'}`
+                    : 'Nuevo territorio'}
                 </h3>
-                {modoEdicion ? (
-                  <div className="territory-phase-strip">
-                    <span className={territoryName.trim() || editingTerritoryId ? 'active' : ''}>
-                      1. Número
-                    </span>
-                    <span className={isDrawing || currentGeometry ? 'active' : ''}>2. Polígono</span>
-                    <span className={currentGeometry ? 'active' : ''}>3. Guardar</span>
-                  </div>
-                ) : (
-                  <p className="toolbar-copy">Elegí un territorio en la lista o en el mapa.</p>
-                )}
+                <div className="territory-phase-strip">
+                  <span className={territoryName.trim() || editingTerritoryId ? 'active' : ''}>
+                    1. Número
+                  </span>
+                  <span className={isDrawing || currentGeometry ? 'active' : ''}>2. Polígono</span>
+                  <span className={currentGeometry ? 'active' : ''}>3. Guardar</span>
+                </div>
               </div>
+              ) : null}
 
               <div className="map-toolbar-acciones">
                 {!modoEdicion && canManageTerritories ? (
@@ -3141,24 +3186,9 @@ export function SanJuanMap({ initialTerritoryId = null }: SanJuanMapProps) {
               <div className="territory-map-footer">
                 {modoEdicion ? (
                 <div className="territory-map-help">
-                  <strong>Dibujá el territorio y dejá visibles los ya creados.</strong>
-                  <span>
-                    Usá «Comenzar dibujo» y volvé a tocar el primer punto para cerrar
-                    el polígono.
-                  </span>
+                  <span>Tocá el primer punto otra vez para cerrar el polígono.</span>
                 </div>
-                ) : (
-                <div className="territory-map-help">
-                  <strong>Tocá un territorio para ver su ficha.</strong>
-                  <span>Las letras de manzana aparecen al acercar el mapa.</span>
-                </div>
-                )}
-                {/* El error y el aviso de guardado vivian en el panel de la
-                    tercera columna: se guardaba desde arriba del mapa y la
-                    confirmacion aparecia fuera de la pantalla.
-                    "Color activo #4f772d" tampoco esta mas: era el codigo
-                    hexadecimal del color, para alguien que lo elige tocando
-                    un cuadradito de ese color. */}
+                ) : null}
                 {error ? <div className="form-feedback error">{error}</div> : null}
                 {message ? <div className="form-feedback success">{message}</div> : null}
               </div>

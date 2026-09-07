@@ -16,7 +16,13 @@ function harness({warning=null,confirm=true}={}){
     if(name==='react')return {useState(initial){const i=cursor++;if(!(i in slots))slots[i]=initial;return [slots[i],v=>slots[i]=typeof v==='function'?v(slots[i]):v]},useRef(initial){const i=cursor++;return slots[i]??={current:initial}},useCallback(fn){return fn},useEffect(fn,deps){const i=cursor++;const previous=slots[i];const changed=!previous||!deps||!previous.deps||deps.length!==previous.deps.length||deps.some((value,index)=>!Object.is(value,previous.deps[index]));if(changed){previous?.cleanup?.();slots[i]={deps,cleanup:null};effects.push(()=>{slots[i].cleanup=fn()})}}}
     if(name==='react/jsx-runtime')return {jsx,jsxs:jsx}
     if(name.endsWith('/supabase'))return {supabase:client,isSupabaseConfigured:true}
-    if(name.endsWith('/access'))return {hasActiveAccess:p=>p?.access_status==='active',hasModuleAccess:()=>false}
+    if(name.endsWith('/access'))return {
+      hasActiveAccess:p=>p?.access_status==='active',
+      hasModuleAccess:()=>false,
+      canOpenAdminPanel:p=>p?.access_status==='active'&&p?.role==='admin',
+      canManageAdministrators:()=>false,
+      isSystemRole:()=>false,
+    }
     if(name.endsWith('/readAllRows'))return {}
     if(name.endsWith('/pendingBeforeLogout'))return {pendingBeforeLogout:()=>warning}
     if(name==='./AuthTypes')return {AuthContext:{Provider:'provider'}}

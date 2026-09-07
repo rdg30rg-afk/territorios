@@ -1,17 +1,111 @@
-.coverage-heatmap { min-width: 0; display: grid; gap: 16px; }
+.coverage-heatmap { min-width: 0; display: grid; gap: 10px; }
 .coverage-heatmap p { margin: 0; max-width: 80ch; }
-.coverage-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
-.coverage-controls label { display: grid; gap: 6px; min-width: 0; }
-.coverage-controls input, .coverage-controls select { min-height: 44px; font: inherit; max-width: 100%; }
-.coverage-controls button { min-height: 44px; }
-.coverage-legend { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 12px 24px; }
-.coverage-legend li { display: flex; align-items: center; gap: 8px; }
-.coverage-map { height: clamp(320px, 58dvh, 650px); border: 1px solid #d5d3c9; border-radius: 16px; z-index: 0; }
+
+.coverage-barra {
+  display: grid;
+  gap: 10px;
+}
+
+@media (min-width: 721px) {
+  .coverage-barra {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+  }
+}
+
+.coverage-cuando {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.coverage-cuando input {
+  min-height: 40px;
+  font: inherit;
+  max-width: 100%;
+}
+
+.coverage-cuando .ghost-button { min-height: 40px; }
+
+.coverage-legend {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  font-size: 0.82rem;
+}
+
+.coverage-legend li { display: flex; align-items: center; gap: 6px; }
+
+.coverage-map-wrap { position: relative; }
+.coverage-map {
+  height: clamp(360px, 62dvh, 720px);
+  border: 1px solid var(--panel-border, #d5d3c9);
+  border-radius: 16px;
+  z-index: 0;
+}
+
+.coverage-map-wrap .coverage-legend {
+  position: absolute;
+  z-index: 400;
+  left: 10px;
+  bottom: 10px;
+  max-width: calc(100% - 20px);
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: var(--panel-solid, #fdfcfa);
+  border: 1px solid var(--panel-border, #d5d3c9);
+  box-shadow: 0 8px 20px rgba(22, 25, 29, 0.12);
+}
+
+.coverage-map-aviso {
+  position: absolute;
+  inset: auto 12px 12px 12px;
+  z-index: 400;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--panel-solid, #fdfcfa);
+  border: 1px solid var(--panel-border, #d5d3c9);
+  font-size: 0.9rem;
+}
+
+.coverage-cifra {
+  font-size: 0.85rem;
+  color: var(--text-soft, #5f6b76);
+}
+
 .coverage-table-wrap { max-width: 100%; overflow-x: auto; }
 .coverage-table-wrap table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
-.coverage-table-wrap th, .coverage-table-wrap td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #d5d3c9; }
-.coverage-table-wrap caption { text-align: left; padding-bottom: 12px; }
+.coverage-table-wrap th, .coverage-table-wrap td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--panel-border, #d5d3c9); }
+.coverage-table-wrap caption { text-align: left; padding-bottom: 8px; font-size: 0.85rem; color: var(--text-soft, #5f6b76); }
+
+.coverage-elector { display: grid; gap: 8px; }
+.coverage-buscar input { min-height: 40px; font: inherit; width: 100%; }
+.coverage-opciones { display: flex; flex-wrap: wrap; gap: 6px; }
+.coverage-opciones button {
+  min-height: 40px; min-width: 48px; padding: 0 12px;
+  border: 1px solid var(--panel-border, #d5d3c9); border-radius: 10px; background: #fff;
+  font: inherit; font-variant-numeric: tabular-nums; cursor: pointer;
+}
+.coverage-opciones button:hover { border-color: var(--accent, #5f7d0a); }
+.coverage-opciones button:focus-visible { outline: 3px solid var(--accent, #5f7d0a); outline-offset: 2px; }
+.coverage-todos { align-self: start; justify-self: start; min-height: 40px; }
+.coverage-vacio { opacity: .7; }
+
+.coverage-elegido {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.coverage-elegido strong { font-size: 1.05rem; }
+
 @media (max-width: 720px) {
-  .coverage-controls { display: grid; grid-template-columns: 1fr; }
-  .coverage-controls input, .coverage-controls select { width: 100%; }
+  .coverage-cuando { display: grid; grid-template-columns: 1fr auto; }
+  .coverage-cuando input { width: 100%; }
+  .coverage-map { height: min(58dvh, calc(100dvh - 12rem)); min-height: 280px; }
 }

@@ -1,6 +1,7 @@
 import { lazy, Suspense, type ReactNode } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { AppShell } from './components/AppShell'
+import { AdminGuard } from './components/AdminGuard'
 import { AuthGuard } from './components/AuthGuard'
 import { ModuleGuard } from './components/ModuleGuard'
 import { LoginPage } from './pages/LoginPage'
@@ -66,31 +67,33 @@ function App() {
             publicador, y cada seccion muestra su estado vacio si RLS no le
             deja leer esos datos. */}
         <Route path="predicacion" element={loadRoute(<PredicacionPage />)} />
-        <Route element={<AppShell />}>
-          <Route index element={loadRoute(<DashboardPage />)} />
-          {/* Sin ModuleGuard: no es un modulo, es del admin. La pagina se
-              guarda sola y el RLS del staging solo deja leer a un admin. */}
-          <Route path="importacion" element={loadRoute(<ImportacionPage />)} />
-          <Route element={<ModuleGuard moduleKey="mapas" />}>
-            <Route path="mapas" element={loadRoute(<MapasPage />)} />
-          </Route>
-          <Route element={<ModuleGuard moduleKey="conductores" />}>
-            <Route path="conductores" element={loadRoute(<ConductoresPage />)} />
-          </Route>
-          <Route element={<ModuleGuard moduleKey="grupos" />}>
-            <Route path="grupos" element={loadRoute(<GruposPage />)} />
-          </Route>
-          <Route element={<ModuleGuard moduleKey="salidas" />}>
-            <Route path="salidas" element={loadRoute(<SalidasPage />)} />
-          </Route>
-          <Route element={<ModuleGuard moduleKey="salidas_grupo" />}>
-            <Route path="salidas-grupo" element={loadRoute(<SalidasGrupoPage />)} />
-          </Route>
-          <Route element={<ModuleGuard moduleKey="territorio_personal" />}>
-            <Route
-              path="territorio-personal"
-              element={loadRoute(<TerritorioPersonalPage />)}
-            />
+        <Route element={<AdminGuard />}>
+          <Route element={<AppShell />}>
+            <Route index element={loadRoute(<DashboardPage />)} />
+            {/* Sin ModuleGuard: no es un modulo, es del admin. La pagina se
+                guarda sola y el RLS del staging solo deja leer a un admin. */}
+            <Route path="importacion" element={loadRoute(<ImportacionPage />)} />
+            <Route element={<ModuleGuard moduleKey="mapas" />}>
+              <Route path="mapas" element={loadRoute(<MapasPage />)} />
+            </Route>
+            <Route element={<ModuleGuard moduleKey="conductores" />}>
+              <Route path="conductores" element={loadRoute(<ConductoresPage />)} />
+            </Route>
+            <Route element={<ModuleGuard moduleKey="grupos" />}>
+              <Route path="grupos" element={loadRoute(<GruposPage />)} />
+            </Route>
+            <Route element={<ModuleGuard moduleKey="salidas" />}>
+              <Route path="salidas" element={loadRoute(<SalidasPage />)} />
+            </Route>
+            <Route element={<ModuleGuard moduleKey="salidas_grupo" />}>
+              <Route path="salidas-grupo" element={loadRoute(<SalidasGrupoPage />)} />
+            </Route>
+            <Route element={<ModuleGuard moduleKey="territorio_personal" />}>
+              <Route
+                path="territorio-personal"
+                element={loadRoute(<TerritorioPersonalPage />)}
+              />
+            </Route>
           </Route>
         </Route>
       </Route>

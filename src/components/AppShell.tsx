@@ -4,6 +4,7 @@ import { useAuth } from '../context/useAuth'
 import { modules } from '../data/modules'
 import { usePwaInstall } from '../hooks/usePwaInstall'
 import { isDevelopmentEnvironment } from '../lib/supabase'
+import { canOpenAdminPanel } from '../lib/access'
 
 const moduloNombre: Record<string, string> = {
   mapas: 'Mapas',
@@ -19,14 +20,15 @@ export function AppShell() {
   const [openAt, setOpenAt] = useState<string | null>(null)
   const menuOpen = openAt === location.key
   const menuButton = useRef<HTMLButtonElement>(null)
-  const { profile, user, signOut, canAccessModule, moduleAccess } = useAuth()
+  const { profile, contexto, user, signOut, canAccessModule, moduleAccess } = useAuth()
   const { canInstall, isInstalled, isInstalling, promptInstall } = usePwaInstall()
+  const adminPanel = canOpenAdminPanel(profile, contexto)
   const visibleModules = modules.filter((module) => {
     if (module.key === 'dashboard') {
       return true
     }
 
-    return profile?.role === 'admin' || canAccessModule(module.key)
+    return adminPanel || canAccessModule(module.key)
   })
 
   return (
@@ -80,7 +82,7 @@ export function AppShell() {
           ))}
         </nav>
 
-        {profile?.role === 'admin' && (
+        {adminPanel && (
           /* Documento aparte, no una ruta de React: por eso <a> y no
              NavLink. Comparte origen y sesion con la app. */
           <a href="/editor-manzanas.html" className="module-link" target="_blank" rel="noopener">
@@ -94,8 +96,8 @@ export function AppShell() {
           </a>
         )}
 
-        {profile?.role === 'admin' && (
-          <NavLink to="/importacion" className="module-link">
+        {adminPanel && (
+          <NavLink to="/importacion" className="module-link importacion-link">
             <span className="module-icon" aria-hidden="true">
               ⇪
             </span>
@@ -121,7 +123,7 @@ export function AppShell() {
           <strong>{profile?.full_name || user?.email || 'Usuario'}</strong>
           <small>
             Rol: {profile?.role ?? 'pendiente'} · Módulos:{' '}
-            {profile?.role === 'admin'
+            {adminPanel
               ? 'acceso completo'
               : moduleAccess.length > 0
                 ? moduleAccess.map((clave) => moduloNombre[clave] ?? clave).join(', ')
