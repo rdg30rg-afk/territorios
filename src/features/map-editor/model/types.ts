@@ -17,6 +17,7 @@ export type EditorTerritory = {
 
 export type EditorBlock = {
   id: string
+  sourceKey?: string | null
   geometry: EditorPolygon
   territoryId: string | null
   label?: string | null
