@@ -1,11 +1,30 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Falta } from '../components/Falta'
 import { Vacio } from '../components/Vacio'
+import { SalidaResultadoForm } from '../components/SalidaResultadoForm'
 import '../styles/importacion.css'
 import { Desplegable } from '../components/Desplegable'
 import { Modal } from '../components/Modal'
 import { useAuth } from '../context/useAuth'
 import { decirElError } from '../lib/decirElError'
+import {
+  aClaveFecha,
+  claveFechaLocal,
+  contarDiasInclusive,
+  crearEstadoPrograma,
+  deClaveFecha,
+  fraseDelRango,
+  hayDiasPasados,
+  PRESETS_PROGRAMA,
+  rangoPorPreset,
+  repetirPrimeraSemana,
+  semanasDelRango,
+  validarRango,
+  type PresetPrograma,
+} from '../lib/programaRango'
+import { BuscadorPunto } from '../components/BuscadorPunto'
+import { saleSinConductor, textoConductor, textoPuntoSalida, textoTerritorio } from '../lib/salidaEtiquetas'
 import { supabase } from '../lib/supabase'
 
 const MeetingPointPickerMap = lazy(() =>
@@ -58,6 +77,9 @@ type MeetingPointRecord = {
   maps_url: string | null
   territory_id: string | null
   activo: boolean
+  codigo?: string | null
+  orden?: number | null
+  tipo?: 'territorial' | 'especial' | null
 }
 
 type OutingProvenance = {
@@ -94,6 +116,9 @@ type OutingRecord = {
   tipo: 'telefonica' | 'grupos' | 'asamblea' | 'especial' | null
   origen: 'app' | 'excel'
   registro_id: string | null
+  conductor_texto?: string | null
+  territorio_codigo?: string | null
+  barrio?: string | null
   provenance?: OutingProvenance | null
 }
 
@@ -105,7 +130,7 @@ type PersonalTerritoryReservation = {
   reserved_at: string
 }
 
-type ScheduleFilter = 'todos' | 'hoy' | 'proximas' | 'pasadas'
+type ScheduleFilter = 'todos' | 'hoy' | 'proximas' | 'pasadas' | 'sin-conductor'
 type PlannerSlotKind = 'territorial' | 'phone'
 
 type PlannerSlot = {
@@ -133,10 +158,32 @@ type PlannerDraft = {
   enabled: boolean
   slotKey: string
   meetingPointName: string
+  meetingPointId: string
   driverId: string
   territoryId: string
   meetingCoords: [number, number] | null
   mapOpen: boolean
+}
+
+type GpsPendiente = {
+  id: string
+  codigo: string
+  lat: number
+  lng: number
+}
+
+function gpsNuevoDelPunto(
+  punto: MeetingPointRecord | undefined,
+  coords: [number, number] | null,
+): GpsPendiente | null {
+  if (!punto || !coords) return null
+  if (punto.lat != null && punto.lng != null) return null
+  return {
+    id: punto.id,
+    codigo: (punto.codigo ?? '').trim() || punto.nombre,
+    lat: Number(coords[1].toFixed(6)),
+    lng: Number(coords[0].toFixed(6)),
+  }
 }
 
 type SalidasPageProps = {
@@ -147,6 +194,27 @@ type SalidasPageProps = {
 // pantalla eran 14.783 nodos y 132.000 px de alto. Con 300 entran las
 // proximas y varios meses hacia atras, y la pagina sigue siendo usable.
 const SALIDAS_QUE_SE_TRAEN = 300
+const SALIDAS_POR_PAGINA = 25
+const CAMPOS_SALIDA =
+  'id, title, territory_id, driver_id, group_id, meeting_point_id, meeting_point_name, meeting_point_lat, meeting_point_lng, scheduled_for, notes, tipo, origen, registro_id, conductor_texto, territorio_codigo, barrio'
+const CAMPOS_SALIDA_VIEJOS =
+  'id, title, territory_id, driver_id, group_id, meeting_point_id, meeting_point_name, meeting_point_lat, meeting_point_lng, scheduled_for, notes, tipo, origen, registro_id'
+const SALIDAS_RPC_FIELDS = CAMPOS_SALIDA_VIEJOS
+
+function mensajeErrorSalidas(error: unknown, fallback: string) {
+  if (error instanceof Error) {
+    return decirElError({ message: error.message }, fallback)
+  }
+
+  if (error && typeof error === 'object') {
+    return decirElError(
+      error as { message?: string; code?: string; details?: string },
+      fallback,
+    )
+  }
+
+  return fallback
+}
 
 const dayFormatter = new Intl.DateTimeFormat('es-AR', {
   weekday: 'long',
@@ -157,12 +225,6 @@ const dayFormatter = new Intl.DateTimeFormat('es-AR', {
 // El rotulo del planificador ("Lunes 07-09") sirve como encabezado de una
 // columna, pero dentro de una frase se lee como un registro. Para la bajada
 // va la fecha dicha como se dice en voz alta: "lunes 7 de septiembre".
-const diaEnFrase = new Intl.DateTimeFormat('es-AR', {
-  weekday: 'long',
-  day: 'numeric',
-  month: 'long',
-})
-
 const shortDateFormatter = new Intl.DateTimeFormat('es-AR', {
   day: '2-digit',
   month: 'short',
@@ -363,31 +425,15 @@ function getGroupSelectionKey(group: GroupRecord) {
   return group.group_number ? `number-${group.group_number}` : `legacy-${group.group_name}`
 }
 
-function getNextMonday(fromDate: Date) {
-  const nextMonday = new Date(fromDate)
-  nextMonday.setHours(0, 0, 0, 0)
-  const currentDay = nextMonday.getDay()
-  const daysUntilNextMonday = currentDay === 1 ? 0 : (8 - currentDay) % 7
-  nextMonday.setDate(nextMonday.getDate() + daysUntilNextMonday)
-
-  if (nextMonday.getTime() <= fromDate.getTime() && currentDay !== 1) {
-    return nextMonday
-  }
-
-  if (currentDay === 1 && fromDate.getHours() > 0) {
-    return nextMonday
-  }
-
-  return nextMonday
-}
-
-function buildPlannerSlots() {
-  const monday = getNextMonday(new Date())
+function buildPlannerSlots(desde: Date, hasta: Date) {
   const slots: PlannerSlot[] = []
+  const start = new Date(desde.getFullYear(), desde.getMonth(), desde.getDate())
+  const end = new Date(hasta.getFullYear(), hasta.getMonth(), hasta.getDate())
+  const dayCount = Math.floor((end.getTime() - start.getTime()) / 86_400_000) + 1
 
-  for (let dayIndex = 0; dayIndex < 14; dayIndex += 1) {
-    const currentDate = new Date(monday)
-    currentDate.setDate(monday.getDate() + dayIndex)
+  for (let dayIndex = 0; dayIndex < dayCount; dayIndex += 1) {
+    const currentDate = new Date(start)
+    currentDate.setDate(start.getDate() + dayIndex)
 
     const dayLabel = formatDateForPlanner(currentDate)
     const dayShort = dayLabel.split(',')[0]
@@ -450,6 +496,7 @@ function buildPlannerSlots() {
 export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {}) {
   const { profile } = useAuth()
   const client = supabase
+  const [searchParams] = useSearchParams()
   const [drivers, setDrivers] = useState<DriverRecord[]>([])
   const [groups, setGroups] = useState<GroupRecord[]>([])
   const [territories, setTerritories] = useState<TerritoryRecord[]>([])
@@ -464,6 +511,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
   >([])
   const [selectedOutingId, setSelectedOutingId] = useState<string | null>(null)
   const [editingOutingId, setEditingOutingId] = useState<string | null>(null)
+  const [resultadoOutingId, setResultadoOutingId] = useState<string | null>(null)
   // El formulario vive en una ventana encima. Medido: abajo de la tabla
   // quedaba a 41.614 px de la ventana -- cuarenta y dos pantallas.
   const [formularioAbierto, setFormularioAbierto] = useState(false)
@@ -482,14 +530,26 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
   const [meetingCoords, setMeetingCoords] = useState<[number, number] | null>(null)
   const [territoryFilter, setTerritoryFilter] = useState('todos')
   const [scheduleFilter, setScheduleFilter] = useState<ScheduleFilter>('todos')
+  const [grupoConsulta, setGrupoConsulta] = useState('todos')
+  const [pagina, setPagina] = useState(0)
+  const [armarPrograma, setArmarPrograma] = useState(false)
+  const [programa, setPrograma] = useState(() => crearEstadoPrograma())
+  const [diaVisitaSuper, setDiaVisitaSuper] = useState('')
+  const planificadorRef = useRef<HTMLElement>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
+  const [gpsPendientes, setGpsPendientes] = useState<GpsPendiente[]>([])
 
   const canManageGeneralOutings = profile?.role === 'admin'
-  const plannerSlots = useMemo(() => buildPlannerSlots(), [])
+  const salidasWriteScope =
+    groupServiceMode && !canManageGeneralOutings ? 'grupo' : 'general'
+  const plannerSlots = useMemo(
+    () => buildPlannerSlots(deClaveFecha(programa.desde), deClaveFecha(programa.hasta)),
+    [programa.desde, programa.hasta],
+  )
   const plannerSlotsByDay = useMemo(() => {
     const grouped = new Map<string, PlannerSlot[]>()
 
@@ -621,8 +681,8 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
           .order('name', { ascending: true }),
         client
           .from('puntos_encuentro')
-          .select('id, nombre, barrio, lat, lng, maps_url, territory_id, activo')
-          .order('nombre', { ascending: true }),
+          .select('id, nombre, barrio, lat, lng, maps_url, territory_id, activo, codigo, orden, tipo')
+          .order('codigo', { ascending: true }),
         // Esta consulta no tenia filtro ni limite y ordenaba ascendente.
         // PostgREST corta en 1000 filas pase lo que pase, asi que devolvia
         // las MIL MAS VIEJAS y se comia el cupo entero: medido en el
@@ -633,9 +693,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
         // reciente. El total real se pide aparte para poder decirlo.
         client
           .from('salidas')
-          .select(
-            'id, title, territory_id, driver_id, group_id, meeting_point_id, meeting_point_name, meeting_point_lat, meeting_point_lng, scheduled_for, notes, tipo, origen, registro_id',
-          )
+          .select(CAMPOS_SALIDA)
           .order('scheduled_for', { ascending: false })
           .limit(SALIDAS_QUE_SE_TRAEN),
         client.from('salidas').select('id', { count: 'exact', head: true }),
@@ -660,6 +718,21 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
           .range(1000, 1999),
       ])
 
+      const faltaColumna =
+        Boolean(outingsError?.message) &&
+        /conductor_texto|territorio_codigo|column/i.test(outingsError?.message ?? '')
+
+      const [outingsResueltas, outingsErrorFinal] = faltaColumna
+        ? await (async () => {
+            const { data, error } = await client
+              .from('salidas')
+              .select(CAMPOS_SALIDA_VIEJOS)
+              .order('scheduled_for', { ascending: false })
+              .limit(SALIDAS_QUE_SE_TRAEN)
+            return [data, error] as const
+          })()
+        : [outingsData, outingsError]
+
       if (!isMounted) {
         return
       }
@@ -669,7 +742,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
         groupsError?.message ||
         territoriesError?.message ||
         meetingPointsError?.message ||
-        outingsError?.message ||
+        outingsErrorFinal?.message ||
         personalReservationsError?.message ||
         provenanceErrorFirst?.message ||
         provenanceErrorSecond?.message
@@ -695,7 +768,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
           ].map((item) => [item.salida_id, item]),
         )
         setOutings(
-          ((outingsData as OutingRecord[]) ?? []).map((outing) => ({
+          ((outingsResueltas as OutingRecord[]) ?? []).map((outing) => ({
             ...outing,
             provenance: provenanceByOuting.get(outing.id) ?? null,
           })),
@@ -754,17 +827,47 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
   )
   const currentServiceGroup = serviceGroupAssignments[0] ?? null
   const isGroupServiceDelegate = groupServiceMode && !canManageGeneralOutings
-  const lockedGroupId = isGroupServiceDelegate ? currentServiceGroup?.id ?? '' : groupId
+  const selectedAdminGroupId = grupoConsulta === 'todos' ? '' : grupoConsulta
+  const lockedGroupId = isGroupServiceDelegate
+    ? currentServiceGroup?.id ?? ''
+    : groupServiceMode
+      ? groupId || selectedAdminGroupId
+      : groupId
   const canManageOutings =
     canManageGeneralOutings || (groupServiceMode && serviceGroupAssignments.length > 0)
-  const arranqueEnFrase = (() => {
-    const clave = plannerSlotsByDay[0]?.dateKey
-    if (!clave) return 'el proximo lunes'
-    const [anio, mes, dia] = clave.split('-').map(Number)
-    // Intl en es-AR devuelve "lunes, 7 de septiembre". La coma esta bien
-    // cuando la fecha va sola, pero adentro de una frase corta la lectura.
-    return diaEnFrase.format(new Date(anio, mes - 1, dia)).replace(',', '')
-  })()
+  const rangoDesdeFecha = deClaveFecha(programa.desde)
+  const rangoHastaFecha = deClaveFecha(programa.hasta)
+  const diasDelPrograma = contarDiasInclusive(rangoDesdeFecha, rangoHastaFecha)
+  const frasePrograma = fraseDelRango(rangoDesdeFecha, rangoHastaFecha)
+  const tildadasDelPrograma = Object.values(plannerDrafts).filter((draft) => draft.enabled)
+  const semanasPrograma = useMemo(
+    () => semanasDelRango(rangoDesdeFecha, rangoHastaFecha),
+    [programa.desde, programa.hasta],
+  )
+  const salidasYaEnRango = useMemo(() => {
+    const porDia = new Map<string, number>()
+    outings.forEach((outing) => {
+      const clave = claveFechaLocal(outing.scheduled_for)
+      if (clave < programa.desde || clave > programa.hasta) return
+      porDia.set(clave, (porDia.get(clave) ?? 0) + 1)
+    })
+    return porDia
+  }, [outings, programa.desde, programa.hasta])
+  const filasPorSemana = useMemo(
+    () =>
+      semanasPrograma.map((semana) => ({
+        ...semana,
+        filas: plannerRows.filter((row) => {
+          const fecha = row.key.slice(0, 10)
+          return fecha >= semana.desdeClave && fecha <= semana.hastaClave
+        }),
+        yaHay: Array.from(salidasYaEnRango.entries()).reduce((total, [clave, cuantas]) => {
+          if (clave < semana.desdeClave || clave > semana.hastaClave) return total
+          return total + cuantas
+        }, 0),
+      })),
+    [plannerRows, salidasYaEnRango, semanasPrograma],
+  )
 
   const outingDetails = useMemo(
     () =>
@@ -773,12 +876,20 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
 
         return {
           ...outing,
-          territoryName:
-            territories.find((territory) => territory.id === outing.territory_id)
-              ?.name ?? 'Sin territorio',
-          driverName:
-            drivers.find((driver) => driver.id === outing.driver_id)?.full_name ??
-            'Sin conductor',
+          territoryName: textoTerritorio({
+            territory_id: outing.territory_id,
+            territorio_codigo: outing.territorio_codigo,
+            territoryName:
+              territories.find((territory) => territory.id === outing.territory_id)
+                ?.name ?? null,
+          }),
+          driverName: textoConductor({
+            driver_id: outing.driver_id,
+            conductor_texto: outing.conductor_texto,
+            driverName:
+              drivers.find((driver) => driver.id === outing.driver_id)?.full_name ??
+              null,
+          }),
           groupName: selectedGroup ? getGroupLabel(selectedGroup) : 'Sin grupo',
           scheduleStatus: getOutingScheduleStatus(outing.scheduled_for),
         }
@@ -787,11 +898,27 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
   )
 
   const visibleOutingDetails = useMemo(
-    () =>
-      groupServiceMode && !canManageGeneralOutings
-        ? outingDetails.filter((outing) => outing.group_id === lockedGroupId)
-        : outingDetails,
-    [canManageGeneralOutings, groupServiceMode, lockedGroupId, outingDetails],
+    () => {
+      const base =
+        groupServiceMode && !canManageGeneralOutings
+          ? outingDetails.filter((outing) => outing.group_id === lockedGroupId)
+          : outingDetails
+      if (
+        groupServiceMode &&
+        canManageGeneralOutings &&
+        grupoConsulta !== 'todos'
+      ) {
+        return base.filter((outing) => outing.group_id === grupoConsulta)
+      }
+      return base
+    },
+    [
+      canManageGeneralOutings,
+      groupServiceMode,
+      grupoConsulta,
+      lockedGroupId,
+      outingDetails,
+    ],
   )
 
   const reservedTerritoriesByOtherGroups = useMemo(() => {
@@ -849,6 +976,10 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
       const matchesSchedule =
         scheduleFilter === 'todos'
           ? true
+          : scheduleFilter === 'sin-conductor'
+            ? saleSinConductor(outing) &&
+              (outing.scheduleStatus.label === 'Hoy' ||
+                outing.scheduleStatus.label === 'Proxima')
           : scheduleFilter === 'hoy'
             ? isSameLocalDay(scheduledDate, now)
             : scheduleFilter === 'proximas'
@@ -869,6 +1000,8 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
         outing.driverName,
         outing.groupName,
         outing.meeting_point_name,
+        outing.conductor_texto ?? '',
+        outing.territorio_codigo ?? '',
         outing.notes ?? '',
         outing.provenance?.source_conductor_text ?? '',
         outing.provenance?.source_priorizar ?? '',
@@ -880,6 +1013,47 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
     })
   }, [scheduleFilter, searchTerm, territoryFilter, visibleOutingDetails])
 
+  useEffect(() => {
+    setPagina(0)
+  }, [scheduleFilter, searchTerm, territoryFilter, grupoConsulta])
+
+  useEffect(() => {
+    if (searchParams.get('agenda') === 'sin-conductor') {
+      setScheduleFilter('sin-conductor')
+    }
+  }, [searchParams])
+
+  useEffect(() => {
+    if (!armarPrograma) return
+    planificadorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [armarPrograma])
+
+  useEffect(() => {
+    setPlannerDrafts((current) => {
+      const vigentes = new Set(plannerRows.map((row) => row.key))
+      let cambia = false
+      const next: Record<string, PlannerDraft> = {}
+      for (const [key, draft] of Object.entries(current)) {
+        if (vigentes.has(key)) {
+          next[key] = draft
+        } else {
+          cambia = true
+        }
+      }
+      return cambia ? next : current
+    })
+  }, [plannerRows])
+
+  const paginasAgenda = Math.max(
+    1,
+    Math.ceil(filteredOutings.length / SALIDAS_POR_PAGINA) || 1,
+  )
+  const paginaActual = Math.min(pagina, paginasAgenda - 1)
+  const salidasEnPagina = filteredOutings.slice(
+    paginaActual * SALIDAS_POR_PAGINA,
+    paginaActual * SALIDAS_POR_PAGINA + SALIDAS_POR_PAGINA,
+  )
+
   const selectedOuting = useMemo(
     () => visibleOutingDetails.find((outing) => outing.id === selectedOutingId) ?? null,
     [selectedOutingId, visibleOutingDetails],
@@ -889,7 +1063,17 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
     () => outings.find((outing) => outing.id === editingOutingId) ?? null,
     [editingOutingId, outings],
   )
+  const resultadoOuting = useMemo(
+    () => outings.find((outing) => outing.id === resultadoOutingId) ?? null,
+    [outings, resultadoOutingId],
+  )
   const editingHistorical = Boolean(editingOuting && esSalidaHistorica(editingOuting))
+  const canReportSelectedResult = Boolean(
+    resultadoOuting &&
+      (canManageGeneralOutings ||
+        (profile?.driver_id && resultadoOuting.driver_id === profile.driver_id)),
+  )
+  const canCorrectSelectedResult = canManageGeneralOutings
 
   // Antes se mostraban cuatro cifras: total, hoy, con grupo y proximas. La
   // unica que pedia hacer algo era "con grupo", y dicha al reves: lo que
@@ -898,17 +1082,19 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
   // todavia no ocurrieron.
   const proximasSinConductor = visibleOutingDetails.filter(
     (outing) =>
-      !outing.driver_id &&
+      saleSinConductor(outing) &&
       (outing.scheduleStatus.label === 'Hoy' || outing.scheduleStatus.label === 'Proxima'),
   ).length
 
   const cerrarFormulario = () => {
     setFormularioAbierto(false)
+    setResultadoOutingId(null)
     resetForm()
     setError(null)
   }
 
   const abrirNueva = () => {
+    setResultadoOutingId(null)
     resetForm()
     setError(null)
     setMessage(null)
@@ -949,30 +1135,6 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
 
     setMessage(`Punto sugerido cargado en el centro de ${selectedFormTerritory.name}.`)
     setError(null)
-  }
-
-  const handleSelectMeetingPoint = (selectedId: string) => {
-    setMeetingPointId(selectedId || null)
-
-    if (!selectedId) {
-      return
-    }
-
-    const point = meetingPoints.find((item) => item.id === selectedId)
-    if (!point) {
-      return
-    }
-
-    setMeetingPointName(point.nombre)
-    setMeetingCoords(
-      point.lng !== null && point.lat !== null ? [point.lng, point.lat] : null,
-    )
-    setError(null)
-    setMessage(
-      point.lat !== null && point.lng !== null
-        ? `Punto guardado elegido: ${point.nombre}.`
-        : `Punto guardado elegido: ${point.nombre}; todavía no tiene GPS.`,
-    )
   }
 
   const handleSelectPlannerSlot = (slot: PlannerSlot) => {
@@ -1034,6 +1196,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
         enabled: false,
         slotKey: fallbackSlot.key,
         meetingPointName: '',
+        meetingPointId: '',
         driverId: '',
         territoryId: '',
         meetingCoords: null,
@@ -1045,6 +1208,35 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
         [row.key]: updater(currentDraft),
       }
     })
+  }
+
+  const persistirGpsEnPunto = async (gps: GpsPendiente) => {
+    if (!client) {
+      setError('Todavía no está configurada la conexión con la base.')
+      return
+    }
+
+    const { error: saveError } = await client
+      .from('puntos_encuentro')
+      .update({
+        lat: gps.lat,
+        lng: gps.lng,
+        gps_origen: 'manual',
+      })
+      .eq('id', gps.id)
+
+    if (saveError) {
+      setError(`No se pudo guardar el GPS del punto ${gps.codigo}.`)
+      return
+    }
+
+    setMeetingPoints((actuales) =>
+      actuales.map((punto) =>
+        punto.id === gps.id ? { ...punto, lat: gps.lat, lng: gps.lng } : punto,
+      ),
+    )
+    setGpsPendientes((actuales) => actuales.filter((punto) => punto.id !== gps.id))
+    setMessage(`GPS guardado en el punto ${gps.codigo}.`)
   }
 
   const handleSelectPlannerRowSlot = (row: PlannerRow, slotKey: string) => {
@@ -1142,6 +1334,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
 
   const startEditing = (outing: OutingRecord) => {
     setFormularioAbierto(true)
+    setResultadoOutingId(null)
     setSelectedOutingId(outing.id)
     setEditingOutingId(outing.id)
     setTitle(outing.title)
@@ -1160,6 +1353,14 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
         : null,
     )
     setLastSuggestedTitle(null)
+    setError(null)
+    setMessage(null)
+  }
+
+  const openResultFor = (outing: OutingRecord) => {
+    setSelectedOutingId(outing.id)
+    setResultadoOutingId(outing.id)
+    setFormularioAbierto(true)
     setError(null)
     setMessage(null)
   }
@@ -1183,24 +1384,33 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
     setError(null)
     setMessage(null)
 
-    const { error: deleteError } = await client
-      .from('salidas')
-      .delete()
-      .eq('id', outing.id)
+    setIsSaving(true)
+    try {
+      const { error: deleteError } = await client.rpc('borrar_salida', {
+        p_scope: salidasWriteScope,
+        p_salida_id: outing.id,
+      })
 
-    if (deleteError) {
-      setError(decirElError(deleteError))
-      return
-    }
+      if (deleteError) {
+        setError(deleteError.code === '23503'
+          ? 'Esta salida tiene registros relacionados y no puede borrarse. Conservá su historial y registrá una corrección o cancelación.'
+          : mensajeErrorSalidas(deleteError, 'No se pudo eliminar la salida.'))
+        return
+      }
 
-    setOutings((current) => current.filter((item) => item.id !== outing.id))
-    if (selectedOutingId === outing.id) {
-      setSelectedOutingId(null)
+      setOutings((current) => current.filter((item) => item.id !== outing.id))
+      if (selectedOutingId === outing.id) {
+        setSelectedOutingId(null)
+      }
+      if (editingOutingId === outing.id) {
+        resetForm()
+      }
+      setMessage('Salida eliminada correctamente.')
+    } catch (caught) {
+      setError(mensajeErrorSalidas(caught, 'No se pudo eliminar la salida.'))
+    } finally {
+      setIsSaving(false)
     }
-    if (editingOutingId === outing.id) {
-      resetForm()
-    }
-    setMessage('Salida eliminada correctamente.')
   }
 
   const buildDraftPdf = async (
@@ -1353,16 +1563,16 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
       ? meetingPoints.find((point) => point.id === meetingPointId) ?? null
       : null
     const effectiveMeetingCoords: [number, number] | null =
-      selectedMeetingPoint
-        ? selectedMeetingPoint.lat !== null && selectedMeetingPoint.lng !== null
-          ? [selectedMeetingPoint.lng, selectedMeetingPoint.lat]
-          : null
-        : meetingCoords ??
-          (existingOuting &&
-          existingOuting.meeting_point_lat !== null &&
-          existingOuting.meeting_point_lng !== null
-            ? [existingOuting.meeting_point_lng, existingOuting.meeting_point_lat]
-            : null)
+      meetingCoords ??
+      (selectedMeetingPoint &&
+      selectedMeetingPoint.lat !== null &&
+      selectedMeetingPoint.lng !== null
+        ? [selectedMeetingPoint.lng, selectedMeetingPoint.lat]
+        : existingOuting &&
+            existingOuting.meeting_point_lat !== null &&
+            existingOuting.meeting_point_lng !== null
+          ? [existingOuting.meeting_point_lng, existingOuting.meeting_point_lat]
+          : null)
     const enteredMeetingPointName = meetingPointName.trim()
     const storedMeetingPointName = existingOuting?.meeting_point_name?.trim() ?? ''
     const coordinatesChanged = Boolean(
@@ -1393,6 +1603,8 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
       ? notes.trim() || existingOuting?.notes || null
       : notes.trim() || null
 
+    const esTelefonica = title.toUpperCase() === PHONE_TITLE
+
     if (historicalEdit) {
       if (!effectiveTitle || !effectiveScheduledFor) {
         setError('La salida histórica necesita conservar al menos su título y su horario.')
@@ -1400,12 +1612,16 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
       }
     } else if (
       !title.trim() ||
-      !territoryId ||
-      !meetingPointName.trim() ||
       !scheduledFor ||
-      !driverId
+      !driverId ||
+      (!esTelefonica && !meetingPointName.trim()) ||
+      (!esTelefonica && !territoryId && !meetingPointId)
     ) {
-      setError('Faltan datos: título, territorio, conductor, punto de encuentro y horario.')
+      setError(
+        esTelefonica
+          ? 'Faltan datos: título, conductor y horario.'
+          : 'Faltan datos: título, conductor, punto de encuentro y horario.',
+      )
       return
     }
 
@@ -1414,7 +1630,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
       return
     }
 
-    if (!historicalEdit && !effectiveMeetingCoords) {
+    if (!historicalEdit && !esTelefonica && !effectiveMeetingCoords) {
       setError('Falta marcar en el mapa dónde se juntan.')
       return
     }
@@ -1437,65 +1653,222 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
       return
     }
 
+    const outingBeingEditedId = editingOutingId
     setIsSaving(true)
 
-    const payload = {
-      title: effectiveTitle,
-      territory_id: effectiveTerritoryId || null,
-      driver_id: effectiveDriverId || null,
-      group_id: effectiveGroupId,
-      meeting_point_id: effectiveMeetingPointId,
-      meeting_point_name: effectiveMeetingPointName,
-      meeting_point_lat: effectiveMeetingCoords
-        ? Number(effectiveMeetingCoords[1].toFixed(6))
-        : null,
-      meeting_point_lng: effectiveMeetingCoords
-        ? Number(effectiveMeetingCoords[0].toFixed(6))
-        : null,
-      // En una salida histórica se manda el instante almacenado, nunca el
-      // valor local del input. La fecha y la hora forman parte de la fuente.
-      scheduled_for: historicalEdit
-        ? existingOuting!.scheduled_for
-        : new Date(effectiveScheduledFor).toISOString(),
-      notes: effectiveNotes,
-    }
+    try {
+      const payload = {
+        title: effectiveTitle,
+        territory_id: effectiveTerritoryId || null,
+        driver_id: effectiveDriverId || null,
+        group_id: effectiveGroupId,
+        meeting_point_id: effectiveMeetingPointId,
+        meeting_point_name: effectiveMeetingPointName,
+        meeting_point_lat: effectiveMeetingCoords
+          ? Number(effectiveMeetingCoords[1].toFixed(6))
+          : null,
+        meeting_point_lng: effectiveMeetingCoords
+          ? Number(effectiveMeetingCoords[0].toFixed(6))
+          : null,
+        // En una salida histórica se manda el instante almacenado, nunca el
+        // valor local del input. La fecha y la hora forman parte de la fuente.
+        scheduled_for: historicalEdit
+          ? existingOuting!.scheduled_for
+          : new Date(effectiveScheduledFor).toISOString(),
+        notes: effectiveNotes,
+      }
 
-    const query = editingOutingId
-      ? client.from('salidas').update(payload).eq('id', editingOutingId)
-      : client.from('salidas').insert(payload)
+      const { data, error: saveError } = outingBeingEditedId
+        ? await client
+            .rpc('editar_salida', {
+              p_scope: salidasWriteScope,
+              p_salida_id: outingBeingEditedId,
+              p_title: payload.title,
+              p_territory_id: payload.territory_id,
+              p_driver_id: payload.driver_id,
+              p_group_id: payload.group_id,
+              p_meeting_point_id: payload.meeting_point_id,
+              p_meeting_point_name: payload.meeting_point_name,
+              p_meeting_point_lat: payload.meeting_point_lat,
+              p_meeting_point_lng: payload.meeting_point_lng,
+              p_scheduled_for: payload.scheduled_for,
+              p_notes: payload.notes,
+            })
+            .select(SALIDAS_RPC_FIELDS)
+            .single()
+        : await client
+            .rpc('crear_salida', {
+              p_scope: salidasWriteScope,
+              p_title: payload.title,
+              p_territory_id: payload.territory_id,
+              p_driver_id: payload.driver_id,
+              p_group_id: payload.group_id,
+              p_meeting_point_id: payload.meeting_point_id,
+              p_meeting_point_name: payload.meeting_point_name,
+              p_meeting_point_lat: payload.meeting_point_lat,
+              p_meeting_point_lng: payload.meeting_point_lng,
+              p_scheduled_for: payload.scheduled_for,
+              p_notes: payload.notes,
+            })
+            .select(SALIDAS_RPC_FIELDS)
+            .single()
 
-    const { data, error: saveError } = await query
-      .select(
-        'id, title, territory_id, driver_id, group_id, meeting_point_id, meeting_point_name, meeting_point_lat, meeting_point_lng, scheduled_for, notes, tipo, origen, registro_id',
+      if (saveError || !data) {
+        setError(mensajeErrorSalidas(saveError, 'No se pudo guardar la salida.'))
+        return
+      }
+
+      const savedOuting: OutingRecord = {
+        ...(data as OutingRecord),
+        provenance: existingOuting?.provenance ?? null,
+      }
+      setOutings((current) =>
+        [...current.filter((item) => item.id !== savedOuting.id), savedOuting].sort(
+          (left, right) =>
+            new Date(left.scheduled_for).getTime() -
+            new Date(right.scheduled_for).getTime(),
+        ),
       )
-      .single()
-
-    if (saveError) {
-      setError(decirElError(saveError))
+      setSelectedOutingId(savedOuting.id)
+      const gpsPendiente = gpsNuevoDelPunto(
+        meetingPoints.find((punto) => punto.id === effectiveMeetingPointId),
+        effectiveMeetingCoords,
+      )
+      setGpsPendientes(gpsPendiente ? [gpsPendiente] : [])
+      setMessage(
+        outingBeingEditedId
+          ? gpsPendiente
+            ? `Salida actualizada. ¿Guardar este GPS en el punto ${gpsPendiente.codigo}?`
+            : 'Salida actualizada correctamente.'
+          : gpsPendiente
+            ? `Salida guardada. ¿Guardar este GPS en el punto ${gpsPendiente.codigo}?`
+            : 'Salida guardada correctamente.',
+      )
+      resetForm()
+      setFormularioAbierto(false)
+    } catch (caught) {
+      setError(mensajeErrorSalidas(caught, 'No se pudo guardar la salida.'))
+    } finally {
       setIsSaving(false)
+    }
+  }
+
+  const confirmarSiSePierdenTildadas = (desde: string, hasta: string) => {
+    const fuera = Object.entries(plannerDrafts).filter(
+      ([key, draft]) =>
+        draft.enabled && (key.slice(0, 10) < desde || key.slice(0, 10) > hasta),
+    )
+    if (fuera.length === 0) return true
+    return window.confirm(
+      fuera.length === 1
+        ? 'Hay una salida tildada fuera de esas fechas. Se saca de este armado; la agenda no se toca.'
+        : `Hay ${fuera.length} salidas tildadas fuera de esas fechas. Se sacan de este armado; la agenda no se toca.`,
+    )
+  }
+
+  const aplicarRango = (desde: string, hasta: string, preset: PresetPrograma) => {
+    const errorRango = validarRango(deClaveFecha(desde), deClaveFecha(hasta))
+    if (errorRango) {
+      setError(errorRango)
+      return false
+    }
+    if (!confirmarSiSePierdenTildadas(desde, hasta)) return false
+    setError(null)
+    setPrograma({ preset, desde, hasta })
+    return true
+  }
+
+  const aplicarPreset = (preset: Exclude<PresetPrograma, 'personalizado'>) => {
+    let visitaClave = ''
+    if (preset === 'semana-del-super') {
+      const yaEsSemanaCompleta =
+        rangoDesdeFecha.getDay() === 1 &&
+        rangoHastaFecha.getDay() === 0 &&
+        diasDelPrograma === 7
+      visitaClave =
+        diaVisitaSuper ||
+        (yaEsSemanaCompleta
+          ? programa.desde
+          : aClaveFecha(
+              (() => {
+                const proxima = rangoPorPreset('proxima-semana', new Date())
+                return 'error' in proxima ? rangoDesdeFecha : proxima.desde
+              })(),
+            ))
+      setDiaVisitaSuper(visitaClave)
+    }
+    const rango = rangoPorPreset(
+      preset,
+      new Date(),
+      visitaClave ? deClaveFecha(visitaClave) : null,
+    )
+    if ('error' in rango) {
+      setError(rango.error)
+      setPrograma((actual) => ({ ...actual, preset }))
+      return
+    }
+    aplicarRango(aClaveFecha(rango.desde), aClaveFecha(rango.hasta), preset)
+  }
+
+  const alCambiarDiaVisita = (clave: string) => {
+    setDiaVisitaSuper(clave)
+    if (!clave) return
+    const rango = rangoPorPreset('semana-del-super', new Date(), deClaveFecha(clave))
+    if ('error' in rango) {
+      setError(rango.error)
+      return
+    }
+    aplicarRango(aClaveFecha(rango.desde), aClaveFecha(rango.hasta), 'semana-del-super')
+  }
+
+  const alCambiarFecha = (campo: 'desde' | 'hasta', clave: string) => {
+    if (!clave) return
+    aplicarRango(
+      campo === 'desde' ? clave : programa.desde,
+      campo === 'hasta' ? clave : programa.hasta,
+      'personalizado',
+    )
+  }
+
+  const repetirSemanaEnElResto = () => {
+    const primera = semanasPrograma[0]
+    if (!primera || semanasPrograma.length < 2) return
+
+    const tildadasPrimera = Object.entries(plannerDrafts).filter(([key, draft]) => {
+      if (!draft.enabled) return false
+      const fecha = key.slice(0, 10)
+      return fecha >= primera.desdeClave && fecha <= primera.hastaClave
+    })
+
+    if (tildadasPrimera.length === 0) {
+      setError('Tildá al menos un horario en la primera semana para poder copiarlo.')
       return
     }
 
-    const savedOuting: OutingRecord = {
-      ...(data as OutingRecord),
-      provenance: existingOuting?.provenance ?? null,
+    const hayDespues = Object.entries(plannerDrafts).some(([key, draft]) => {
+      if (!draft.enabled) return false
+      return key.slice(0, 10) > primera.hastaClave
+    })
+
+    if (
+      hayDespues &&
+      !window.confirm(
+        'Se copian los horarios de la primera semana en las demás. Lo que ya tildaste ahí se reemplaza.',
+      )
+    ) {
+      return
     }
-    setOutings((current) =>
-      [...current.filter((item) => item.id !== savedOuting.id), savedOuting].sort(
-        (left, right) =>
-          new Date(left.scheduled_for).getTime() -
-          new Date(right.scheduled_for).getTime(),
-      ),
+
+    setPlannerDrafts((current) =>
+      repetirPrimeraSemana({
+        desdeClave: programa.desde,
+        hastaClave: programa.hasta,
+        rowKeysExistentes: plannerRows.map((row) => row.key),
+        drafts: current,
+      }),
     )
-    setSelectedOutingId(savedOuting.id)
-    setMessage(
-      editingOutingId
-        ? 'Salida actualizada correctamente.'
-        : 'Salida guardada correctamente.',
-    )
-    resetForm()
-    setFormularioAbierto(false)
-    setIsSaving(false)
+    setError(null)
+    setMessage('Se copió la primera semana en el resto del período. Revisá y guardá.')
   }
 
   const handleSavePlannerDrafts = async () => {
@@ -1539,12 +1912,15 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
     }
 
     const incompleteDraft = enabledDrafts.find(
-      ({ draft, slot, territory, driver }) =>
-        !slot ||
-        !territory ||
-        !driver ||
-        !draft.meetingPointName.trim() ||
-        !draft.meetingCoords,
+      ({ draft, slot, territory, driver }) => {
+        if (!slot || !driver) return true
+        if (slot.kind === 'phone') return false
+        return (
+          !draft.meetingPointName.trim() ||
+          !draft.meetingCoords ||
+          (!territory && !draft.meetingPointId)
+        )
+      },
     )
 
     if (incompleteDraft) {
@@ -1597,59 +1973,84 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
 
     setIsSaving(true)
 
-    const payload = enabledDrafts.map(({ draft, slot, territory }) => ({
-      title:
-        slot?.kind === 'phone'
-          ? PHONE_TITLE
-          : `${territory?.name ?? 'Salida'} ${slot?.dayShort ?? ''} ${slot?.timeLabel ?? ''}`.trim(),
-      territory_id: territory?.id ?? null,
-      driver_id: draft.driverId,
-      group_id: lockedGroupId || null,
-      meeting_point_name: draft.meetingPointName.trim(),
-      meeting_point_lat: Number(draft.meetingCoords?.[1].toFixed(6)),
-      meeting_point_lng: Number(draft.meetingCoords?.[0].toFixed(6)),
-      scheduled_for: new Date(slot?.scheduledForValue ?? '').toISOString(),
-      notes: notes.trim() || null,
-    }))
+    try {
+      const payload = enabledDrafts.map(({ draft, slot, territory }) => ({
+        title:
+          slot?.kind === 'phone'
+            ? PHONE_TITLE
+            : `${territory?.name ?? 'Salida'} ${slot?.dayShort ?? ''} ${slot?.timeLabel ?? ''}`.trim(),
+        territory_id: territory?.id ?? null,
+        driver_id: draft.driverId,
+        group_id: lockedGroupId || null,
+        meeting_point_id: draft.meetingPointId || null,
+        meeting_point_name: draft.meetingPointName.trim(),
+        meeting_point_lat: Number(draft.meetingCoords?.[1].toFixed(6)),
+        meeting_point_lng: Number(draft.meetingCoords?.[0].toFixed(6)),
+        scheduled_for: new Date(slot?.scheduledForValue ?? '').toISOString(),
+        notes: notes.trim() || null,
+      }))
 
-    const { data, error: saveError } = await client
-      .from('salidas')
-      .insert(payload)
-      .select(
-        'id, title, territory_id, driver_id, group_id, meeting_point_id, meeting_point_name, meeting_point_lat, meeting_point_lng, scheduled_for, notes, tipo, origen, registro_id',
-      )
+      const { data, error: saveError } = await client
+        .rpc('crear_salidas_lote', {
+          p_scope: salidasWriteScope,
+          p_salidas: payload,
+        })
+        .select(SALIDAS_RPC_FIELDS)
 
-    if (saveError) {
-      setError(decirElError(saveError))
-      setIsSaving(false)
-      return
-    }
+      if (saveError) {
+        setError(mensajeErrorSalidas(saveError, 'No se pudieron guardar las salidas.'))
+        return
+      }
 
-    const savedOutings = ((data as OutingRecord[] | null) ?? []).sort(
-      (left, right) =>
-        new Date(left.scheduled_for).getTime() - new Date(right.scheduled_for).getTime(),
-    )
-
-    setOutings((current) =>
-      [...current, ...savedOutings].sort(
+      const savedOutings = ((data as OutingRecord[] | null) ?? []).sort(
         (left, right) =>
           new Date(left.scheduled_for).getTime() - new Date(right.scheduled_for).getTime(),
-      ),
-    )
-    setPlannerDrafts((current) => {
-      const nextDrafts = { ...current }
-      enabledDrafts.forEach(({ row }) => {
-        if (row) {
-          delete nextDrafts[row.key]
-        }
+      )
+
+      if (savedOutings.length !== payload.length) {
+        setError('El servidor no confirmó todas las salidas; no se actualizó la agenda local.')
+        return
+      }
+
+      setOutings((current) =>
+        [...current, ...savedOutings].sort(
+          (left, right) =>
+            new Date(left.scheduled_for).getTime() - new Date(right.scheduled_for).getTime(),
+        ),
+      )
+      setPlannerDrafts((current) => {
+        const nextDrafts = { ...current }
+        enabledDrafts.forEach(({ row }) => {
+          if (row) {
+            delete nextDrafts[row.key]
+          }
+        })
+        return nextDrafts
       })
-      return nextDrafts
-    })
-    setSelectedOutingId(savedOutings.at(-1)?.id ?? null)
-    setActivePlannerRowKey(null)
-    handleClearPlannerSlot()
-    setMessage(`${savedOutings.length} salidas guardadas correctamente.`)
-    setIsSaving(false)
+      setSelectedOutingId(savedOutings.at(-1)?.id ?? null)
+      setActivePlannerRowKey(null)
+      handleClearPlannerSlot()
+      const pendientes = enabledDrafts
+        .map(({ draft }) =>
+          gpsNuevoDelPunto(
+            meetingPoints.find((punto) => punto.id === draft.meetingPointId),
+            draft.meetingCoords,
+          ),
+        )
+        .filter((punto): punto is GpsPendiente => punto !== null)
+      setGpsPendientes(pendientes)
+      setMessage(
+        pendientes.length === 1
+          ? `${savedOutings.length} salidas guardadas. ¿Guardar este GPS en el punto ${pendientes[0].codigo}?`
+          : pendientes.length > 1
+            ? `${savedOutings.length} salidas guardadas. Hay puntos sin GPS en el catálogo.`
+            : `${savedOutings.length} salidas guardadas correctamente.`,
+      )
+    } catch (caught) {
+      setError(mensajeErrorSalidas(caught, 'No se pudieron guardar las salidas.'))
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   return (
@@ -1659,8 +2060,10 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
           <h2>{groupServiceMode ? 'Salidas del grupo' : 'Salidas'}</h2>
           <p className="lead">
             {groupServiceMode
-              ? 'Los territorios que reserva tu grupo, sin pisarse con los demas.'
-              : `Desde el ${arranqueEnFrase} y por dos semanas: donde y a que hora se sale, y quien conduce.`}
+              ? isGroupServiceDelegate
+                ? `Las salidas de ${currentServiceGroup ? getGroupLabel(currentServiceGroup) : 'tu grupo'}, sin pisarse con los demás.`
+                : 'Las salidas de cada grupo, y los territorios que reserva.'
+              : 'Dónde y a qué hora se sale, y quién conduce.'}
           </p>
         </div>
       </section>
@@ -1670,20 +2073,71 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
           cuantos={proximasSinConductor}
           uno="Una salida no tiene conductor"
           varios="{n} salidas no tienen conductor"
-          detalle="Estan programadas y todavia nadie las lleva."
+          detalle="Están programadas y todavía nadie las lleva."
         />
 
-        <section className="panel">
+        {groupServiceMode && canManageGeneralOutings ? (
+          <label className="inline-filter">
+            Grupo
+            <Desplegable
+              etiqueta="Grupo"
+              valor={grupoConsulta}
+              alElegir={(valor) => {
+                setGrupoConsulta(valor)
+                setGroupId(valor === 'todos' ? '' : valor)
+              }}
+              opciones={[
+                { valor: 'todos', texto: 'Todos los grupos' },
+                ...selectableGroups.map((group) => ({
+                  valor: group.id,
+                  texto: getGroupLabel(group),
+                })),
+              ]}
+            />
+          </label>
+        ) : null}
+
+        {armarPrograma ? (
+        <section
+          ref={planificadorRef}
+          className="panel salidas-planificador"
+          aria-label="Armar el programa de salidas"
+        >
           <div className="module-registry-toolbar">
             <div>
-              <p className="eyebrow">Agenda base</p>
-              <h3>Salidas por dia y horario</h3>
+              <p className="eyebrow">
+                {programa.preset === 'semana-del-super'
+                  ? 'Semana del super'
+                  : 'Armar programa'}
+              </p>
+              <h3>
+                {programa.preset === 'semana-del-super'
+                  ? 'Visita del superintendente de circuito'
+                  : 'Salidas por día y horario'}
+              </h3>
+              <p className="table-hint">
+                Tildá los horarios, completá conductor y territorio, y guardá.
+                Cuando termines, volvé a la agenda.
+              </p>
             </div>
             <div className="module-registry-actions">
               <div className="territory-count-pill">
                 <strong>{plannerSlotsByDay.length}</strong>
-                <span>dias</span>
+                <span>{plannerSlotsByDay.length === 1 ? 'día' : 'días'}</span>
               </div>
+              {tildadasDelPrograma.length > 0 ? (
+                <div className="territory-count-pill">
+                  <strong>{tildadasDelPrograma.length}</strong>
+                  <span>{tildadasDelPrograma.length === 1 ? 'tildada' : 'tildadas'}</span>
+                </div>
+              ) : null}
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setArmarPrograma(false)}
+              >
+                Volver a la agenda
+              </button>
               <button
                 type="button"
                 className="primary-button"
@@ -1695,22 +2149,140 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
             </div>
           </div>
 
+          <div className="programa-periodo">
+            <p className="eyebrow">Período</p>
+            <div
+              className="programa-periodo-opciones"
+              role="group"
+              aria-label="Período del programa"
+            >
+              {PRESETS_PROGRAMA.map((opcion) => (
+                <button
+                  key={opcion.id}
+                  type="button"
+                  aria-pressed={programa.preset === opcion.id}
+                  className={
+                    programa.preset === opcion.id
+                      ? 'programa-periodo-opcion activa'
+                      : 'programa-periodo-opcion'
+                  }
+                  onClick={() => aplicarPreset(opcion.id)}
+                >
+                  {opcion.etiqueta}
+                </button>
+              ))}
+            </div>
+            <div className="programa-periodo-fechas">
+              <label className="inline-filter">
+                Desde
+                <input
+                  type="date"
+                  value={programa.desde}
+                  onChange={(event) => alCambiarFecha('desde', event.target.value)}
+                />
+              </label>
+              <label className="inline-filter">
+                Hasta
+                <input
+                  type="date"
+                  value={programa.hasta}
+                  onChange={(event) => alCambiarFecha('hasta', event.target.value)}
+                />
+              </label>
+              {programa.preset === 'semana-del-super' ? (
+                <label className="inline-filter">
+                  Un día de la visita
+                  <input
+                    type="date"
+                    value={diaVisitaSuper}
+                    onChange={(event) => alCambiarDiaVisita(event.target.value)}
+                  />
+                </label>
+              ) : null}
+            </div>
+            <p className="programa-periodo-resumen">
+              {diasDelPrograma === 1
+                ? `Un día: ${frasePrograma}.`
+                : `${diasDelPrograma} días, ${frasePrograma}.`}
+              {tildadasDelPrograma.length === 1
+                ? ' 1 tildada para guardar.'
+                : tildadasDelPrograma.length > 1
+                  ? ` ${tildadasDelPrograma.length} tildadas para guardar.`
+                  : ''}
+            </p>
+            {error ? <div className="form-feedback error">{error}</div> : null}
+            {message ? <div className="form-feedback success">{message}</div> : null}
+            {gpsPendientes.length > 0 ? (
+              <div className="programa-gps-pendientes">
+                {gpsPendientes.map((gps) => (
+                  <button
+                    key={gps.id}
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => void persistirGpsEnPunto(gps)}
+                  >
+                    Guardar este GPS en el punto {gps.codigo}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            {programa.preset === 'semana-del-super' ? (
+              <p className="table-hint">
+                Se arma el lunes a domingo de esa visita. Elegí cualquier día de
+                esa semana.
+              </p>
+            ) : null}
+            {programa.preset === 'este-mes' && diasDelPrograma <= 7 ? (
+              <p className="table-hint">
+                Quedan pocos días de este mes. Si querés el siguiente, tocá
+                Próximo mes.
+              </p>
+            ) : null}
+            {hayDiasPasados(rangoDesdeFecha, new Date()) ? (
+              <p className="table-hint">
+                Incluye días que ya pasaron. Si no hace falta cargarlos, adelantá
+                el desde.
+              </p>
+            ) : null}
+            {semanasPrograma.length >= 2 ? (
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={repetirSemanaEnElResto}
+              >
+                Repetir la primera semana en las demás
+              </button>
+            ) : null}
+          </div>
+
           <div className="outing-schedule-shell">
             <div className="outing-schedule-grid outing-schedule-head">
               <span>Tildar</span>
               <span>Dia</span>
               <span>Fecha</span>
               <span>Turno</span>
-              <span>Direccion</span>
+              <span>Punto de encuentro</span>
               <span>Conductor</span>
               <span>Horario</span>
-              <span>Territorio</span>
               <span>Mapa</span>
               <span>Tipo</span>
             </div>
 
             <div className="outing-schedule-body">
-              {plannerRows.map((row) => {
+              {filasPorSemana.map((semana) => (
+                <div key={semana.clave} className="programa-semana">
+                  <div className="programa-semana-rotulo">
+                    <strong>{semana.rotulo}</strong>
+                    {semana.yaHay > 0 ? (
+                      <span>
+                        {semana.yaHay === 1
+                          ? 'Ya hay 1 en la agenda'
+                          : `Ya hay ${semana.yaHay} en la agenda`}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="programa-semana-filas">
+              {semana.filas.map((row) => {
                 const draft = plannerDrafts[row.key]
                 const selectedRowSlot = row.slots.find(
                   (slot) => slot.key === draft?.slotKey,
@@ -1745,16 +2317,31 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                       <strong>{row.dayLabel}</strong>
                       <span>{row.dateLabel}</span>
                       <span>{row.periodLabel}</span>
-                      <input
-                        value={draft?.meetingPointName ?? ''}
-                        onChange={(event) =>
-                          handlePlannerDraftFieldChange(row, {
-                            meetingPointName: event.target.value,
-                          })
-                        }
-                        placeholder="Direccion de salida"
-                        disabled={!canManageOutings}
-                      />
+                      <div className="outing-punto-cell">
+                        <BuscadorPunto
+                          puntos={meetingPoints}
+                          valorId={draft?.meetingPointId || null}
+                          textoLibre={draft?.meetingPointName ?? ''}
+                          deshabilitado={!canManageOutings}
+                          alElegir={(punto, texto) =>
+                            handlePlannerDraftFieldChange(row, {
+                              meetingPointId: punto?.id ?? '',
+                              meetingPointName: punto?.nombre ?? texto,
+                              territoryId: punto?.territory_id ?? draft?.territoryId ?? '',
+                              meetingCoords:
+                                punto?.lat != null && punto?.lng != null
+                                  ? [punto.lng, punto.lat]
+                                  : punto
+                                    ? null
+                                    : draft?.meetingCoords ?? null,
+                              mapOpen: Boolean(punto && (punto.lat == null || punto.lng == null)),
+                            })
+                          }
+                        />
+                        {draft?.enabled && !draft.meetingPointId && draft.meetingPointName.trim() ? (
+                          <p className="table-hint">Punto nuevo, sin código. Marcá el GPS en el mapa.</p>
+                        ) : null}
+                      </div>
                       <Desplegable
                         etiqueta="Conductor"
                         valor={draft?.driverId ?? ''}
@@ -1792,44 +2379,11 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                           })),
                         ]}
                       />
-                      <Desplegable
-                        etiqueta="Territorio"
-                        valor={draft?.territoryId ?? ''}
-                        deshabilitado={!canManageOutings}
-                        alElegir={(valor) =>
-                          handlePlannerDraftFieldChange(row, {
-                            territoryId: valor,
-                            meetingCoords: null,
-                            mapOpen: Boolean(valor),
-                          })
-                        }
-                        opciones={[
-                          { valor: '', texto: 'Territorio' },
-                          ...territories.map((territory) => {
-                            const reservadoPorGrupo = reservedTerritoriesByOtherGroups.get(
-                              territory.id,
-                            )
-                            const reservadoPersonal = reservedTerritoriesByPersonalUse.get(
-                              territory.id,
-                            )
-
-                            return {
-                              valor: territory.id,
-                              deshabilitada: Boolean(reservadoPorGrupo || reservadoPersonal),
-                              texto: reservadoPorGrupo
-                                ? `${territory.name} - reservado por ${reservadoPorGrupo}`
-                                : reservadoPersonal
-                                  ? `${territory.name} - reservado para ${reservadoPersonal}`
-                                  : territory.name,
-                            }
-                          }),
-                        ]}
-                      />
                       <button
                         type="button"
                         className="secondary-button outing-map-toggle"
                         onClick={() => handleTogglePlannerMap(row)}
-                        disabled={!canManageOutings || !selectedRowTerritory}
+                        disabled={!canManageOutings}
                       >
                         {draft?.meetingCoords ? 'GPS listo' : 'Abrir mapa'}
                       </button>
@@ -1844,20 +2398,46 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                       </span>
                     </div>
 
-                    {draft?.mapOpen && selectedRowTerritory ? (
+                    {draft?.mapOpen ? (
                       <div className="outing-row-map">
                         <div className="map-picker-head">
-                          <strong>{selectedRowTerritory.name}</strong>
+                          <strong>
+                            {selectedRowTerritory?.name ??
+                              draft.meetingPointName ??
+                              'Punto de encuentro'}
+                          </strong>
                           <span>
                             {draft.meetingCoords
                               ? `${draft.meetingCoords[1].toFixed(6)}, ${draft.meetingCoords[0].toFixed(6)}`
-                              : 'Marca el punto de referencia dentro del territorio'}
+                              : 'Marcá en el mapa dónde se juntan'}
                           </span>
+                          {gpsNuevoDelPunto(
+                            meetingPoints.find((punto) => punto.id === draft.meetingPointId),
+                            draft.meetingCoords,
+                          ) ? (
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              onClick={() => {
+                                const pendiente = gpsNuevoDelPunto(
+                                  meetingPoints.find(
+                                    (punto) => punto.id === draft.meetingPointId,
+                                  ),
+                                  draft.meetingCoords,
+                                )
+                                if (pendiente) void persistirGpsEnPunto(pendiente)
+                              }}
+                            >
+                              Guardar este GPS en el punto{' '}
+                              {meetingPoints.find((punto) => punto.id === draft.meetingPointId)
+                                ?.codigo ?? draft.meetingPointName}
+                            </button>
+                          ) : null}
                         </div>
                         <Suspense fallback={<MapFallback />}>
                           <MeetingPointPickerMap
                             markerPosition={draft.meetingCoords}
-                            territoryGeometry={selectedRowTerritory.polygon_geojson ?? null}
+                            territoryGeometry={selectedRowTerritory?.polygon_geojson ?? null}
                             onPick={(coords) =>
                               handlePlannerDraftFieldChange(row, {
                                 meetingCoords: coords,
@@ -1872,11 +2452,16 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                   </div>
                 )
               })}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </section>
+        ) : null}
 
-        <section className="panel module-registry-panel">
+        {!armarPrograma ? (
+        <section className="panel module-registry-panel salidas-agenda">
           <div className="module-registry-toolbar">
             <div>
               <p className="eyebrow">Agenda guardada</p>
@@ -1895,7 +2480,17 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
 
             <div className="module-registry-actions">
               {canManageOutings ? (
-                <button type="button" className="primary-button" onClick={abrirNueva}>
+                <button
+                  type="button"
+                  className="primary-button"
+                  aria-expanded={armarPrograma}
+                  onClick={() => setArmarPrograma(true)}
+                >
+                  Armar programa
+                </button>
+              ) : null}
+              {canManageOutings ? (
+                <button type="button" className="secondary-button" onClick={abrirNueva}>
                   Nueva salida
                 </button>
               ) : null}
@@ -1927,11 +2522,10 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
 
                             return {
                               valor: territory.id,
-                              deshabilitada: Boolean(reservadoPorGrupo || reservadoPersonal),
                               texto: reservadoPorGrupo
-                                ? `${territory.name} - reservado por ${reservadoPorGrupo}`
+                                ? `${territory.name} — reservado por ${reservadoPorGrupo}`
                                 : reservadoPersonal
-                                  ? `${territory.name} - reservado para ${reservadoPersonal}`
+                                  ? `${territory.name} — reservado para ${reservadoPersonal}`
                                   : territory.name,
                             }
                           }),
@@ -1948,13 +2542,31 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                   opciones={[
                     { valor: 'todos', texto: 'Todas' },
                     { valor: 'hoy', texto: 'Hoy' },
-                    { valor: 'proximas', texto: 'Proximas' },
+                    { valor: 'proximas', texto: 'Próximas' },
                     { valor: 'pasadas', texto: 'Pasadas' },
+                    { valor: 'sin-conductor', texto: 'Sin conductor' },
                   ]}
                 />
               </label>
             </div>
           </div>
+
+          {error ? <div className="form-feedback error">{error}</div> : null}
+          {message ? <div className="form-feedback success">{message}</div> : null}
+          {gpsPendientes.length > 0 ? (
+            <div className="programa-gps-pendientes">
+              {gpsPendientes.map((gps) => (
+                <button
+                  key={gps.id}
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => void persistirGpsEnPunto(gps)}
+                >
+                  Guardar este GPS en el punto {gps.codigo}
+                </button>
+              ))}
+            </div>
+          ) : null}
 
           {isLoading ? (
             <div className="status-card">Cargando salidas...</div>
@@ -1962,21 +2574,21 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
             <Vacio
               hay={visibleOutingDetails.length}
               sinNada="Todavía no hay ninguna salida cargada."
-              comoEmpezar={'Tildá un horario en la grilla de arriba, o tocá "Nueva salida".'}
+              comoEmpezar={'Tocá "Nueva salida" o "Armar programa" para cargar horarios.'}
               filtrados="Ninguna salida coincide con lo que buscás."
             />
           ) : (
             <div className="module-table-shell">
               <div className="module-table module-table-head module-table-head-wide">
                 <span>Salida</span>
-                <span>Territorio</span>
+                <span>Punto</span>
                 <span>Conductor</span>
                 <span>Horario</span>
                 <span>Acciones</span>
               </div>
 
               <div className="module-table-body">
-                {filteredOutings.map((outing) => (
+                {salidasEnPagina.map((outing) => (
                   /* Div y no boton: adentro viven "PDF", "Editar" y
                      "Eliminar". El titulo de la salida es el control que
                      recibe el foco de teclado. */
@@ -1998,11 +2610,19 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                       }}
                     >
                       {outing.title}
+                      {groupServiceMode ? (
+                        <span className="table-hint">{outing.groupName}</span>
+                      ) : null}
                       {esSalidaHistorica(outing) ? (
                         <span className="history-badge">Histórica · Excel</span>
                       ) : null}
                     </button>
-                    <span>{outing.territoryName}</span>
+                    <span>
+                      {textoPuntoSalida({
+                        codigo: outing.territorio_codigo,
+                        nombre: outing.meeting_point_name ?? outing.territoryName,
+                      })}
+                    </span>
                     <span>
                       {outing.driverName}
                       <span className={`status-pill status-${outing.scheduleStatus.key}`}>
@@ -2020,6 +2640,16 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                         }}
                       >
                         PDF
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          openResultFor(outing)
+                        }}
+                      >
+                        Resultado
                       </button>
                       {canManageOutings ? (
                         <>
@@ -2053,26 +2683,67 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                   </div>
                 ))}
               </div>
+              {filteredOutings.length > SALIDAS_POR_PAGINA ? (
+                <div className="module-registry-actions" style={{ marginTop: '1rem' }}>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    disabled={paginaActual <= 0}
+                    onClick={() => setPagina((p) => Math.max(0, p - 1))}
+                  >
+                    Anteriores
+                  </button>
+                  <span className="table-hint">
+                    {paginaActual * SALIDAS_POR_PAGINA + 1}–
+                    {Math.min(
+                      (paginaActual + 1) * SALIDAS_POR_PAGINA,
+                      filteredOutings.length,
+                    )}{' '}
+                    de {filteredOutings.length}
+                  </span>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    disabled={paginaActual >= paginasAgenda - 1}
+                    onClick={() => setPagina((p) => Math.min(paginasAgenda - 1, p + 1))}
+                  >
+                    Siguientes
+                  </button>
+                </div>
+              ) : null}
             </div>
           )}
         </section>
+        ) : null}
 
         <Modal
           abierto={formularioAbierto}
           alCerrar={cerrarFormulario}
           titulo={
-            editingOutingId
+            resultadoOutingId
+              ? 'Resultado de la salida'
+              : editingOutingId
               ? editingHistorical
                 ? 'Completar salida histórica'
                 : 'Editar salida'
               : 'Nueva salida'
           }
           bajada={
-            editingHistorical
+            resultadoOutingId
+              ? 'Informá qué ocurrió. Corregir un resultado agrega un evento nuevo y no modifica el anterior.'
+              : editingHistorical
               ? 'Completá lo que tengas. Lo demás queda como está; fecha, hora y procedencia se conservan.'
               : 'Dirección, territorio, conductor y punto de encuentro.'
           }
         >
+          {resultadoOuting ? (
+            <SalidaResultadoForm
+              key={resultadoOuting.id}
+              salidaId={resultadoOuting.id}
+              canReport={canReportSelectedResult}
+              canCorrect={canCorrectSelectedResult}
+            />
+          ) : (
           <form className="form-stack" onSubmit={handleSubmit}>
               {selectedPlannerSlot ? (
                 <div className="module-detail-card">
@@ -2156,38 +2827,31 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
               ) : null}
 
               <label>
-                Dirección de la salida / punto de encuentro
-                {editingHistorical ? ' (podés completarla después)' : ''}
-                <input
-                  value={meetingPointName}
-                  onChange={(event) => {
-                    setMeetingPointId(null)
-                    setMeetingPointName(event.target.value)
-                  }}
-                  placeholder="Ej. Plaza 25 de Mayo"
-                  disabled={!canManageOutings}
-                />
-              </label>
-
-              <label>
-                Punto guardado{editingHistorical ? ' (opcional)' : ''}
-                <Desplegable
-                  etiqueta="Elegir punto guardado"
-                  valor={meetingPointId ?? ''}
-                  alElegir={handleSelectMeetingPoint}
+                Punto de encuentro
+                {editingHistorical ? ' (podés completarlo después)' : ''}
+                <BuscadorPunto
+                  puntos={meetingPoints}
+                  valorId={meetingPointId}
+                  textoLibre={meetingPointName}
                   deshabilitado={!canManageOutings}
-                  opciones={[
-                    { valor: '', texto: 'Elegir punto guardado' },
-                    ...meetingPoints.map((point) => ({
-                      valor: point.id,
-                      texto: point.activo ? point.nombre : `${point.nombre} (inactivo)`,
-                      deshabilitada: !point.activo,
-                    })),
-                  ]}
+                  alElegir={(punto, texto) => {
+                    setMeetingPointId(punto?.id ?? null)
+                    setMeetingPointName(punto?.nombre ?? texto)
+                    if (punto?.territory_id) {
+                      setTerritoryId(punto.territory_id)
+                    }
+                    setMeetingCoords(
+                      punto?.lat != null && punto?.lng != null
+                        ? [punto.lng, punto.lat]
+                        : punto
+                          ? null
+                          : meetingCoords,
+                    )
+                  }}
                 />
                 <small className="form-help">
-                  Usá un punto existente cuando la fuente o una decisión posterior lo
-                  respalde. Si no, podés marcarlo manualmente.
+                  Escribí 61,1 o una esquina. Si no coincide, se guarda como
+                  dirección nueva.
                 </small>
               </label>
 
@@ -2336,6 +3000,26 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                       ? `${meetingCoords[1].toFixed(6)}, ${meetingCoords[0].toFixed(6)}`
                       : 'Tocá el mapa para marcar dónde se juntan'}
                   </span>
+                  {gpsNuevoDelPunto(
+                    meetingPoints.find((punto) => punto.id === meetingPointId),
+                    meetingCoords,
+                  ) ? (
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => {
+                        const pendiente = gpsNuevoDelPunto(
+                          meetingPoints.find((punto) => punto.id === meetingPointId),
+                          meetingCoords,
+                        )
+                        if (pendiente) void persistirGpsEnPunto(pendiente)
+                      }}
+                    >
+                      Guardar este GPS en el punto{' '}
+                      {meetingPoints.find((punto) => punto.id === meetingPointId)?.codigo ??
+                        meetingPointName}
+                    </button>
+                  ) : null}
                 </div>
                 <Suspense fallback={<MapFallback />}>
                   <MeetingPointPickerMap
@@ -2343,7 +3027,6 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                     territoryGeometry={selectedFormTerritory?.polygon_geojson ?? null}
                     onPick={(coords) => {
                       if (canManageOutings) {
-                        setMeetingPointId(null)
                         setMeetingCoords(coords)
                       }
                     }}
@@ -2353,6 +3036,20 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
 
               {error ? <div className="form-feedback error">{error}</div> : null}
               {message ? <div className="form-feedback success">{message}</div> : null}
+              {gpsPendientes.length > 0 ? (
+                <div className="programa-gps-pendientes">
+                  {gpsPendientes.map((gps) => (
+                    <button
+                      key={gps.id}
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => void persistirGpsEnPunto(gps)}
+                    >
+                      Guardar este GPS en el punto {gps.codigo}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
 
               <button
                 type="button"
@@ -2384,9 +3081,10 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                     : 'Guardar salida'}
               </button>
           </form>
+          )}
         </Modal>
 
-        <section className="two-column-grid module-form-grid">
+        <section className="two-column-grid module-form-grid salidas-detalle">
           <article className="panel">
             <p className="eyebrow">
               {selectedOuting ? 'Detalle operativo' : 'Referencia rapida'}
@@ -2411,7 +3109,12 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                 </article>
                 <article className="module-detail-card">
                   <span>Punto de encuentro</span>
-                  <strong>{selectedOuting.meeting_point_name ?? 'Sin dato'}</strong>
+                  <strong>
+                    {textoPuntoSalida({
+                      codigo: selectedOuting.territorio_codigo,
+                      nombre: selectedOuting.meeting_point_name,
+                    })}
+                  </strong>
                 </article>
                 <article className="module-detail-card">
                   <span>Horario</span>
@@ -2495,7 +3198,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
               <div className="module-guidance-list">
                 <div className="module-guidance-item">
                   <strong>1. Tilda el horario</strong>
-                  <span>Empieza por la grilla de 2 semanas y elige un slot.</span>
+                  <span>Elegí el período, tildá un horario y completá la fila.</span>
                 </div>
                 <div className="module-guidance-item">
                   <strong>2. Completa la ficha</strong>
