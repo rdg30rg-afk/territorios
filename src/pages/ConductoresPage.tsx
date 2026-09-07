@@ -694,7 +694,11 @@ export function ConductoresPage() {
         </Modal>
 
         <Modal
-          abierto={Boolean(selectedDriver)}
+          /* La ficha no se abre encima del formulario. startEditing marca la
+             fila como seleccionada para que se vea cual se esta editando, y
+             eso alcanzaba para abrir tambien este modal: quedaban los dos
+             apilados diciendo lo mismo del mismo conductor. */
+          abierto={Boolean(selectedDriver) && !formularioAbierto}
           alCerrar={() => setSelectedDriverId(null)}
           titulo={selectedDriver?.full_name ?? 'Ficha del conductor'}
           bajada="Teléfono, disponibilidad y observaciones."

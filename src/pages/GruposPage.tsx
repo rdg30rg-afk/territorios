@@ -673,7 +673,10 @@ export function GruposPage() {
         </Modal>
 
         <Modal
-          abierto={Boolean(selectedGroup)}
+          /* Mismo caso que en Conductores: startEditing marca la fila para
+             que se vea cual se edita, y con eso se abria tambien esta ficha
+             encima del formulario. */
+          abierto={Boolean(selectedGroup) && !formularioAbierto}
           alCerrar={() => setSelectedGroupId(null)}
           titulo={selectedGroup ? getGroupDisplayName(selectedGroup) : 'Ficha del grupo'}
           bajada="Responsable, hermanos, punto de encuentro y código."

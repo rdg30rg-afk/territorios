@@ -2509,3 +2509,46 @@ button {
 .fila-nombre:hover {
   text-decoration: underline;
 }
+
+/* Las tablas de cinco columnas necesitan unos 960 px de fila para que entren
+   las tres fijas (estado, acciones, disponibilidad) mas nombre y telefono.
+   Con menos, las columnas `minmax(0, 1fr)` se aplastan a CERO -- medido: a
+   1100 px de ventana, nombre y telefono median 0 px-- y el texto se salia de
+   su caja y caia encima de la vecina. De ahi la maraña de "Agustin
+   Andrada+542644476941Sabado: Manana/Tarde" en una sola linea.
+   Debajo de ese ancho cada fila se apila y pasa a ser una ficha. */
+@media (max-width: 1280px) {
+  .module-table-head {
+    display: none;
+  }
+
+  .module-table,
+  .module-table-head-wide,
+  .module-table-row-wide,
+  .driver-availability-table,
+  .group-member-table {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.3rem;
+    align-items: start;
+  }
+
+  .module-table-body {
+    gap: 0.6rem;
+    padding: 0.6rem;
+  }
+
+  .module-table-row {
+    border: 1px solid var(--panel-border);
+    border-radius: 14px;
+    padding: 0.85rem 0.95rem;
+  }
+
+  .module-table-row .fila-nombre {
+    font-size: 1.02rem;
+  }
+
+  .module-table-actions {
+    justify-content: flex-start;
+    margin-top: 0.5rem;
+  }
+}

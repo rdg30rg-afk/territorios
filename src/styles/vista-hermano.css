@@ -138,7 +138,30 @@
   border-radius: 18px; box-shadow: 0 12px 28px rgba(22, 25, 29, .16);
 }
 .vh .miCuenta.compacto .auth-form label { color: var(--fg); }
-.vh .miCuenta.compacto .auth-form .boton { flex: 0 0 auto; }
+
+/* Mi cuenta es un panel de ajustes de 360 px, no la tarjeta de Hoy. Con el
+   cuerpo de boton general -21px en negrita sobre 56 px de alto- tres botones
+   seguidos quedaban como tres losas y el nombre, que es el contenido, se
+   leia mas chico que ellos. La altura de toque no se toca; lo que baja es la
+   letra, y el nombre pasa a ser lo mas grande del panel. */
+.vh .miCuenta.compacto .auth-form .boton {
+  flex: 0 0 auto;
+  font-size: var(--t-label);
+  border-radius: 14px;
+}
+.vh .miCuenta.compacto .auth-form label {
+  font-size: var(--t-label);
+  color: var(--fg-3);
+  font-weight: 500;
+}
+.vh .miCuenta.compacto .auth-form input {
+  font-size: var(--t-body);
+  font-weight: 600;
+  min-height: var(--tap);
+}
+/* Guardar nombre cuelga del campo: es su confirmacion, no una accion suelta
+   del mismo peso que salirse de la cuenta. */
+.vh .miCuenta.compacto .auth-form label + .boton { margin-top: 8px; }
 /* Donde estas parado en la congregacion es un dato, no un parrafo de ayuda:
    iba en gris de 16px entre otros tres parrafos grises iguales. */
 .vh .cuentaGrupo {
