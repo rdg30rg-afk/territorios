@@ -15,8 +15,8 @@ Las siete capturas que disparan este plan muestran cuatro enfermedades, no siete
 | # | Enfermedad | Dónde se ve | Causa raíz (con línea) |
 |---|---|---|---|
 | E1 | **Un solo sistema para dos productos.** La vista del hermano (teléfono, dedo, 56 px) y el admin (escritorio, mouse, 38–44 px) comparten CSS y se contaminan. | Grilla de territorios blanca sobre blanco; botones gigantes a 1000 px de ancho; botones rosados en Mapas. | `.vh .boton.secundario` es blanco por defecto (`vista-hermano.css:196`); `.sobre` es `position:fixed; inset:0` sin ancho máximo (`:434`); `.toolbar-actions button` con paleta marrón/beige hardcodeada del tema viejo (`index.css:1225-1232`). |
-| E2 | **Layouts que no se pliegan.** Grillas con mínimos rígidos y breakpoints desalineados. | Mapas a ~860–1100 px: tercera columna cortada, título "70 guardados" tapado. Salidas móvil: texto en columna de 130 px. | `.territory-stage` colapsa a 1099 px pero `.map-workspace` (`minmax(420px,1fr) minmax(270px,340px)`, `index.css:301-304`) colapsa a 1024 px; `.territory-registry-toolbar` exige `minmax(340px,auto)` dentro de un panel de 240–340 px (`index.css:361-368`); `.module-registry-toolbar` es `flex` sin `wrap` (`index.css:565-571`). |
-| E3 | **Todo de una.** Listas sin ventana, textos que explican en vez de decir. | Salidas trae 300 tarjetas con 3 botones + 3 chips cada una. Dashboard: "0% de los metros figura recorrido (porcentaje redondeado); 0 de 25 lados recorridos. Revisar qué falta." y "hace 1 días". | `SALIDAS_QUE_SE_TRAEN = 300` (`SalidasPage.tsx:196`) sin paginación; `territorySuggestions.ts:26`; `TerritorySuggestions.tsx:55`. |
+| E2 | **Layouts que no se pliegan.** Grillas con mínimos rígidos y breakpoints desalineados. | Mapas entre ~1100 y 1280 px de ventana: tercera columna cortada, título "70 guardados" tapado. Salidas móvil: texto en columna de 130 px. | `.map-workspace` (`minmax(420px,1fr) minmax(270px,340px)`, `index.css:301-304`) colapsa a 1280 px pero está **anidado** en `.territory-stage`, que colapsa a 1099 px: entre 1100 y 1280 hay dos grillas de dos columnas una dentro de otra en ~760–1000 px de contenido; `.territory-registry-toolbar` exige `minmax(340px,auto)` dentro de un panel de 240–340 px (`index.css:361-368`); `.module-registry-toolbar` es `flex` sin `wrap` (`index.css:565-571`) y `.module-search-field { min-width: 320px }` (`:580`) no cede. |
+| E3 | **Todo de una.** Listas sin ventana temporal, textos que explican en vez de decir. | Salidas: 300 en memoria, 25 por página, pero ordenadas por fecha descendente sin agrupar por día, y cada tarjeta lleva 3 botones + 3 chips. Dashboard: "0% de los metros figura recorrido (porcentaje redondeado); 0 de 25 lados recorridos. Revisar qué falta." y "hace 1 días". | `SALIDAS_QUE_SE_TRAEN = 300` / `SALIDAS_POR_PAGINA = 25` (`SalidasPage.tsx:196-197`); `territorySuggestions.ts:26`; `TerritorySuggestions.tsx:55`. |
 | E4 | **Carga lenta perceptible.** Se espera a tener todo antes de pintar. | Mapas y Salidas tardan; Dashboard corre sugerencias al entrar. | Ver §6 (auditoría de consultas). |
 
 Además hay **deuda muerta**: `src/styles/theme-mapsi.css` (1.575 líneas) y
@@ -81,12 +81,13 @@ Objetivo: que ninguna pantalla se vea **rota**. Sin cambios de estructura.
 **F0-A1 · Mapas: encabezado tapado y columnas cortadas (captura 5).**
 - `index.css:361`: `.territory-registry-toolbar { grid-template-columns: 1fr; }` (apilar siempre dentro del panel lateral: título arriba, buscador + botón abajo).
 - `index.css:366`: `.territory-registry-actions { grid-template-columns: minmax(0,1fr) auto; }`.
-- Unificar breakpoint: `.map-workspace` colapsa a **una columna en ≤ 1279 px** (ya hay una media query en `:1753` para 1280; usarla) y `.territory-stage` también en ≤ 1279. Entre 1280 y 1439 el panel derecho "Herramientas" se vuelve `<details>` cerrado bajo el mapa.
+- Unificar breakpoint: `.map-workspace` ya colapsa a una columna en ≤ 1280 px (`index.css:1753`); `.territory-stage` debe colapsar en el **mismo** punto (hoy 1099, `:288`). Regla: la grilla exterior nunca se mantiene en dos columnas cuando la interior todavía pide dos. Entre 1280 y 1439 el panel derecho "Herramientas" se vuelve `<details>` cerrado bajo el mapa.
 - `.toolbar-actions button` (`index.css:1225-1232`): eliminar el `#ecd8ca/#8a4b2d`; heredar de `.secondary-button`/`.ghost-button` del tema hermano.
 - Leaflet: los controles de dibujo y la paleta de colores se pisan con el zoom (esquina superior izquierda). Mover paleta + dibujo a `topright` y zoom queda en `topleft`. Es una opción de `L.control({position})`.
 
 **F0-A2 · Salidas móvil: columna de 130 px (captura 7).**
-- `index.css:565`: `.module-registry-toolbar { flex-wrap: wrap; }` y en ≤ 720 px `flex-direction: column; align-items: stretch;`.
+- `index.css:565`: `.module-registry-toolbar { flex-wrap: wrap; }` y en ≤ 720 px `flex-direction: column; align-items: stretch;`. El bloque de título lleva `flex: 1 1 100%` cuando envuelve.
+- `index.css:580`: `.module-search-field { min-width: 320px }` pasa a `min-width: min(320px, 100%)`; es el que empuja al título a 130 px.
 - Los cuatro controles (Armar programa, Nueva salida, buscador, filtros) pasan a una grilla `repeat(auto-fit, minmax(160px, 1fr))` para que en móvil sean dos columnas de 2 filas y no una torre.
 - `.table-hint` ("Se muestran las 300…") se reemplaza por un contador corto: **"300 de 1.794 · las más recientes"** con `title` explicativo.
 
@@ -191,7 +192,8 @@ Commit: `UI fase 4: inicio con tres números y menú móvil`.
 
 **F5-2 · CSS.**
 - Borrar `src/styles/theme-mapsi.css` y `src/styles/theme-ato.css` (no se importan). Descartar antes el cambio sin commit de `theme-ato.css` (`git checkout -- src/styles/theme-ato.css`) salvo indicación contraria del dueño.
-- Buscar y eliminar la paleta vieja en `index.css`: `#ecd8ca`, `#8a4b2d`, `rgba(109, 76, 65, …)`, `rgba(187, 62, 3, …)`, `#fffcf7`. Reemplazar por `--h-line`, `--h-olive`, `--h-surface`.
+- Buscar y eliminar la paleta vieja en `index.css`: `#ecd8ca`, `#8a4b2d`, `#bb3e03`, `#d97706`, `rgba(109, 76, 65, …)`, `rgba(187, 62, 3, …)`, `#fffcf7`. Reemplazar por `--h-line`, `--h-olive`, `--h-surface`. Lo mismo en `inicio-admin.css` (`#8a4a06`, `font-family: system-ui`): debe usar Urbanist y los tokens `--h-*`.
+- `.ghost-button` está pensado para la sidebar oscura (texto claro) y el tema lo "arregla" dentro de `.content`; darle una sola definición neutra y una variante `.ghost-button.on-dark` para la sidebar.
 - Partir `index.css` (2.450 líneas) en: `admin-shell.css`, `admin-components.css` (botones, tablas, tarjetas), `mapas.css`, `salidas.css`. Sin cambiar selectores en este paso; sólo mover.
 - Alinear breakpoints a tres: **720** (móvil), **1024** (tableta), **1280** (escritorio). Eliminar los de 640, 1099 y 1100.
 
@@ -223,7 +225,7 @@ Qué se pide al montar cada página y qué hacer con eso. Todo medido en el cód
 | `grupos_servicio` (`:674`) | todos | liviana | mantener |
 | `territorios` (`:679`) | **`polygon_geojson` de los 70** | pesado, y la lista de salidas sólo necesita `id, name` | quitar `polygon_geojson, description`; el polígono se pide al abrir la ficha/mapa |
 | `puntos_encuentro` (`:683`) | todos | liviana | mantener |
-| `salidas` (`:695`) | 300 más recientes, `CAMPOS_SALIDA` | las 300 se renderizan de una | ventana "desde hoy" + `Ver anteriores` de a 50 (F2-2) |
+| `salidas` (`:695`) | 300 más recientes, `CAMPOS_SALIDA` | 300 en memoria, 25 pintadas por página (`:1049-1055`); la ventana es "las últimas por fecha", no "las que vienen" | ventana "desde hoy" + `Ver anteriores` de a 50 agrupadas por día (F2-2); la paginación de 25 se reemplaza por esa ventana |
 | `salidas` count (`:699`) | `head:true` | correcta | mantener |
 | `territorio_personal_reservas` activas (`:701`) | todas | mediana | mantener |
 | `salida_importacion_procedencia` ×2 (`:706-718`) | **2.000 filas de 16 columnas** | es lo que más tarda y sólo sirve para el chip "Histórica · Excel" y la ficha | cargar bajo demanda por `salida_id` al abrir la ficha; el chip se deriva de `salidas.origen`/campo equivalente si existe, o se omite (F2-3 lo saca de la tarjeta) |
@@ -236,7 +238,7 @@ Mientras el `Promise.all` no resuelve, la página muestra sólo "Cargando"; por 
 |---|---|---|
 | `territorios` con `polygon_geojson` (`:1673`) | 70 polígonos | necesaria para el mapa; cachear en memoria del módulo (`Map<id, TerritoryRecord>`) para que volver a /mapas no re-descargue |
 | `territorio_manzanas` vigentes con `geometry_geojson` (`:1680`) | **todas las manzanas de todos los territorios** con geometría | pedir sin `geometry_geojson` al entrar (sólo `id, territory_id, label, lat, lng`) y traer la geometría del territorio seleccionado al seleccionarlo (`.eq('territory_id', id)`) |
-| Mapa de calor (`CoverageHeatmapPanel` / `loadCoverageHeatmap`) | resúmenes de cobertura | ya es bajo demanda al entrar en "Ver cobertura"; mantener |
+| Mapa de calor (`CoverageHeatmapPanel:38-50` → `loadCoverageHeatmap.ts:12-20`) | **4× `readAllRows`**: territorios, manzanas, lados y eventos de cobertura completos | ya es bajo demanda al entrar en "Ver cobertura"; mantener así, pero mostrar el esqueleto y un texto "Calculando cobertura de N territorios…" mientras baja. No cargar nunca al entrar a /mapas. |
 
 `isLoading` bloquea la lista lateral entera (`:2766`). La lista debe pintarse con `id, name` apenas llegue `territorios`, aunque las manzanas sigan bajando.
 
@@ -247,7 +249,7 @@ Mientras el `Promise.all` no resuelve, la página muestra sólo "Cargando"; por 
 | Pendientes: `importaciones` (1), `importacion_registros` count, `salidas` count ×2, `territorio_personal_reservas` count (`:143-185`) | sólo conteos `head:true` | correctas; mantener |
 | `loadDrivers` (`:379`) | todos los conductores | liviana; mantener |
 | `loadManagedUsers` (AuthContext) | `profiles`, `user_module_access`, `pending_users` con `readAllRows` + `grupo_miembros` | es el panel de accesos; con < 300 personas es aceptable. Mover el panel de accesos a un `<details>` cerrado y **no disparar** `loadManagedUsers` hasta abrirlo (o hasta que haya `pending > 0`) |
-| `TerritorySuggestions` | RPC de sugerencias | sólo al tocar "Actualizar cobertura" (regla actual); mantener |
+| `TerritorySuggestions` (`:14-28`) | `readAllRows` sobre la vista `cobertura_territorio` en páginas de 500, **al montar** el inicio | es la consulta más pesada del inicio y corre en cada visita. Decisión: cachear el resultado en memoria del módulo con marca de tiempo (5 min) y recalcular sólo con "Actualizar cobertura"; pedir sólo las columnas que usa `suggestTerritories` |
 
 ### Vista del hermano (`PredicacionPage.tsx`)
 
