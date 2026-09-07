@@ -82,3 +82,43 @@ test('codifica v2 y lo vuelve a abrir sin cambiar el documento', () => {
   assert.equal(reopened.migratedFromLegacy, false)
   assert.deepEqual(reopened, { ...first, migratedFromLegacy: false })
 })
+
+test('v2 frena si pierde candidatas o diverge la numeración canónica', () => {
+  const encoded = encodeEditorDraftState(decodeEditorDraftState({
+    territorios: [{ id: 't-uno', numero: '1' }],
+    asignacion: [['m1', 't-uno', 0]],
+  }, territories, candidates))
+  delete encoded.document.blocks[candidates[1].id]
+  assert.throws(
+    () => decodeEditorDraftState(encoded, territories, candidates),
+    /perdió la candidata m2/,
+  )
+
+  const numbered = encodeEditorDraftState(decodeEditorDraftState({
+    territorios: [{ id: 't-uno', numero: '1' }],
+  }, territories, candidates))
+  numbered.document.territories[territories[0].id].number = '99'
+  assert.throws(
+    () => decodeEditorDraftState(numbered, territories, candidates),
+    /cambió de número/,
+  )
+})
+
+test('legacy rechaza duplicados que antes se pisaban silenciosamente', () => {
+  const base = { territorios: [{ id: 't-uno', numero: '1' }] }
+  assert.throws(() => decodeEditorDraftState({
+    ...base,
+    editadas: [{ id: 'm1', geom: square() }, { id: 'm1', geom: square(1) }],
+  }, territories, candidates), /geometría editada m1 está repetido/)
+  assert.throws(() => decodeEditorDraftState({
+    ...base,
+    asignacion: [['m1', 't-uno'], ['m1', 't-uno']],
+  }, territories, candidates), /asignación de m1 está repetido/)
+  assert.throws(() => decodeEditorDraftState({
+    ...base,
+    caras: [['m1', [[0, 1]], 3], ['m1', [[1, 2]], 3]],
+  }, territories, candidates), /corrección de caras de m1 está repetido/)
+  assert.throws(() => decodeEditorDraftState({
+    territorios: [{ id: 't-uno', numero: '1' }, { id: 'otro', numero: '1' }],
+  }, territories, candidates), /número territorial legado 1 está repetido/)
+})

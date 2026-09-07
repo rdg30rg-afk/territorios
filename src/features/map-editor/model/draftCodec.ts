@@ -53,6 +53,11 @@ function uniqueStrings(value: unknown, field: string) {
   return [...new Set(array(value, field).map((item) => text(item, field)))]
 }
 
+function rejectDuplicate(seen: Set<string>, value: string, description: string) {
+  if (seen.has(value)) throw new Error(`${description} ${value} está repetido.`)
+  seen.add(value)
+}
+
 function candidateIndexes(candidates: readonly EditorCandidate[]) {
   const byId = new Map<string, EditorCandidate>()
   const bySourceKey = new Map<string, EditorCandidate>()
@@ -139,27 +144,35 @@ function decodeV2(
   candidates: readonly EditorCandidate[],
 ): DecodedEditorDraft {
   const { byId: territoryById } = canonicalTerritoryIndexes(canonicalTerritories)
-  const { byId: candidateById, datasetVersion } = candidateIndexes(candidates)
+  const { byId: candidateById, bySourceKey: candidateBySourceKey, datasetVersion } = candidateIndexes(candidates)
   if (text(raw.dataset_version, 'dataset_version') !== datasetVersion) {
     throw new Error('El borrador pertenece a otra versión de la base de manzanas.')
   }
   const documentValue = record(raw.document, 'El documento v2 del borrador es inválido.')
   const territoryRows = record(documentValue.territories, 'Los territorios del borrador v2 son inválidos.')
   const blockRows = record(documentValue.blocks, 'Las manzanas del borrador v2 son inválidas.')
+  if (Object.keys(territoryRows).length !== canonicalTerritories.length) {
+    throw new Error('El borrador v2 no contiene todos los territorios canónicos.')
+  }
   const territories: EditorTerritory[] = []
   for (const [id, rawTerritory] of Object.entries(territoryRows)) {
     const territory = record(rawTerritory, `El territorio ${id} del borrador es inválido.`)
     const canonical = territoryById.get(id)
     if (!canonical) throw new Error(`El territorio UUID ${id} del borrador ya no existe.`)
+    const draftNumber = text(territory.number, `territories.${id}.number`)
+    if (normalizeNumber(draftNumber) !== normalizeNumber(canonical.number)) {
+      throw new Error(`El territorio UUID ${id} cambió de número fuera del editor.`)
+    }
     const decodedTerritory: EditorTerritory = {
       ...canonical,
-      number: text(territory.number, `territories.${id}.number`),
+      number: canonical.number,
     }
     if (typeof territory.sector === 'string') decodedTerritory.sector = territory.sector
     if (typeof territory.color === 'string') decodedTerritory.color = territory.color
     territories.push(decodedTerritory)
   }
   const blocks: EditorBlock[] = []
+  const includedCandidateIds = new Set<string>()
   for (const [id, rawBlock] of Object.entries(blockRows)) {
     const block = record(rawBlock, `La manzana ${id} del borrador es inválida.`)
     const geometry = record(block.geometry, `La geometría de ${id} es inválida.`) as EditorPolygon
@@ -168,17 +181,33 @@ function decodeV2(
     if (territoryId && !territoryById.has(territoryId)) {
       throw new Error(`La manzana ${id} apunta al territorio inexistente ${territoryId}.`)
     }
-    if (block.sourceKey && candidateById.has(id) && candidateById.get(id)?.sourceKey !== block.sourceKey) {
-      throw new Error(`La identidad de la candidata ${id} no coincide con su source_key.`)
+    const sourceKey = block.sourceKey === null || block.sourceKey === undefined
+      ? null
+      : text(block.sourceKey, `${id}.sourceKey`)
+    const candidate = candidateById.get(id)
+    if (candidate) {
+      if (sourceKey !== candidate.sourceKey) {
+        throw new Error(`La identidad de la candidata ${id} no coincide con su source_key.`)
+      }
+      includedCandidateIds.add(id)
+    } else if (sourceKey && candidateBySourceKey.has(sourceKey)) {
+      throw new Error(`La candidata ${sourceKey} usa un UUID distinto en el borrador.`)
     }
     blocks.push({ ...block, id, geometry, territoryId } as EditorBlock)
+  }
+  const discardedSourceKeys = uniqueStrings(raw.discarded_source_keys, 'discarded_source_keys')
+  const discarded = new Set(discardedSourceKeys)
+  for (const candidate of candidates) {
+    if (!includedCandidateIds.has(candidate.id) && !discarded.has(candidate.sourceKey)) {
+      throw new Error(`El borrador v2 perdió la candidata ${candidate.sourceKey}.`)
+    }
   }
   const document = createEditorDocument(territories, blocks)
   document.touchedTerritoryIds = uniqueStrings(documentValue.touchedTerritoryIds, 'touchedTerritoryIds')
   return {
     document,
     datasetVersion,
-    discardedSourceKeys: uniqueStrings(raw.discarded_source_keys, 'discarded_source_keys'),
+    discardedSourceKeys,
     reviewedBlockIds: uniqueStrings(raw.reviewed_block_ids, 'reviewed_block_ids'),
     migratedFromLegacy: false,
   }
@@ -202,6 +231,9 @@ export function decodeEditorDraftState(
     if (!canonical) {
       throw new Error(`El territorio legado ${legacy.numero} no tiene equivalente UUID en la base.`)
     }
+    if (modesByCanonicalId.has(canonical.id)) {
+      throw new Error(`El número territorial legado ${legacy.numero} está repetido.`)
+    }
     legacyToCanonical.set(legacy.id, canonical)
     modesByCanonicalId.set(canonical.id, legacy)
   }
@@ -219,9 +251,11 @@ export function decodeEditorDraftState(
     })
   }
 
+  const editedSourceKeys = new Set<string>()
   for (const rawEdit of array(raw.editadas, 'editadas')) {
     const edit = record(rawEdit, 'Hay una geometría editada inválida.')
     const sourceKey = text(edit.id, 'editadas.id')
+    rejectDuplicate(editedSourceKeys, sourceKey, 'La geometría editada')
     const geometry = record(edit.geom, `La geometría editada ${sourceKey} es inválida.`) as EditorPolygon
     polygonRingLatLng(geometry)
     const current = blocksBySourceKey.get(sourceKey)
@@ -234,11 +268,13 @@ export function decodeEditorDraftState(
     })
   }
 
+  const assignedSourceKeys = new Set<string>()
   for (const rawAssignment of array(raw.asignacion, 'asignacion')) {
     if (!Array.isArray(rawAssignment) || rawAssignment.length < 2) {
       throw new Error('Hay una asignación legada inválida.')
     }
     const sourceKey = text(rawAssignment[0], 'asignacion.source_key')
+    rejectDuplicate(assignedSourceKeys, sourceKey, 'La asignación de')
     const legacyTerritoryId = text(rawAssignment[1], 'asignacion.territorio')
     const block = blocksBySourceKey.get(sourceKey)
     if (!block) throw new Error(`La manzana legada ${sourceKey} no existe en la fuente activa.`)
@@ -252,9 +288,11 @@ export function decodeEditorDraftState(
     block.order = order
   }
 
+  const sideSourceKeys = new Set<string>()
   for (const rawSides of array(raw.caras, 'caras')) {
     if (!Array.isArray(rawSides) || rawSides.length < 3) throw new Error('Hay caras legadas inválidas.')
     const sourceKey = text(rawSides[0], 'caras.source_key')
+    rejectDuplicate(sideSourceKeys, sourceKey, 'La corrección de caras de')
     const block = blocksBySourceKey.get(sourceKey)
     if (!block) throw new Error(`Las caras apuntan a la manzana inexistente ${sourceKey}.`)
     if (!Array.isArray(rawSides[1])) throw new Error(`Las caras de ${sourceKey} no son una lista.`)
