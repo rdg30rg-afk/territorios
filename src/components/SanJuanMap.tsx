@@ -15,6 +15,11 @@ import { isSupabaseConfigured, supabase } from '../lib/supabase'
 import { ordenarTerritorios } from '../lib/ordenarTerritorios'
 import { getTerritoryDeepLinkTransition } from '../lib/territoryDeepLink'
 import { ponerFondo } from '../lib/fondoMapa'
+import {
+  createSupabaseEditorTransport,
+  loadEditorCandidates,
+  type EditorCandidate,
+} from '../features/map-editor/data/editorRepository.ts'
 
 L.drawLocal.draw.toolbar.buttons.polygon = 'Polígono'
 L.drawLocal.draw.toolbar.buttons.rectangle = 'Rectángulo'
@@ -48,6 +53,7 @@ const SAN_JUAN_CENTER: L.LatLngExpression = [-31.5375, -68.5364]
    las letras ya se ocultaban por eso, y las formas -que es lo que hay que ir
    a buscar a la base- no tenían por qué correr otra suerte. */
 const MANZANA_ZOOM = 15
+const EDITOR_CANDIDATE_ZOOM = 14
 const DEFAULT_COMPANY_NAME = 'Territorios San Juan'
 const SNAP_DISTANCE_PX = 16
 const TERRITORY_COLORS = [
@@ -931,6 +937,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
   const existingTerritoryLayerRef = useRef<L.LayerGroup | null>(null)
   const editableGroupRef = useRef<L.FeatureGroup | null>(null)
   const vertexLayerRef = useRef<L.LayerGroup | null>(null)
+  const candidateLayerRef = useRef<L.LayerGroup | null>(null)
   const blockLayerRef = useRef<L.LayerGroup | null>(null)
   const snapGuideLayerRef = useRef<L.LayerGroup | null>(null)
   const overlapLayerRef = useRef<L.LayerGroup | null>(null)
@@ -973,6 +980,9 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
   const [modoCrear, setModoCrear] = useState(false)
   const [mapZoom, setMapZoom] = useState(11)
   const [vistaMovida, setVistaMovida] = useState(0)
+  const [editorCandidates, setEditorCandidates] = useState<EditorCandidate[]>([])
+  const [isLoadingCandidates, setIsLoadingCandidates] = useState(false)
+  const [candidateError, setCandidateError] = useState<string | null>(null)
   const [isMarkingBlocks, setIsMarkingBlocks] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isSavingBlock, setIsSavingBlock] = useState(false)
@@ -1899,6 +1909,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
     const existingTerritoryLayer = L.layerGroup().addTo(map)
     const editableGroup = new L.FeatureGroup().addTo(map)
     const vertexLayer = L.layerGroup().addTo(map)
+    const candidateLayer = L.layerGroup().addTo(map)
     const blockLayer = L.layerGroup().addTo(map)
     const snapGuideLayer = L.layerGroup().addTo(map)
     const overlapLayer = L.layerGroup().addTo(map)
@@ -1906,6 +1917,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
     existingTerritoryLayerRef.current = existingTerritoryLayer
     editableGroupRef.current = editableGroup
     vertexLayerRef.current = vertexLayer
+    candidateLayerRef.current = candidateLayer
     blockLayerRef.current = blockLayer
     snapGuideLayerRef.current = snapGuideLayer
     overlapLayerRef.current = overlapLayer
@@ -1937,6 +1949,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
       existingTerritoryLayerRef.current = null
       editableGroupRef.current = null
       vertexLayerRef.current = null
+      candidateLayerRef.current = null
       blockLayerRef.current = null
       snapGuideLayerRef.current = null
       overlapLayerRef.current = null
@@ -1960,6 +1973,67 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
   useEffect(() => {
     renderBlockMarkers()
   }, [renderBlockMarkers])
+
+  useEffect(() => {
+    const layer = candidateLayerRef.current
+    layer?.clearLayers()
+    if (!layer || !editingEnabled || mapZoom < EDITOR_CANDIDATE_ZOOM) return
+
+    for (const candidate of editorCandidates) {
+      L.polygon(
+        candidate.geometry.coordinates[0].map(([lng, lat]) => [lat, lng] as [number, number]),
+        {
+          color: '#2563eb',
+          weight: 1,
+          opacity: 0.55,
+          fillColor: '#60a5fa',
+          fillOpacity: 0.07,
+          interactive: false,
+          dashArray: '4 4',
+        },
+      ).addTo(layer)
+    }
+  }, [editingEnabled, editorCandidates, mapZoom])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!client || !map || !editingEnabled || mapZoom < EDITOR_CANDIDATE_ZOOM) {
+      setEditorCandidates([])
+      setIsLoadingCandidates(false)
+      setCandidateError(null)
+      return
+    }
+
+    const abortController = new AbortController()
+    const bounds = map.getBounds()
+    setIsLoadingCandidates(true)
+    setCandidateError(null)
+    void loadEditorCandidates(
+      createSupabaseEditorTransport(client),
+      {
+        west: bounds.getWest(),
+        south: bounds.getSouth(),
+        east: bounds.getEast(),
+        north: bounds.getNorth(),
+      },
+      abortController.signal,
+    )
+      .then((candidates) => setEditorCandidates(candidates))
+      .catch((loadError: unknown) => {
+        if (loadError instanceof DOMException && loadError.name === 'AbortError') return
+        setEditorCandidates([])
+        setCandidateError(
+          loadError instanceof Error
+            ? loadError.message
+            : 'No se pudieron cargar las manzanas candidatas.',
+        )
+      })
+      .finally(() => {
+        if (!abortController.signal.aborted) setIsLoadingCandidates(false)
+      })
+
+    return () => abortController.abort()
+  }, [client, editingEnabled, mapZoom, vistaMovida])
 
   useEffect(() => {
     renderSnapGuide(snapPreviewPoint)
@@ -3192,6 +3266,17 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
               </div>
 
               <div className="territory-map-footer">
+                {editingEnabled && !modoEdicion ? (
+                  <div className="territory-map-help editor-candidate-status">
+                    {candidateError
+                      ? `No se pudo cargar la base de manzanas: ${candidateError}`
+                      : mapZoom < EDITOR_CANDIDATE_ZOOM
+                        ? 'Acercate al barrio para ver la base de manzanas.'
+                        : isLoadingCandidates
+                          ? 'Cargando manzanas del encuadre…'
+                          : `${editorCandidates.length} manzanas de referencia en este encuadre.`}
+                  </div>
+                ) : null}
                 {modoEdicion ? (
                 <div className="territory-map-help">
                   <span>Tocá el primer punto otra vez para cerrar el polígono.</span>

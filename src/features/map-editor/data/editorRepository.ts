@@ -1,0 +1,189 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
+import { polygonRingLatLng } from '../geometry/blockGeometry.ts'
+import type { EditorPolygon } from '../model/types.ts'
+
+export type EditorViewport = {
+  west: number
+  south: number
+  east: number
+  north: number
+}
+
+export type EditorCandidate = {
+  id: string
+  sourceKey: string
+  datasetVersion: string
+  geometry: EditorPolygon
+  center: readonly [lat: number, lng: number]
+  diagnostics: Record<string, unknown>
+}
+
+export type EditorDraft<TState = unknown> = {
+  revision: number
+  state: TState | null
+  updatedBy: string | null
+  updatedAt: string | null
+}
+
+type CandidateRow = {
+  id: string
+  source_key: string
+  dataset_version: string
+  geometry_geojson: EditorPolygon
+  centro_lat: number | string
+  centro_lng: number | string
+  diagnostics: Record<string, unknown> | null
+}
+
+type RpcResult = {
+  data: unknown
+  error: { message: string; code?: string } | null
+}
+
+export type EditorDataTransport = {
+  queryCandidates: (
+    viewport: EditorViewport,
+    from: number,
+    to: number,
+    signal?: AbortSignal,
+  ) => Promise<{ data: CandidateRow[] | null; error: { message: string } | null }>
+  callRpc: (name: string, args?: Record<string, unknown>) => Promise<RpcResult>
+}
+
+const CANDIDATE_PAGE_SIZE = 500
+
+function assertViewport(viewport: EditorViewport) {
+  const values = Object.values(viewport)
+  if (values.some((value) => !Number.isFinite(value)) ||
+    viewport.west < -180 || viewport.east > 180 ||
+    viewport.south < -90 || viewport.north > 90 ||
+    viewport.west > viewport.east || viewport.south > viewport.north) {
+    throw new Error('El encuadre del mapa es inválido.')
+  }
+}
+
+function parseCandidate(row: CandidateRow): EditorCandidate {
+  if (!row.id || !row.source_key || !row.dataset_version) {
+    throw new Error('La base devolvió una candidata incompleta.')
+  }
+  polygonRingLatLng(row.geometry_geojson)
+  const lat = Number(row.centro_lat)
+  const lng = Number(row.centro_lng)
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    throw new Error(`La candidata ${row.source_key} no tiene centro válido.`)
+  }
+  return {
+    id: row.id,
+    sourceKey: row.source_key,
+    datasetVersion: row.dataset_version,
+    geometry: row.geometry_geojson,
+    center: [lat, lng],
+    diagnostics: row.diagnostics ?? {},
+  }
+}
+
+export function createSupabaseEditorTransport(client: SupabaseClient): EditorDataTransport {
+  return {
+    async queryCandidates(viewport, from, to, signal) {
+      let query = client
+        .from('manzana_candidatas')
+        .select('id, source_key, dataset_version, geometry_geojson, centro_lat, centro_lng, diagnostics')
+        .eq('activa', true)
+        .lte('bbox_min_lng', viewport.east)
+        .gte('bbox_max_lng', viewport.west)
+        .lte('bbox_min_lat', viewport.north)
+        .gte('bbox_max_lat', viewport.south)
+        .order('source_key')
+        .range(from, to)
+      if (signal) query = query.abortSignal(signal)
+      const result = await query
+      return {
+        data: result.data as CandidateRow[] | null,
+        error: result.error ? { message: result.error.message } : null,
+      }
+    },
+    async callRpc(name, args) {
+      const result = await client.rpc(name, args)
+      return {
+        data: result.data,
+        error: result.error ? { message: result.error.message, code: result.error.code } : null,
+      }
+    },
+  }
+}
+
+export async function loadEditorCandidates(
+  transport: EditorDataTransport,
+  viewport: EditorViewport,
+  signal?: AbortSignal,
+) {
+  assertViewport(viewport)
+  const candidates: EditorCandidate[] = []
+  for (let from = 0; ; from += CANDIDATE_PAGE_SIZE) {
+    if (signal?.aborted) throw new DOMException('Carga cancelada', 'AbortError')
+    const { data, error } = await transport.queryCandidates(
+      viewport,
+      from,
+      from + CANDIDATE_PAGE_SIZE - 1,
+      signal,
+    )
+    if (error) throw new Error(error.message)
+    const page = (data ?? []).map(parseCandidate)
+    candidates.push(...page)
+    if (page.length < CANDIDATE_PAGE_SIZE) break
+  }
+
+  const datasetVersions = new Set(candidates.map((candidate) => candidate.datasetVersion))
+  if (datasetVersions.size > 1) {
+    throw new Error('La base devolvió más de una versión activa de candidatas.')
+  }
+  return candidates
+}
+
+function parseDraft<TState>(value: unknown): EditorDraft<TState> {
+  if (!value || typeof value !== 'object') throw new Error('La base devolvió un borrador inválido.')
+  const row = value as Record<string, unknown>
+  const revision = Number(row.revision)
+  if (!Number.isSafeInteger(revision) || revision < 0) {
+    throw new Error('La revisión del borrador es inválida.')
+  }
+  return {
+    revision,
+    state: (row.estado ?? null) as TState | null,
+    updatedBy: typeof row.actualizado_por === 'string' ? row.actualizado_por : null,
+    updatedAt: typeof row.actualizado_at === 'string' ? row.actualizado_at : null,
+  }
+}
+
+function throwRpcError(error: RpcResult['error']) {
+  if (!error) return
+  if (error.code === '40001') {
+    throw new Error('Otra persona guardó el editor después que vos. Recargá antes de seguir.')
+  }
+  throw new Error(error.message)
+}
+
+export async function readEditorDraft<TState>(transport: EditorDataTransport) {
+  const result = await transport.callRpc('leer_borrador_editor')
+  throwRpcError(result.error)
+  return parseDraft<TState>(result.data)
+}
+
+export async function saveEditorDraft<TState extends Record<string, unknown>>(
+  transport: EditorDataTransport,
+  revision: number,
+  state: TState,
+) {
+  const result = await transport.callRpc('guardar_borrador_editor', {
+    p_revision: revision,
+    p_estado: state,
+  })
+  throwRpcError(result.error)
+  return parseDraft<TState>(result.data)
+}
+
+export async function discardEditorDraft(transport: EditorDataTransport, revision: number) {
+  const result = await transport.callRpc('descartar_borrador_editor', { p_revision: revision })
+  throwRpcError(result.error)
+  return parseDraft(result.data)
+}

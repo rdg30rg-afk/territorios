@@ -182,6 +182,11 @@
   padding-top: 0.55rem;
 }
 
+.editor-candidate-status {
+  color: var(--text-soft);
+  font-size: 0.88rem;
+}
+
 /* En telefono el mapa es la pantalla. La lista era otra pagina completa
    debajo: 70 filas despues de un mapa de 70dvh. Queda cerrada, un renglon. */
 @media (max-width: 1280px) {
