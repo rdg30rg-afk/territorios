@@ -5,6 +5,9 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vite.dev/config/
 export default defineConfig({
+  // Coincidir con la URL local usada por la app; evitar que localhost resuelva
+  // solo a ::1 y el navegador en 127.0.0.1 termine mostrando caché obsoleta.
+  server: { host: '127.0.0.1', port: 5173, strictPort: true },
   // El editor de manzanas es una pagina aparte, no un componente de React.
   // Sin declararla aca, `vite build` solo empaqueta index.html: en el dev
   // server funcionaba porque sirve cualquier archivo del proyecto, y en
@@ -27,9 +30,9 @@ export default defineConfig({
         name: 'Territorios San Juan',
         short_name: 'Territorios',
         description:
-          'Gestor territorial con mapas, conductores, grupos y salidas.',
-        theme_color: '#4e342e',
-        background_color: '#f7f5f2',
+          'Administración territorial para mapas, grupos y salidas.',
+        theme_color: '#cbea5b',
+        background_color: '#f6f4ee',
         display: 'standalone',
         start_url: '/',
         scope: '/',
@@ -82,6 +85,10 @@ export default defineConfig({
         navigateFallbackDenylist: [/^\/editor-manzanas\.html$/],
         skipWaiting: true,
         globPatterns: ['**/*.{js,css,html,svg,png,ico,json}'],
+        // Los JSON de public/datos son respaldos y semillas del editor, no
+        // la app. Si el service worker los precachea y el deploy no los
+        // sube, la PWA no instala. banco-ato es un prototipo, no se publica.
+        globIgnores: ['**/datos/**', 'banco-ato.html'],
       },
       devOptions: {
         // Apagado. El service worker de desarrollo secuestraba el editor:

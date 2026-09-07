@@ -34,6 +34,8 @@
    -------------------------------------------------------------------------- */
 
 :root[data-theme='hermano'] {
+  color-scheme: light;
+
   /* Tinta y papel, iguales a la vista del hermano. */
   --h-ink: #16191d;
   --h-canvas: #f6f4ee;
@@ -160,6 +162,30 @@
    -------------------------------------------------------------------------- */
 
 :root[data-theme='hermano'] .app-shell { background: var(--h-canvas); }
+
+.sidebar-menu { display: flex; flex-direction: column; gap: 1.1rem; }
+.mobile-admin-header { display: none; }
+
+@media (max-width: 1024px) {
+  :root[data-theme='hermano'] .app-shell,
+  :root[data-theme='hermano'] .content,
+  :root[data-theme='hermano'] .page { min-width: 0; max-width: 100%; }
+  :root[data-theme='hermano'] .sidebar {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    height: auto;
+    max-height: 100dvh;
+    overflow: visible;
+    padding: .75rem 1rem;
+  }
+  .mobile-admin-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+  .mobile-admin-header small { display: block; font-size: .8rem; color: #cbea5b; }
+  .mobile-admin-header button { min-height: 44px; padding: .6rem .9rem; color: #f4f3ef; background: transparent; border: 1px solid #777; border-radius: 10px; font: inherit; }
+  .mobile-admin-header button:focus-visible { outline: 3px solid #cbea5b; outline-offset: 3px; }
+  .sidebar-menu:not(.is-open) { display: none; }
+  .sidebar-menu.is-open { max-height: calc(100dvh - 68px); overflow-y: auto; overscroll-behavior: contain; }
+}
 
 :root[data-theme='hermano'] .sidebar {
   background: var(--h-ink);
@@ -475,6 +501,42 @@
   color: var(--h-olive-ink);
 }
 
+:root[data-theme='hermano'] .programa-periodo {
+  background: var(--h-canvas);
+  border: 1px solid var(--h-line);
+  border-radius: var(--h-r-control);
+}
+
+:root[data-theme='hermano'] .programa-periodo-opcion {
+  min-height: var(--h-tap);
+  background: var(--h-surface);
+  border: 1px solid var(--h-line);
+  color: var(--h-fg);
+  font: 600 var(--h-t-body)/1 Urbanist, -apple-system, sans-serif;
+}
+
+:root[data-theme='hermano'] .programa-periodo-opcion.activa {
+  background: var(--h-lime);
+  border-color: var(--h-lime-deep);
+  color: var(--h-ink);
+}
+
+:root[data-theme='hermano'] .programa-periodo-fechas input[type='date'] {
+  background: var(--h-surface);
+  border: 1px solid var(--h-line);
+  color: var(--h-fg);
+}
+
+:root[data-theme='hermano'] .programa-semana-rotulo {
+  background: var(--h-canvas);
+  color: var(--h-fg);
+  border-bottom: 1px solid var(--h-line);
+}
+
+:root[data-theme='hermano'] .programa-semana-rotulo span {
+  color: var(--h-fg-3);
+}
+
 /* --------------------------------------------------------------------------
    8. Pastillas de estado
    Regla heredada: el color nunca es el unico portador de significado.
@@ -662,6 +724,37 @@
   border: 1px solid var(--h-line);
   color: var(--h-fg-2);
   font-size: var(--h-t-body);
+}
+
+/* La sesión se valida antes de montar cualquier ruta protegida. El guard no
+   anuncia una espera que puede repetirse al renovar la sesión: solo deja una
+   transición breve y silenciosa sobre el mismo papel de la vista hermano. */
+:root[data-theme='hermano'] .auth-guard-loading {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  background: var(--h-canvas);
+}
+
+:root[data-theme='hermano'] .auth-guard-loading-mark {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  background: var(--h-ink);
+  color: var(--h-lime);
+  font-size: 19px;
+  animation: auth-guard-arrival 180ms var(--h-ease) both;
+}
+
+@keyframes auth-guard-arrival {
+  from { opacity: 0; transform: scale(.88); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-theme='hermano'] .auth-guard-loading-mark { animation: none; }
 }
 
 /* --------------------------------------------------------------------------
@@ -884,4 +977,81 @@
   text-transform: none;
   letter-spacing: 0.01em;
   font-size: var(--h-t-label);
+}
+
+/* El acceso también lo usa el publicador: contraste y controles de 56px. */
+:root[data-theme='hermano'] .auth-layout {
+  min-height: 100dvh;
+  padding: 24px;
+}
+
+:root[data-theme='hermano'] .auth-card {
+  width: min(100%, 840px);
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  border-radius: var(--h-r-panel);
+  font-size: 16px;
+}
+
+:root[data-theme='hermano'] .auth-copy {
+  grid-column: 1;
+  grid-row: 1 / 3;
+  background: var(--h-ink);
+  color: var(--h-canvas);
+}
+
+:root[data-theme='hermano'] .auth-copy h2 { color: var(--h-canvas); }
+:root[data-theme='hermano'] .auth-copy .eyebrow { color: var(--h-lime); font-size: 16px; }
+:root[data-theme='hermano'] .auth-copy .lead { color: #e5e0d4; font-size: 17px; }
+
+:root[data-theme='hermano'] .auth-mode-tabs,
+:root[data-theme='hermano'] .auth-form { grid-column: 2; min-width: 0; }
+:root[data-theme='hermano'] .auth-mode-tabs { grid-row: 1; align-self: start; }
+:root[data-theme='hermano'] .auth-form { grid-row: 2; }
+
+:root[data-theme='hermano'] .auth-card input,
+:root[data-theme='hermano'] .auth-card button {
+  min-height: 56px;
+  font-size: 16px;
+}
+:root[data-theme='hermano'] .auth-card label,
+:root[data-theme='hermano'] .auth-card .form-feedback { font-size: 16px; }
+
+:root[data-theme='hermano'] .auth-mode-tabs button {
+  background: var(--h-canvas);
+  color: var(--h-fg);
+  border: 1px solid var(--h-line);
+  border-radius: var(--h-r-control);
+}
+
+:root[data-theme='hermano'] .auth-mode-tabs button.active {
+  background: var(--h-lime);
+  color: var(--h-ink);
+  border-color: var(--h-lime-deep);
+}
+
+@media (max-width: 640px) {
+  :root[data-theme='hermano'] body { overflow-x: clip; }
+  :root[data-theme='hermano'] .content { padding: 1rem 0.75rem 2rem; }
+  :root[data-theme='hermano'] .module-table-head,
+  :root[data-theme='hermano'] .territory-table-head { display: none; }
+  :root[data-theme='hermano'] .module-table-row,
+  :root[data-theme='hermano'] .module-table-row-wide,
+  :root[data-theme='hermano'] .driver-availability-table,
+  :root[data-theme='hermano'] .group-member-table {
+    grid-template-columns: minmax(0, 1fr);
+    gap: .55rem;
+  }
+  :root[data-theme='hermano'] .module-table-shell,
+  :root[data-theme='hermano'] .territory-table-shell { overflow: visible; }
+  :root[data-theme='hermano'] .module-table-actions { flex-wrap: wrap; }
+  :root[data-theme='hermano'] .module-table-actions > button,
+  :root[data-theme='hermano'] .toolbar-actions > button { min-height: 44px; }
+  :root[data-theme='hermano'] .auth-layout { padding: 16px; }
+  :root[data-theme='hermano'] .auth-card { grid-template-columns: minmax(0, 1fr); }
+  :root[data-theme='hermano'] .auth-copy,
+  :root[data-theme='hermano'] .auth-mode-tabs,
+  :root[data-theme='hermano'] .auth-form { grid-column: 1; grid-row: auto; }
+  :root[data-theme='hermano'] .auth-copy,
+  :root[data-theme='hermano'] .auth-form { padding: 24px; }
+  :root[data-theme='hermano'] .auth-mode-tabs { padding: 24px 24px 0; }
 }

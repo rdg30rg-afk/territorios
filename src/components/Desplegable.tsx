@@ -224,7 +224,7 @@ export function Desplegable({
         ? createPortal(
             <div
               ref={lista}
-              className="desplegable-lista"
+              className={`desplegable-lista ${className}`}
               role="listbox"
               aria-label={etiqueta}
               style={{ top: caja.top, left: caja.left, width: caja.width }}

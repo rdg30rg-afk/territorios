@@ -627,6 +627,7 @@ export function PredicacionPage() {
   const [recorte, setRecorte] = useState<{ trajo: number; hay: number } | null>(null)
   const [cargando, setCargando] = useState(true)
   const [aviso, setAviso] = useState<string | null>(null)
+  const [filtroSalidas, setFiltroSalidas] = useState<'todas' | 'mias' | 'grupo'>('todas')
   const guardando = cola.sending
   const salidasVisibles = useMemo(() => {
     const base = showQA ? salidas : salidas.filter((salida) => !isSyntheticQaOuting(salida))
@@ -649,7 +650,6 @@ export function PredicacionPage() {
   const [hoja, setHoja] = useState<{ salida?: Salida; propio?: boolean } | null>(null)
   const [historial, setHistorial] = useState(false)
   const [hojaGrupo, setHojaGrupo] = useState(false)
-  const [filtroSalidas, setFiltroSalidas] = useState<'todas' | 'mias' | 'grupo'>('todas')
   const [online, setOnline] = useState(() => navigator.onLine)
 
   useEffect(() => {
@@ -1631,10 +1631,10 @@ export function PredicacionPage() {
       {/* ------------------------------------------------------- pestañas */}
       <nav className="pestanias" aria-label="Secciones">
         {([
-          ['hoy', 'Hoy'],
-          ['salidas', 'Salidas'],
-          ['territorio', 'Mi territorio'],
-        ] as const).map(([id, texto]) => (
+          ['hoy', 'Hoy', '⌂'],
+          ['salidas', 'Salidas', '◷'],
+          ['territorio', 'Mi territorio', '◇'],
+        ] as const).map(([id, texto, icono]) => (
           <button
             key={id}
             onClick={() => {
@@ -1643,7 +1643,8 @@ export function PredicacionPage() {
             }}
             {...(vista === id ? { 'aria-current': 'page' as const } : {})}
           >
-            {texto}
+            <span aria-hidden="true" className="pestaniaIcono">{icono}</span>
+            <span>{texto}</span>
             <i className="marcaActiva" />
           </button>
         ))}

@@ -7,8 +7,10 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "build:development": "tsc -b && vite build --mode development",
+    "build:dev:seguro": "node scripts/build-dev-seguro.mjs",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:build-dev-seguro": "node --test tests/build-dev-seguro.test.mjs"
   },
   "dependencies": {
     "@capacitor/core": "^8.5.0",

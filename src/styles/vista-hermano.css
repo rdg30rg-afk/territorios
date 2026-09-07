@@ -71,6 +71,9 @@
 
 .vh {
   margin: 0;
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: clip;
   background: var(--canvas);
   color: var(--fg);
   font: 400 var(--t-body)/1.5 Urbanist, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -82,7 +85,24 @@
 .vh :focus-visible { outline: 3px solid var(--olive); outline-offset: 3px; border-radius: 8px; }
 .vh ::selection { background: var(--lime); color: var(--ink); }
 
-.vh .hoja { max-width: 520px; margin: 0 auto; padding: 0 var(--pad); }
+.vh .hoja { width: 100%; max-width: 520px; min-width: 0; margin: 0 auto; padding: 0 var(--pad); }
+
+.vh button,
+.vh input:not([type='checkbox']):not([type='radio']),
+.vh textarea,
+.vh [role='combobox'] {
+  min-height: var(--tap);
+  font-size: max(16px, 1em);
+}
+
+.vh p,
+.vh strong,
+.vh small,
+.vh span,
+.vh button,
+.vh label {
+  overflow-wrap: anywhere;
+}
 
 /* ---------------------------------------------------- encabezado */
 .vh .barra {
@@ -382,6 +402,7 @@
   color: var(--fg-3); font: 600 var(--t-label)/1.1 Urbanist, sans-serif;
 }
 .vh .pestanias button svg { width: 26px; height: 26px; }
+.vh .pestaniaIcono { font-size: 22px; line-height: 1; }
 /* Activo: color + peso + subrayado. El color no viaja solo. */
 .vh .pestanias button[aria-current='page'] { color: var(--olive); }
 .vh .pestanias button[aria-current='page'] .marcaActiva { background: var(--olive); }
@@ -545,7 +566,7 @@
   padding: 8px 4px;
 }
 .vh .elegir-territorio-celda small {
-  font-size: 12px;
+  font-size: var(--t-label);
   color: var(--olive-ink);
 }
 @media (max-width: 360px) {
@@ -574,3 +595,38 @@
 }
 .vh .lista-hermanos { display: grid; gap: 8px; }
 .vh .lista-hermanos .boton { justify-content: space-between; }
+
+/* Los desplegables viven en un portal fuera de .vh. La clase viaja tanto
+   al disparador como a la lista para conservar el piso táctil del hermano. */
+.vh .vh-desplegable,
+.desplegable-lista.vh-desplegable .desplegable-opcion,
+.desplegable-lista.vh-desplegable .desplegable-buscar {
+  min-height: var(--tap, 56px);
+  font-size: 16px;
+}
+
+@media (max-width: 390px) {
+  .vh { --pad: 14px; }
+  .vh .barra { padding-inline: var(--pad); }
+  .vh .tarjeta,
+  .vh .panel { padding: 18px 16px; }
+  .vh .salida {
+    grid-template-columns: auto minmax(0, 1fr) 24px;
+    gap: 10px;
+    padding: 14px 12px;
+  }
+  .vh .salidaDetalle { padding-inline: 12px; }
+  .vh .paresLlegar { grid-template-columns: minmax(0, 1fr); }
+  .vh .paresLlegarTitulo { grid-column: 1; }
+  .vh .filtros-salidas { grid-template-columns: minmax(0, 1fr); }
+  .vh .pestanias button { min-width: 0; min-height: 72px; padding-inline: 4px; }
+}
+
+@media (max-width: 340px) {
+  .vh .marca { font-size: 0; }
+  .vh .barra-controles { gap: 6px; }
+  .vh .tarjeta,
+  .vh .panel { padding-inline: 14px; }
+  .vh .numeroGrande { font-size: calc(48px * var(--step)); }
+  .vh .cifras { gap: 6px; }
+}

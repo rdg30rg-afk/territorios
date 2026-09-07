@@ -7,6 +7,7 @@ import { canReportSalidaCoverage, prepareSalidaCoverage } from '../lib/salidaCov
 import { linePoints } from '../lib/heatmapGeometry'
 import type { CoverageState } from '../lib/coverageSummary'
 import { ponerFondo } from '../lib/fondoMapa'
+import { Desplegable } from './Desplegable'
 import type { useCoverageOutbox } from '../lib/useCoverageOutbox'
 
 type Side = { id:string; manzana_id:string; territory_id:string; orden:number; geometry_version:number; vigente_hasta:null; geometry_geojson:unknown }
@@ -78,15 +79,16 @@ export function SalidaCoverageForm({outing,queue}:{outing:Outing;queue:ReturnTyp
     {editing&&<div className="form-stack">
       <button type="button" className="boton secundario" disabled={loading||busy} onClick={()=>setRevision(value=>value+1)}>Actualizar dibujo</button>
       {loading?<p>Cargando lados…</p>:!sides.length?<p>No hay lados disponibles. No se puede informar cobertura todavía.</p>:<>
-        <label>Lado de la calle<select value={selected} disabled={busy} onChange={event=>setSelected(event.target.value)}>
-          <option value="">Elegí un lado</option>
-          {sides.map(item=><option key={item.id} value={item.id}>Manzana {labels[item.manzana_id]??'sin rótulo'} · lado {item.orden}</option>)}
-        </select></label>
+        <label>Lado de la calle<Desplegable className="vh-desplegable" etiqueta="Lado de la calle" valor={selected} deshabilitado={busy} alElegir={setSelected} opciones={[
+          {valor:'',texto:'Elegí un lado'},
+          ...sides.map(item=>({valor:item.id,texto:`Manzana ${labels[item.manzana_id]??'sin rótulo'} · lado ${item.orden}`})),
+        ]}/></label>
         {side&&<div ref={mapElement} style={{height:260}} aria-label="Calle seleccionada para informar"/>}
         {side&&!linePoints(side.geometry_geojson)&&<p role="alert">Este lado no tiene un dibujo legible. No se puede marcar.</p>}
-        <label>Estado informado<select value={state} disabled={busy} onChange={event=>setState(event.target.value as CoverageState)}>
-          <option value="recorrido">Recorrido</option><option value="revisitar">Revisitar</option><option value="no_accesible">No accesible</option><option value="sin_dato">Sin dato</option>
-        </select></label>
+        <label>Estado informado<Desplegable className="vh-desplegable" etiqueta="Estado informado" valor={state} deshabilitado={busy} alElegir={value=>setState(value as CoverageState)} opciones={[
+          {valor:'recorrido',texto:'Recorrido'}, {valor:'revisitar',texto:'Revisitar'},
+          {valor:'no_accesible',texto:'No accesible'}, {valor:'sin_dato',texto:'Sin dato'},
+        ]}/></label>
         <button type="button" className="boton primario" disabled={busy||!side||!linePoints(side.geometry_geojson)||!!queue.error} onClick={async()=>{
           if(!side||running.current)return
           running.current=true;setBusy(true);setError(null)

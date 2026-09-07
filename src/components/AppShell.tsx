@@ -1,10 +1,24 @@
-import { NavLink, Outlet } from 'react-router-dom'
+import { useRef, useState } from 'react'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/useAuth'
 import { modules } from '../data/modules'
 import { usePwaInstall } from '../hooks/usePwaInstall'
 import { isDevelopmentEnvironment } from '../lib/supabase'
 
+const moduloNombre: Record<string, string> = {
+  mapas: 'Mapas',
+  conductores: 'Conductores',
+  grupos: 'Grupos',
+  salidas: 'Salidas',
+  salidas_grupo: 'Salidas del grupo',
+  territorio_personal: 'Territorio personal',
+}
+
 export function AppShell() {
+  const location = useLocation()
+  const [openAt, setOpenAt] = useState<string | null>(null)
+  const menuOpen = openAt === location.key
+  const menuButton = useRef<HTMLButtonElement>(null)
   const { profile, user, signOut, canAccessModule, moduleAccess } = useAuth()
   const { canInstall, isInstalled, isInstalling, promptInstall } = usePwaInstall()
   const visibleModules = modules.filter((module) => {
@@ -18,6 +32,27 @@ export function AppShell() {
   return (
     <div className="app-shell">
       <aside className="sidebar">
+        <div className="mobile-admin-header">
+          <span>Territorios{isDevelopmentEnvironment && <small>Base de prueba</small>}</span>
+          <button ref={menuButton} type="button" aria-expanded={menuOpen}
+            aria-controls="admin-navigation" onClick={() => setOpenAt(menuOpen ? null : location.key)}
+            onKeyDown={event => { if (event.key === 'Escape') setOpenAt(null) }}>
+            {menuOpen ? 'Cerrar menú' : 'Abrir menú'}
+          </button>
+        </div>
+        <div id="admin-navigation" className={`sidebar-menu${menuOpen ? ' is-open' : ''}`}
+          onKeyDown={event => {
+            if (event.key === 'Escape' && menuOpen) {
+              setOpenAt(null)
+              menuButton.current?.focus()
+            }
+          }}
+          onClick={event => {
+            if (menuOpen && (event.target as HTMLElement).closest('a')) {
+              setOpenAt(null)
+              menuButton.current?.focus()
+            }
+          }}>
         {isDevelopmentEnvironment && (
           <section className="security-card development-environment-card">
             <p className="eyebrow">Base de prueba</p>
@@ -58,13 +93,13 @@ export function AppShell() {
         {profile?.role === 'admin' && (
           /* Documento aparte, no una ruta de React: por eso <a> y no
              NavLink. Comparte origen y sesion con la app. */
-          <a href="/editor-manzanas.html" className="module-link">
+          <a href="/editor-manzanas.html" className="module-link" target="_blank" rel="noopener">
             <span className="module-icon" aria-hidden="true">
               ▤
             </span>
             <span>
               <strong>Editor de manzanas</strong>
-              <small>Dibujar manzanas y arreglar sus cuadras.</small>
+              <small>Dibujar manzanas y arreglar sus cuadras. Se abre aparte.</small>
             </span>
           </a>
         )}
@@ -97,9 +132,9 @@ export function AppShell() {
           <small>
             Rol: {profile?.role ?? 'pendiente'} · Módulos:{' '}
             {profile?.role === 'admin'
-              ? 'todos'
+              ? 'acceso completo'
               : moduleAccess.length > 0
-                ? moduleAccess.join(', ')
+                ? moduleAccess.map((clave) => moduloNombre[clave] ?? clave).join(', ')
                 : 'sin acceso asignado'}
           </small>
           <button type="button" className="ghost-button" onClick={() => void signOut()}>
@@ -107,29 +142,24 @@ export function AppShell() {
           </button>
         </section>
 
-        <section className="install-card">
-          <p className="eyebrow">Instalación</p>
-          <strong>{isInstalled ? 'App instalada' : 'Usala como aplicación'}</strong>
-          <p className="brand-copy">
-            {isInstalled
-              ? 'Ya la podes abrir como una aplicación aparte.'
-              : canInstall
-                ? 'Instalala para abrirla desde el teléfono o la PC sin pasar por el navegador.'
-                : 'Si el navegador lo permite, acá va a aparecer la opción para instalarla.'}
-          </p>
-          <button
-            type="button"
-            className="ghost-button"
-            disabled={!canInstall || isInstalling || isInstalled}
-            onClick={() => void promptInstall()}
-          >
-            {isInstalled
-              ? 'Instalada'
-              : isInstalling
-                ? 'Abriendo instalación…'
-                : 'Instalar app'}
-          </button>
-        </section>
+        {canInstall && !isInstalled ? (
+          <section className="install-card">
+            <p className="eyebrow">Instalación</p>
+            <strong>Usala como aplicación</strong>
+            <p className="brand-copy">
+              Instalála para abrirla desde el teléfono o la PC sin pasar por el navegador.
+            </p>
+            <button
+              type="button"
+              className="ghost-button"
+              disabled={isInstalling}
+              onClick={() => void promptInstall()}
+            >
+              {isInstalling ? 'Abriendo instalación…' : 'Instalar app'}
+            </button>
+          </section>
+        ) : null}
+        </div>
       </aside>
 
       <main className="content">

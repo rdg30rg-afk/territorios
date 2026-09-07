@@ -7,15 +7,15 @@ export function ModuleGuard({
 }: {
   moduleKey: ModuleDefinition['key']
 }) {
-  const { canAccessModule, profile } = useAuth()
+  const { canAccessModule } = useAuth()
 
   if (moduleKey === 'dashboard') {
     return <Outlet />
   }
 
-  if (profile?.role === 'admin' || canAccessModule(moduleKey)) {
+  if (canAccessModule(moduleKey)) {
     return <Outlet />
   }
 
-  return <Navigate to="/" replace />
+  return <Navigate to="/predicacion" replace />
 }

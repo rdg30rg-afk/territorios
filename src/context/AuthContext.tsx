@@ -345,12 +345,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .from('pending_users')
           .select('id, full_name, email, username')
           .order('requested_at', { ascending: false }).order('id').range(from, to)),
-        client
-          .from('grupo_miembros')
-          .select('profile_id, estado, grupos_servicio(group_number, group_name)')
-          .is('hasta', null)
-          .then((res) => (res.error ? [] : res.data ?? []))
-          .catch(() => []),
+        (async () => {
+          try {
+            const res = await client
+              .from('grupo_miembros')
+              .select('profile_id, estado, grupos_servicio(group_number, group_name)')
+              .is('hasta', null)
+            return res.error ? [] : res.data ?? []
+          } catch {
+            return []
+          }
+        })(),
       ])
     if (request !== managedGeneration.current || authIdentity.current !== profile.id) return
 
