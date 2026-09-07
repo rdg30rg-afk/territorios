@@ -53,16 +53,6 @@ export function AppShell() {
               menuButton.current?.focus()
             }
           }}>
-        {isDevelopmentEnvironment && (
-          <section className="security-card development-environment-card">
-            <p className="eyebrow">Base de prueba</p>
-            <strong>Entorno de desarrollo</strong>
-            <p className="brand-copy">
-              Lo que toques aca no afecta a la base de verdad.
-            </p>
-          </section>
-        )}
-
         <div className="brand-panel">
           <p className="eyebrow">Territorios</p>
           <h1>Gestor territorial</h1>
@@ -142,22 +132,34 @@ export function AppShell() {
           </button>
         </section>
 
-        {canInstall && !isInstalled ? (
-          <section className="install-card">
-            <p className="eyebrow">Instalación</p>
-            <strong>Usala como aplicación</strong>
-            <p className="brand-copy">
-              Instalála para abrirla desde el teléfono o la PC sin pasar por el navegador.
-            </p>
-            <button
-              type="button"
-              className="ghost-button"
-              disabled={isInstalling}
-              onClick={() => void promptInstall()}
-            >
-              {isInstalling ? 'Abriendo instalación…' : 'Instalar app'}
-            </button>
-          </section>
+        {/* El aviso de "Base de prueba" abria la barra lateral, arriba del
+            nombre de la app y de los modulos: el primer objeto de la
+            pantalla era una nota sobre en que base estas. La invitacion a
+            instalar ocupaba otro recuadro al pie. Ninguna de las dos es una
+            decision del dia; van juntas en un desplegable cerrado, y en
+            produccion sin entorno de prueba ni instalacion no hay nada. */}
+        {isDevelopmentEnvironment || (canInstall && !isInstalled) ? (
+          <details className="sidebar-extras">
+            <summary>{isDevelopmentEnvironment ? 'Base de prueba' : 'Ajustes de la app'}</summary>
+
+            {isDevelopmentEnvironment ? (
+              <p className="brand-copy">
+                Estás en el entorno de desarrollo. Lo que toques acá no afecta a la
+                base de verdad.
+              </p>
+            ) : null}
+
+            {canInstall && !isInstalled ? (
+              <button
+                type="button"
+                className="ghost-button"
+                disabled={isInstalling}
+                onClick={() => void promptInstall()}
+              >
+                {isInstalling ? 'Abriendo instalación…' : 'Instalar como aplicación'}
+              </button>
+            ) : null}
+          </details>
         ) : null}
         </div>
       </aside>

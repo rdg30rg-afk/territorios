@@ -1061,3 +1061,25 @@
   :root[data-theme='hermano'] .auth-form { padding: 24px; }
   :root[data-theme='hermano'] .auth-mode-tabs { padding: 24px 24px 0; }
 }
+
+/* El desplegable del pie de la barra lateral: entorno de prueba e
+   instalacion. Cerrado es un renglon; los dos recuadros que reemplaza
+   median juntos unos 220 px de la columna. */
+.sidebar-extras { margin-top: auto; }
+
+.sidebar-extras > summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: 0 .25rem;
+  font-size: .85rem;
+  color: #a4a8b0;
+}
+
+.sidebar-extras > summary::marker { color: #777; }
+
+.sidebar-extras > * + * { margin-top: .6rem; }
+
+.sidebar-extras .brand-copy { font-size: .82rem; padding: 0 .25rem; }

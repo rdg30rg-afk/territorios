@@ -1312,6 +1312,11 @@ button {
 .segmentado {
   display: inline-flex;
   flex: 0 0 auto;
+  /* `.page` es una grilla de una columna: un inline-flex igual se estira a
+     todo el ancho si no se lo pone en su tamano. */
+  width: fit-content;
+  align-self: flex-start;
+  justify-self: start;
   gap: 0.25rem;
   padding: 0.25rem;
   border-radius: 12px;

@@ -42,9 +42,9 @@ export function DashboardPage() {
     <div className="page">
       <Saludo />
       {profile?.role === 'admin' ? (
-        <div className="module-table-actions dashboard-sections" role="tablist" aria-label="Sección de Inicio">
-          <button type="button" className="secondary-button" role="tab" aria-selected={section === 'resumen'} onClick={() => setSearchParams({ seccion: 'resumen' })}>Resumen</button>
-          <button type="button" className="secondary-button" role="tab" aria-selected={section === 'usuarios'} onClick={() => setSearchParams({ seccion: 'usuarios' })}>Usuarios</button>
+        <div className="segmentado dashboard-sections" role="tablist" aria-label="Sección de Inicio">
+          <button type="button" role="tab" aria-selected={section === 'resumen'} onClick={() => setSearchParams({ seccion: 'resumen' })}>Resumen</button>
+          <button type="button" role="tab" aria-selected={section === 'usuarios'} onClick={() => setSearchParams({ seccion: 'usuarios' })}>Usuarios</button>
         </div>
       ) : null}
       {section === 'resumen' ? (
