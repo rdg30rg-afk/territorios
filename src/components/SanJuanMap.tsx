@@ -8,6 +8,7 @@ import { difference } from '@turf/difference'
 import { featureCollection, point, polygon } from '@turf/helpers'
 import { intersect } from '@turf/intersect'
 import { union } from '@turf/union'
+import { Modal } from './Modal'
 import { useAuth } from '../context/useAuth'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 import { getTerritoryDeepLinkTransition } from '../lib/territoryDeepLink'
@@ -922,6 +923,11 @@ export function SanJuanMap({ initialTerritoryId = null }: SanJuanMapProps) {
   const [territoryBlocks, setTerritoryBlocks] = useState<TerritoryBlockRecord[]>([])
   const [manzanaFormas, setManzanaFormas] = useState<Record<string, ManzanaForma[]>>({})
   const [selectedTerritoryId, setSelectedTerritoryId] = useState<string | null>(null)
+  // La ficha del territorio vivia en una tercera columna a la derecha del
+  // mapa. Entre la lista, el mapa y ella, el mapa -que es la pantalla- se
+  // quedaba con la mitad del ancho. Ahora se abre encima cuando se elige un
+  // territorio, y el mapa ocupa todo lo que le sobra a la lista.
+  const [fichaAbierta, setFichaAbierta] = useState(false)
   const [editingTerritoryId, setEditingTerritoryId] = useState<string | null>(null)
   const [territoryName, setTerritoryName] = useState('')
   const [territoryDescription, setTerritoryDescription] = useState('')
@@ -1127,6 +1133,7 @@ export function SanJuanMap({ initialTerritoryId = null }: SanJuanMapProps) {
         existingLayer.eachLayer((layer) => {
           layer.on('click', () => {
             setSelectedTerritoryId(territory.id)
+            setFichaAbierta(true)
             setEditingTerritoryId(null)
             setCurrentGeometry(null)
             setIsDrawing(false)
@@ -2058,6 +2065,7 @@ export function SanJuanMap({ initialTerritoryId = null }: SanJuanMapProps) {
     disableActiveDrawHandler()
     setEditingTerritoryId(null)
     setSelectedTerritoryId(null)
+    setFichaAbierta(false)
     setTerritoryName('')
     setTerritoryDescription('')
     setSelectedColor(TERRITORY_COLORS[0])
@@ -2136,6 +2144,7 @@ export function SanJuanMap({ initialTerritoryId = null }: SanJuanMapProps) {
   const handleFocusTerritory = useCallback((territory: TerritoryListItem) => {
     disableActiveDrawHandler()
     setSelectedTerritoryId(territory.id)
+    setFichaAbierta(true)
     setEditingTerritoryId(null)
     setCurrentGeometry(null)
     setTerritoryName(territory.name)
@@ -2200,6 +2209,9 @@ export function SanJuanMap({ initialTerritoryId = null }: SanJuanMapProps) {
 
     setEditingTerritoryId(territory.id)
     setSelectedTerritoryId(territory.id)
+    // Editar es trabajar sobre el mapa: la ficha se cierra sola, si no tapa
+    // justo lo que se va a dibujar.
+    setFichaAbierta(false)
     setTerritoryName(territory.name)
     setTerritoryDescription(territory.description ?? '')
     setSelectedColor(color)
@@ -2809,21 +2821,80 @@ export function SanJuanMap({ initialTerritoryId = null }: SanJuanMapProps) {
       <div className="map-workspace">
         <div className="territory-studio">
           <div className="map-panel territory-map-panel">
+            {/* Una sola fila arriba del mapa. Antes habia tres capas de
+                controles -el titulo, una barra de acciones y la barra de
+                preparacion- y las tres estaban siempre, dibujando o no. */}
             <div className="map-toolbar territory-toolbar">
               <div className="territory-toolbar-copy">
                 <p className="eyebrow">Mapa</p>
-                <h3>San Juan</h3>
+                <h3>
+                  {modoEdicion
+                    ? editingTerritoryId
+                      ? `Editando ${territoryName.trim() || 'territorio'}`
+                      : 'Nuevo territorio'
+                    : 'San Juan'}
+                </h3>
                 {modoEdicion ? (
-                <div className="territory-phase-strip">
-                  <span className={territoryName.trim() || editingTerritoryId ? 'active' : ''}>
-                    1. Número
-                  </span>
-                  <span className={isDrawing || currentGeometry ? 'active' : ''}>2. Polígono</span>
-                  <span className={selectedTerritory ? 'active' : ''}>3. Revisión</span>
-                </div>
+                  <div className="territory-phase-strip">
+                    <span className={territoryName.trim() || editingTerritoryId ? 'active' : ''}>
+                      1. Número
+                    </span>
+                    <span className={isDrawing || currentGeometry ? 'active' : ''}>2. Polígono</span>
+                    <span className={currentGeometry ? 'active' : ''}>3. Guardar</span>
+                  </div>
                 ) : (
                   <p className="toolbar-copy">Elegí un territorio en la lista o en el mapa.</p>
                 )}
+              </div>
+
+              <div className="map-toolbar-acciones">
+                {!modoEdicion && canManageTerritories ? (
+                  <button type="button" className="secondary-button" onClick={handlePrepareNewTerritory}>
+                    Dibujar
+                  </button>
+                ) : null}
+
+                {/* Exportar, pantalla completa y forzar el refresco son
+                    cosas que se hacen una vez cada tanto: vivian en un panel
+                    propio ("Herramientas · Exportar y ver ayuda") que
+                    ocupaba una columna entera al lado del mapa. */}
+                <details className="map-mas">
+                  <summary aria-label="Más herramientas del mapa">
+                    <span aria-hidden="true">⋯</span>
+                  </summary>
+                  <div className="map-mas-caja">
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      onClick={handleExportTerritoriesJson}
+                      disabled={territoriesWithIndex.length === 0}
+                    >
+                      Exportar GeoJSON
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      onClick={handleExportTerritoriesCsv}
+                      disabled={territoriesWithIndex.length === 0}
+                    >
+                      Exportar CSV
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      onClick={() => void handleExportTerritoriesPdf()}
+                      disabled={territoriesWithIndex.length === 0 || isExportingPdf}
+                    >
+                      {isExportingPdf ? 'Generando el plano…' : 'Plano PDF'}
+                    </button>
+                    <button type="button" className="ghost-button" onClick={() => void toggleFullscreen()}>
+                      Pantalla completa
+                    </button>
+                    <button type="button" className="ghost-button" onClick={refreshMapOverlay}>
+                      Volver a dibujar los territorios
+                    </button>
+                  </div>
+                </details>
               </div>
             </div>
 
@@ -2850,29 +2921,42 @@ export function SanJuanMap({ initialTerritoryId = null }: SanJuanMapProps) {
               </label>
 
               <div className="toolbar-actions territory-toolbar-actions">
+                <span className="territory-vertices-inline">
+                  <strong>{selectedVertexCount}</strong> vértices
+                </span>
                 <button
                   type="button"
                   className={isDrawing ? 'secondary-button' : 'ghost-button'}
                   onClick={handleStartDrawing}
                   disabled={!canManageTerritories}
                 >
-                  Comenzar dibujo
+                  {isDrawing ? 'Dibujando…' : 'Comenzar dibujo'}
                 </button>
                 <button
                   type="button"
+                  className="ghost-button"
                   onClick={handleUndoLastPoint}
                   disabled={!canManageTerritories || !isDrawing}
                 >
                   Deshacer punto
                 </button>
-                <button type="button" onClick={refreshMapOverlay}>
-                  Refrescar territorios
-                </button>
-                <button type="button" onClick={() => void toggleFullscreen()}>
-                  Pantalla completa
+                {/* Guardar estaba abajo a la derecha, en el panel de la
+                    tercera columna, a dos pantallas de scroll del dibujo. */}
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={() => void handleSaveTerritory()}
+                  disabled={!canManageTerritories || isSaving || !currentGeometry}
+                >
+                  {isSaving
+                    ? 'Guardando…'
+                    : editingTerritoryId
+                      ? 'Actualizar'
+                      : 'Guardar territorio'}
                 </button>
                 <button
                   type="button"
+                  className="ghost-button"
                   onClick={resetEditor}
                   disabled={!canManageTerritories}
                 >
@@ -2880,19 +2964,14 @@ export function SanJuanMap({ initialTerritoryId = null }: SanJuanMapProps) {
                 </button>
               </div>
             </div>
-            ) : (
-              <div className="toolbar-actions territory-toolbar-actions">
-                <button type="button" onClick={refreshMapOverlay}>
-                  Refrescar territorios
-                </button>
-                <button type="button" onClick={() => void toggleFullscreen()}>
-                  Pantalla completa
-                </button>
-              </div>
-            )}
+            ) : null}
 
             <div className="territory-map-stage">
               <div ref={mapFrameRef} className="territory-map-frame">
+                {/* La paleta estaba siempre encima del mapa y se montaba con
+                    los controles de Leaflet. El color se elige cuando se
+                    dibuja; el resto del tiempo el mapa solo tiene zoom. */}
+                {modoEdicion ? (
                 <div className="territory-map-sidecar" aria-label="Colores de territorio">
                   {TERRITORY_COLORS.map((color) => (
                     <button
@@ -2911,10 +2990,19 @@ export function SanJuanMap({ initialTerritoryId = null }: SanJuanMapProps) {
                     />
                   ))}
                 </div>
+                ) : null}
 
+                {/* La clase y no un control que se agrega y se quita: el
+                    lapiz y el tacho de leaflet-draw se montan con el mapa, y
+                    desmontarlos por estado es tocar el ciclo de vida de
+                    Leaflet para esconder dos iconos. */}
                 <div
                   ref={mapContainerRef}
-                  className="map-canvas territory-leaflet-canvas"
+                  className={
+                    modoEdicion
+                      ? 'map-canvas territory-leaflet-canvas dibujando'
+                      : 'map-canvas territory-leaflet-canvas'
+                  }
                   aria-label="Mapa de San Juan"
                 />
               </div>
@@ -2934,103 +3022,26 @@ export function SanJuanMap({ initialTerritoryId = null }: SanJuanMapProps) {
                   <span>Las letras de manzana aparecen al acercar el mapa.</span>
                 </div>
                 )}
-                <div className="territory-inline-status">
-                  <span>Color activo</span>
-                  <strong>
-                    <span
-                      className="territory-color-dot"
-                      style={{ backgroundColor: selectedColor }}
-                      aria-hidden="true"
-                    />
-                    {selectedColor}
-                  </strong>
-                </div>
+                {/* El error y el aviso de guardado vivian en el panel de la
+                    tercera columna: se guardaba desde arriba del mapa y la
+                    confirmacion aparecia fuera de la pantalla.
+                    "Color activo #4f772d" tampoco esta mas: era el codigo
+                    hexadecimal del color, para alguien que lo elige tocando
+                    un cuadradito de ese color. */}
+                {error ? <div className="form-feedback error">{error}</div> : null}
+                {message ? <div className="form-feedback success">{message}</div> : null}
               </div>
             </div>
           </div>
         </div>
 
-        <div className="territories-sidebar territory-editor-sidebar">
-          {modoEdicion ? <section className="panel territory-form-panel">
-            <div className="territory-panel-head">
-              <div>
-                <p className="eyebrow">
-                  {editingTerritoryId ? 'Edicion' : 'Ficha de territorio'}
-                </p>
-                <h3>{editingTerritoryId ? 'Editar territorio' : 'Preparar territorio'}</h3>
-              </div>
-              <div className="territory-vertex-badge">
-                <strong>{selectedVertexCount}</strong>
-                <span>vertices</span>
-              </div>
-            </div>
-
-            <div className="territory-steps-grid">
-              <article
-                className={
-                  territoryName.trim() || editingTerritoryId
-                    ? 'territory-step active'
-                    : 'territory-step'
-                }
-              >
-                <span>01</span>
-                <strong>Define el numero</strong>
-                <small>Con eso ya puedes comenzar a dibujar.</small>
-              </article>
-              <article className={currentGeometry ? 'territory-step active' : 'territory-step'}>
-                <span>02</span>
-                <strong>Dibuja la zona</strong>
-                <small>Marca varios puntos y cierra tocando otra vez el primero.</small>
-              </article>
-            </div>
-
-            <div className="territory-summary-box">
-              <p className="eyebrow">Resumen</p>
-              <div className="territory-summary-row">
-                <span>Estado del borrador</span>
-                <strong>
-                  {editingTerritoryId
-                    ? 'Edicion en curso'
-                    : currentGeometry
-                      ? 'Listo para guardar'
-                      : territoryName.trim()
-                        ? 'Listo para dibujar'
-                        : 'Pendiente'}
-                </strong>
-              </div>
-              <div className="territory-summary-row">
-                <span>Territorio seleccionado</span>
-                <strong>{selectedTerritory?.name ?? 'Ninguno'}</strong>
-              </div>
-              <div className="territory-summary-row">
-                <span>Acceso</span>
-                <strong>{canManageTerritories ? 'Administrador' : 'Solo lectura'}</strong>
-              </div>
-            </div>
-
-            {error ? <div className="form-feedback error">{error}</div> : null}
-            {message ? <div className="form-feedback success">{message}</div> : null}
-
-            <div className="territory-button-stack">
-              <button
-                type="button"
-                className="primary-button full-width"
-                onClick={() => void handleSaveTerritory()}
-                disabled={!canManageTerritories || isSaving || !currentGeometry}
-              >
-                {isSaving
-                  ? 'Guardando...'
-                  : editingTerritoryId
-                    ? 'Actualizar territorio'
-                    : 'Guardar territorio'}
-              </button>
-            </div>
-          </section> : null}
-
-          {selectedTerritory ? <section className="panel territory-selected-panel">
-            <p className="eyebrow">Territorio enfocado</p>
-            <h3>{selectedTerritory.name}</h3>
-
+        <Modal
+          abierto={Boolean(selectedTerritory) && fichaAbierta && !modoEdicion}
+          alCerrar={() => setFichaAbierta(false)}
+          titulo={selectedTerritory ? selectedTerritory.name : 'Territorio'}
+          bajada="Color, manzanas y datos del territorio enfocado en el mapa."
+        >
+          {selectedTerritory ? (
               <>
                 <p className="territory-selected-copy">
                   {selectedTerritory.description || 'Sin descripcion registrada todavia.'}
@@ -3137,63 +3148,8 @@ export function SanJuanMap({ initialTerritoryId = null }: SanJuanMapProps) {
                   )}
                 </div>
               </>
-          </section> : null}
-
-          <details className="panel territory-library-panel">
-            <summary className="section-heading">
-              <div>
-                <p className="eyebrow">Herramientas</p>
-                <h3>Exportar y ver ayuda</h3>
-              </div>
-            </summary>
-
-            <div className="territory-summary-box">
-              <div className="territory-summary-row">
-                <span>Paso 1</span>
-                <strong>Escribí el número del territorio</strong>
-              </div>
-              <div className="territory-summary-row">
-                <span>Paso 2</span>
-                <strong>Tocá «Comenzar dibujo» y marcá los vértices en el mapa</strong>
-              </div>
-              <div className="territory-summary-row">
-                <span>Paso 3</span>
-                <strong>Guardá el polígono para dejarlo visible</strong>
-              </div>
-              <div className="territory-summary-row">
-                <span>Colores</span>
-                <strong>Sirven para diferenciar territorios entre si</strong>
-              </div>
-            </div>
-
-            <div className="card-actions top-gap">
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={handleExportTerritoriesJson}
-                disabled={territoriesWithIndex.length === 0}
-              >
-                Exportar JSON
-              </button>
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={handleExportTerritoriesCsv}
-                disabled={territoriesWithIndex.length === 0}
-              >
-                Exportar CSV
-              </button>
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={() => void handleExportTerritoriesPdf()}
-                disabled={territoriesWithIndex.length === 0 || isExportingPdf}
-              >
-                {isExportingPdf ? 'Generando...' : 'Plano PDF'}
-              </button>
-            </div>
-          </details>
-        </div>
+          ) : null}
+        </Modal>
       </div>
       </div>
     </div>

@@ -301,20 +301,33 @@ button {
       'lista';
   }
 
+  /* La lista queda debajo del mapa y con altura propia. Sin tope, 70
+     territorios eran una columna de tres pantallas colgando del mapa. */
   .territory-stage .territory-registry-panel {
-    max-height: none;
+    max-height: 60vh;
+  }
+
+  /* El mapa deja de pedir 540 px minimos: en un telefono apaisado eso es
+     mas alto que la pantalla. */
+  .territory-stage .map-canvas {
+    height: 70dvh;
+    min-height: 320px;
   }
 }
 
+/* Una sola columna. Aca vivia el mapa a la izquierda y una tercera columna
+   de 270-340 px a la derecha con el formulario, la ficha del territorio y un
+   panel de "Herramientas". Con la lista de territorios ocupando otros 340 px
+   a la izquierda, el mapa -que es el motivo de la pantalla- se quedaba con la
+   mitad del ancho. La ficha ahora se abre en una ventana y el formulario esta
+   en la barra de arriba del mapa. */
 .map-workspace {
   display: grid;
-  grid-template-columns: minmax(420px, 1fr) minmax(270px, 340px);
+  grid-template-columns: minmax(0, 1fr);
   gap: 1rem;
   align-items: start;
 }
-
-.territory-studio,
-.territory-editor-sidebar {
+.territory-studio {
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -395,12 +408,32 @@ button {
   white-space: nowrap;
 }
 
+/* Flex y no grid de tres pistas fijas: ahora el bloque de acciones lleva el
+   guardar y el conteo de vertices, y con `auto` en la tercera pista los dos
+   campos de texto se quedaban sin ancho. */
 .territory-prep-bar {
-  display: grid;
-  grid-template-columns: minmax(180px, 220px) minmax(240px, 1fr) auto;
+  display: flex;
+  flex-wrap: wrap;
   gap: 0.85rem;
   align-items: end;
   margin-top: 1rem;
+  padding: 0 1.25rem;
+}
+
+.territory-prep-bar .territory-inline-field-number {
+  flex: 0 1 150px;
+}
+
+.territory-prep-bar .territory-inline-field-notes {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.territory-prep-bar .territory-toolbar-actions {
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
 }
 
 .territory-inline-field {
@@ -1067,28 +1100,20 @@ button {
   background: rgba(255, 255, 255, 0.09);
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
-
 .territory-metric-card span,
 .territory-metric-card small,
-.territory-vertex-badge span,
-.territory-step small,
 .territory-selected-meta span,
-.territory-count-pill span,
-.territory-summary-row span {
+.territory-count-pill span {
   display: block;
 }
-
 .territory-metric-card span,
-.territory-vertex-badge span,
 .territory-selected-meta span,
 .territory-count-pill span {
   font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
-
 .territory-metric-card strong,
-.territory-vertex-badge strong,
 .territory-count-pill strong {
   display: block;
   margin: 0.3rem 0;
@@ -1282,6 +1307,115 @@ button {
   align-items: flex-end;
 }
 
+/* Control segmentado. Dos o tres vistas de la misma pantalla, con la puesta
+   pintada y no solo marcada en aria-selected. */
+.segmentado {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border-radius: 12px;
+  border: 1px solid var(--panel-border);
+  background: rgba(109, 76, 65, 0.06);
+}
+
+.segmentado > button {
+  min-height: 40px;
+  padding: 0 0.9rem;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-soft);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.segmentado > button[aria-selected='true'] {
+  background: var(--panel-solid);
+  color: var(--text-main);
+  box-shadow: 0 2px 6px rgba(34, 20, 15, 0.1);
+}
+
+.segmentado > button:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---------------------------------------- barra y menu del mapa (fase 3) */
+.map-toolbar-acciones {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 0 0 auto;
+}
+
+.map-mas {
+  position: relative;
+}
+
+.map-mas > summary {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel-bg);
+  cursor: pointer;
+  list-style: none;
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+.map-mas > summary::-webkit-details-marker {
+  display: none;
+}
+
+.map-mas > summary:hover {
+  border-color: var(--accent);
+}
+
+.map-mas > summary:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.map-mas-caja {
+  position: absolute;
+  z-index: 600;
+  top: calc(100% + 0.4rem);
+  right: 0;
+  width: max-content;
+  min-width: 210px;
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.45rem;
+  border-radius: 14px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel-solid);
+  box-shadow: 0 16px 34px rgba(22, 25, 29, 0.16);
+}
+
+.map-mas-caja > button {
+  justify-content: flex-start;
+  text-align: left;
+  width: 100%;
+}
+
+/* El conteo de vertices estaba en un recuadro grande en la tercera columna.
+   Dibujando, es un numero que se mira de reojo. */
+.territory-vertices-inline {
+  font-size: 0.85rem;
+  color: var(--text-soft);
+  white-space: nowrap;
+  margin-right: 0.2rem;
+}
+
+.territory-vertices-inline strong {
+  font-size: 1.05rem;
+  color: var(--text-main);
+}
+
 .territory-map-stage {
   position: relative;
   padding: 0 1rem 1rem;
@@ -1337,6 +1471,13 @@ button {
   background: #f5ede7;
 }
 
+/* Fuera del modo dibujo el mapa tiene solamente zoom. El lapiz y el tacho
+   estaban siempre en la columna izquierda, debajo del zoom, invitando a
+   editar una geometria a cualquiera que solo vino a mirar un territorio. */
+.territory-leaflet-canvas:not(.dibujando) .leaflet-draw {
+  display: none;
+}
+
 .territory-map-footer {
   display: flex;
   justify-content: space-between;
@@ -1358,22 +1499,6 @@ button {
   margin-top: 0.35rem;
   color: var(--text-soft);
   font-size: 0.95rem;
-}
-
-.territory-inline-status {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.35rem;
-  padding: 0.9rem 1rem;
-  border-radius: 18px;
-  background: rgba(109, 76, 65, 0.08);
-}
-
-.territory-inline-status strong {
-  display: inline-flex;
-  gap: 0.5rem;
-  align-items: center;
 }
 
 .territory-leaflet-canvas .leaflet-control-container .leaflet-top.leaflet-left {
@@ -1554,36 +1679,11 @@ button {
   background: #bb3e03 !important;
   box-shadow: 0 4px 10px rgba(34, 20, 15, 0.22);
 }
-
-.territory-panel-head,
-.territory-summary-row,
 .territory-selected-meta,
 .territory-count-pill,
 .territory-item {
   display: flex;
   align-items: center;
-}
-
-.territory-panel-head,
-.territory-summary-row {
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.territory-vertex-badge {
-  min-width: 88px;
-  padding: 0.85rem;
-  border-radius: 18px;
-  text-align: center;
-  background: rgba(187, 62, 3, 0.08);
-  color: var(--accent-dark);
-}
-
-.territory-steps-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.8rem;
-  margin-top: 1rem;
 }
 
 .territory-block-panel {
@@ -1649,56 +1749,8 @@ button {
   padding: 0.45rem 0.7rem;
   font-size: 0.78rem;
 }
-
-.territory-step {
-  padding: 0.95rem;
-  border-radius: 18px;
-  background: rgba(109, 76, 65, 0.06);
-  border: 1px solid rgba(109, 76, 65, 0.08);
-}
-
-.territory-step.active {
-  background: rgba(187, 62, 3, 0.09);
-  border-color: rgba(187, 62, 3, 0.2);
-}
-
-.territory-step span {
-  display: inline-flex;
-  width: 34px;
-  height: 34px;
-  border-radius: 12px;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 0.6rem;
-  background: rgba(255, 255, 255, 0.66);
-  color: var(--accent-dark);
-  font-weight: 800;
-}
-
-.territory-step strong,
-.territory-selected-meta strong,
-.territory-summary-row strong {
+.territory-selected-meta strong {
   display: block;
-}
-
-.territory-summary-box {
-  margin-top: 1rem;
-  padding: 1rem 1.05rem;
-  border-radius: 20px;
-  background: rgba(255, 248, 242, 0.95);
-  border: 1px solid rgba(109, 76, 65, 0.08);
-}
-
-.territory-summary-row + .territory-summary-row {
-  margin-top: 0.65rem;
-  padding-top: 0.65rem;
-  border-top: 1px solid rgba(109, 76, 65, 0.08);
-}
-
-.territory-button-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 0.7rem;
 }
 
 .territory-selected-copy {
@@ -1772,32 +1824,6 @@ button {
 .territory-item small {
   color: var(--text-soft);
   font-weight: 600;
-}
-
-.territories-sidebar {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.territory-library-panel > summary {
-  cursor: pointer;
-  list-style: none;
-}
-
-.territory-library-panel > summary::-webkit-details-marker {
-  display: none;
-}
-
-.territory-library-panel > summary::after {
-  content: 'Abrir';
-  margin-left: auto;
-  color: var(--accent-dark);
-  font-weight: 800;
-}
-
-.territory-library-panel[open] > summary::after {
-  content: 'Cerrar';
 }
 
 @media (max-width: 1280px) {
@@ -2387,17 +2413,15 @@ button {
     max-height: none;
     overflow: visible;
   }
-
-  .hero-card,
-  .stats-grid,
-  .map-workspace,
-  .territory-hero,
-  .territory-hero-metrics,
-  .territory-prep-bar,
-  .territories-sidebar,
-  .two-column-grid,
-  .checklist,
-  .auth-card {
+.hero-card,
+.stats-grid,
+.map-workspace,
+.territory-hero,
+.territory-hero-metrics,
+.territory-prep-bar,
+.two-column-grid,
+.checklist,
+.auth-card {
     grid-template-columns: 1fr;
   }
 
@@ -2465,15 +2489,6 @@ button {
 
   .territory-map-footer {
     flex-direction: column;
-  }
-
-  .territory-inline-status {
-    width: 100%;
-    align-items: flex-start;
-  }
-
-  .territory-steps-grid {
-    grid-template-columns: 1fr;
   }
 
   .territory-item {

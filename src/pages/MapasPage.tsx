@@ -32,12 +32,30 @@ export function MapasPage() {
             Buscá un territorio en la lista para verlo, o dibujá uno nuevo sobre el mapa.
           </p>
         </div>
-      </section>
 
-      <div className="module-table-actions" aria-label="Vista del mapa">
-        <button type="button" className="secondary-button" aria-pressed={view==='editor'} onClick={()=>setView('editor')}>Territorios y dibujo</button>
-        <button type="button" className="secondary-button" aria-pressed={view==='cobertura'} onClick={()=>setView('cobertura')}>Ver cobertura</button>
-      </div>
+        {/* Un control segmentado y no dos botones sueltos: eran dos
+            "secondary-button" iguales flotando entre el texto y el mapa, y
+            el unico que decia cual estaba puesto era aria-pressed, que no se
+            ve. Ahora la pestaña activa se pinta. */}
+        <div className="segmentado" role="tablist" aria-label="Vista del mapa">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === 'editor'}
+            onClick={() => setView('editor')}
+          >
+            Territorios y dibujo
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === 'cobertura'}
+            onClick={() => setView('cobertura')}
+          >
+            Ver cobertura
+          </button>
+        </div>
+      </section>
       <div hidden={view!=='editor'}><SanJuanMap initialTerritoryId={requestedTerritoryId} /></div>
       {view==='cobertura'?<CoverageHeatmapPanel key={requestedTerritoryId??'general'} initialTerritoryId={requestedTerritoryId}/>:null}
     </div>
