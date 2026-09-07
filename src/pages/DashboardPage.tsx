@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, Navigate, useLocation } from 'react-router-dom'
+import { Link, Navigate, useLocation, useSearchParams } from 'react-router-dom'
 import type { ModuleKey, ProfileRole } from '../context/AuthTypes'
 import { Desplegable } from '../components/Desplegable'
 import { TerritorySuggestions } from '../components/TerritorySuggestions'
@@ -33,16 +33,26 @@ type DriverOption = {
 
 export function DashboardPage() {
   const { profile, moduleAccess } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const section = searchParams.get('seccion') === 'usuarios' ? 'usuarios' : 'resumen'
 
   if (profile?.role !== 'admin' && moduleAccess.length === 0) return <Navigate to="/predicacion" replace />
 
   return (
     <div className="page">
       <Saludo />
-      <QueNecesitaAtencion />
-      {profile?.role === 'admin' ? <TerritorySuggestions /> : null}
-
-      {profile?.role === 'admin' ? <UserAccessPanel /> : null}
+      {profile?.role === 'admin' ? (
+        <div className="module-table-actions dashboard-sections" role="tablist" aria-label="Sección de Inicio">
+          <button type="button" className="secondary-button" role="tab" aria-selected={section === 'resumen'} onClick={() => setSearchParams({ seccion: 'resumen' })}>Resumen</button>
+          <button type="button" className="secondary-button" role="tab" aria-selected={section === 'usuarios'} onClick={() => setSearchParams({ seccion: 'usuarios' })}>Usuarios</button>
+        </div>
+      ) : null}
+      {section === 'resumen' ? (
+        <>
+          <QueNecesitaAtencion />
+          {profile?.role === 'admin' ? <TerritorySuggestions /> : null}
+        </>
+      ) : profile?.role === 'admin' ? <UserAccessPanel /> : null}
     </div>
   )
 }
@@ -187,7 +197,7 @@ function QueNecesitaAtencion() {
           cuantos: enEspera,
           titulo: enEspera === 1 ? 'Una persona espera acceso' : `${enEspera} personas esperan acceso`,
           detalle: 'Se registraron y todavía no pueden entrar a nada.',
-          a: '/#accesos',
+          a: '/?seccion=usuarios&filtro=pendientes',
           accion: 'Darles acceso',
         })
       }
@@ -309,6 +319,14 @@ function UserAccessPanel() {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [feedback, setFeedback] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [searchTerm, setSearchTerm] = useState('')
+  const initialFilter = new URLSearchParams(location.search).get('filtro')
+  const [userFilter, setUserFilter] = useState<'todos' | 'pendientes' | 'activos' | 'inactivos'>(
+    initialFilter === 'pendientes' || initialFilter === 'activos' || initialFilter === 'inactivos'
+      ? initialFilter
+      : 'todos',
+  )
+  const [editingUserId, setEditingUserId] = useState<string | null>(null)
   const pendingUsers = useMemo(
     () =>
       managedUsers.filter(
@@ -333,6 +351,23 @@ function UserAccessPanel() {
     () => managedUsers.filter((user) => user.miembroEstado === 'pendiente').length,
     [managedUsers],
   )
+  const visibleUsers = useMemo(() => {
+    const query = searchTerm.trim().toLocaleLowerCase('es-AR')
+    return managedUsers.filter((user) => {
+      const matchesFilter =
+        userFilter === 'todos' ||
+        (userFilter === 'pendientes' && user.access_status === 'pending') ||
+        (userFilter === 'activos' && user.access_status === 'active') ||
+        (userFilter === 'inactivos' && user.access_status === 'inactive')
+      if (!matchesFilter) return false
+      if (!query) return true
+      return [user.full_name, user.username, user.auth_email, user.groupName, user.groupNumber]
+        .filter((value) => value != null)
+        .join(' ')
+        .toLocaleLowerCase('es-AR')
+        .includes(query)
+    })
+  }, [managedUsers, searchTerm, userFilter])
 
   const loadDrivers = useCallback(async () => {
     if (!supabase || profile?.role !== 'admin') {
@@ -463,6 +498,7 @@ function UserAccessPanel() {
     const isOwnUser = user.id === profile?.id
     const isRequestOnly = Boolean(user.requestOnly)
     const isDisabled = isSavingUserId === user.id || isOwnUser || isRequestOnly
+    const isEditing = editingUserId === user.id
 
     return (
       <article
@@ -505,8 +541,17 @@ function UserAccessPanel() {
               Si no puede entrar, fijate también que haya confirmado el email.
             </span>
           ) : null}
+          <button
+            type="button"
+            className="secondary-button"
+            aria-expanded={isEditing}
+            onClick={() => setEditingUserId(isEditing ? null : user.id)}
+          >
+            {isEditing ? 'Cerrar edición' : variant === 'pending' ? 'Revisar solicitud' : 'Editar acceso'}
+          </button>
         </div>
 
+        {isEditing ? <>
         <label>
           Rol
           <Desplegable
@@ -593,6 +638,7 @@ function UserAccessPanel() {
           </button>
           ) : null}
         </div>
+        </> : null}
       </article>
     )
   }
@@ -625,53 +671,30 @@ function UserAccessPanel() {
         </div>
       ) : null}
 
-      <div className="admin-notification-panel">
-        <div className="admin-notification-head">
-          <div>
-            <p className="eyebrow">Notificaciones</p>
-            <h4>Esperando que les des acceso</h4>
-            <span>
-              Autorizá su cuenta como publicador. Los módulos del panel son opcionales.
-            </span>
-          </div>
-          {/* El contador solo aparece si hay algo que contar. Un globo
-              naranja con un cero adentro es una alarma que no suena por
-              nada, y despues nadie mira las que si suenan. */}
-          {pendingUsers.length > 0 ? <strong>{pendingUsers.length}</strong> : null}
-        </div>
-
-        {pendingUsers.length === 0 ? (
-          <div className="status-card">Nadie está esperando acceso.</div>
-        ) : (
-          <div className="admin-user-list">
-            {pendingUsers.map((user) => renderUserAccessCard(user, 'pending'))}
-          </div>
+      <div className="module-registry-toolbar admin-users-toolbar">
+        <label className="module-search-field">
+          <span className="sr-only">Buscar persona</span>
+          <input type="search" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Buscar por nombre, email o grupo" />
+        </label>
+        <Desplegable
+          etiqueta="Estado"
+          valor={userFilter}
+          alElegir={(value) => setUserFilter(value as typeof userFilter)}
+          opciones={[
+            { valor: 'todos', texto: `Todos (${managedUsers.length})` },
+            { valor: 'pendientes', texto: `Pendientes (${pendingUsers.length})` },
+            { valor: 'activos', texto: `Activos (${approvedUsers.length})` },
+            { valor: 'inactivos', texto: `Inactivos (${inactiveUsers.length})` },
+          ]}
+        />
+      </div>
+      <div className="admin-user-list">
+        {visibleUsers.length === 0 ? <div className="status-card">No hay personas que coincidan con la búsqueda y el filtro.</div> : visibleUsers.map((user) =>
+          renderUserAccessCard(
+            user,
+            user.access_status === 'pending' ? 'pending' : user.access_status === 'inactive' ? 'inactive' : 'active',
+          ),
         )}
-      </div>
-
-      <div className="admin-access-subhead">
-        <div>
-          <p className="eyebrow">Usuarios activos</p>
-          <h4>Quién entra a qué</h4>
-        </div>
-        <span>{approvedUsers.length} autorizado/s</span>
-      </div>
-
-      <div className="admin-user-list">
-        {approvedUsers.map((user) => renderUserAccessCard(user))}
-      </div>
-
-      {inactiveUsers.length > 0 ? (
-        <div className="admin-access-subhead">
-          <div>
-            <p className="eyebrow">Usuarios dados de baja</p>
-            <h4>Fuera de solicitudes y accesos activos</h4>
-          </div>
-          <span>{inactiveUsers.length} dado/s de baja</span>
-        </div>
-      ) : null}
-      <div className="admin-user-list">
-        {inactiveUsers.map((user) => renderUserAccessCard(user, 'inactive'))}
       </div>
     </section>
   )

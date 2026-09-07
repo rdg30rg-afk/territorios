@@ -43,6 +43,24 @@
 .inicio-tranquilo h3 { margin: 4px 0 6px; }
 .inicio-tranquilo p { opacity: 0.7; margin: 0; }
 
+.dashboard-sections {
+  justify-content: flex-start;
+}
+
+.dashboard-sections [aria-selected='true'] {
+  border-color: var(--accent, #8a4a06);
+  background: color-mix(in srgb, var(--accent, #8a4a06) 12%, white);
+}
+
+.admin-users-toolbar {
+  margin: 1rem 0;
+}
+
+.admin-user-main > .secondary-button {
+  align-self: flex-start;
+  margin-top: 0.4rem;
+}
+
 @media (max-width: 640px) {
   .inicio-lista li { grid-template-columns: 46px 1fr; }
   .inicio-accion { grid-column: 1 / -1; text-align: center; }
