@@ -62,7 +62,7 @@ export function ElegirDeLista({
               Cerrar
             </button>
           </div>
-          <div className="sobreCuerpo elegir-lista-cuerpo">
+          <div className="sobreCuerpo hoja-cuerpo elegir-lista-cuerpo">
             {opciones.length === 0 ? (
               <p className="sub">No hay nada para elegir.</p>
             ) : (

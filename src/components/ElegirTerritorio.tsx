@@ -73,7 +73,7 @@ export function ElegirTerritorio({
               Cerrar
             </button>
           </div>
-          <div className="sobreCuerpo elegir-territorio-cuerpo">
+          <div className="sobreCuerpo hoja-cuerpo elegir-territorio-cuerpo">
             <label className="sub">
               Número del territorio
               <input

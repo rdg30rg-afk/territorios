@@ -2,9 +2,85 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { CampoCodigoGrupo } from './CampoCodigoGrupo'
 import { useAuth } from '../context/useAuth'
 import { supabase } from '../lib/supabase'
+import type { ContextoHermano } from '../lib/vistaHermano'
 
 type MiCuentaProps = {
   compact?: boolean
+}
+
+function nombreDelRol(rol: ContextoHermano['rol_en_grupo']) {
+  if (rol === 'superintendente') return 'Superintendente'
+  if (rol === 'auxiliar') return 'Auxiliar'
+  if (rol === 'conductor') return 'Conductor'
+  return 'Publicador'
+}
+
+// El código se pide en su propia hoja y no dentro del popover. Metido ahí
+// adentro, el aviso de que cambiar de grupo cierra la pertenencia actual
+// aparecía apretado entre dos botones, y la lista de acciones pasaba de tres
+// a seis sin que nada explicara por qué.
+function HojaGrupoCodigo({
+  cambio,
+  onCerrar,
+  onListo,
+}: {
+  cambio: boolean
+  onCerrar: () => void
+  onListo: () => void
+}) {
+  const [ocupado, setOcupado] = useState(false)
+
+  useEffect(() => {
+    const tecla = (evento: KeyboardEvent) => {
+      if (evento.key === 'Escape') onCerrar()
+    }
+    document.addEventListener('keydown', tecla)
+    return () => document.removeEventListener('keydown', tecla)
+  }, [onCerrar])
+
+  const titulo = cambio ? 'Cambiar de grupo' : 'Sumarme a un grupo'
+
+  return (
+    <div className="sobre" role="dialog" aria-modal="true" aria-label={titulo}>
+      <div className="sobreBarra">
+        <h2>
+          {titulo}
+          <small>Te lo pasa el superintendente</small>
+        </h2>
+        <button type="button" className="boton secundario" onClick={onCerrar}>
+          Cerrar
+        </button>
+      </div>
+      <div className="sobreCuerpo hoja-cuerpo">
+        {cambio ? (
+          <p className="nota">
+            <span aria-hidden="true">◆</span>
+            <span>
+              El código nuevo cierra tu pertenencia al grupo actual y te deja
+              esperando confirmación en el otro. Vas a dejar de ver la salida
+              del grupo de ahora.
+            </span>
+          </p>
+        ) : null}
+        <CampoCodigoGrupo
+          ocupado={ocupado}
+          alUnir={async (codigo) => {
+            if (!supabase) return 'Todavía no está la conexión.'
+            setOcupado(true)
+            const { error } = await supabase.rpc('unirme_a_grupo', { p_codigo: codigo })
+            setOcupado(false)
+            if (error) {
+              return /ningún grupo|ningun grupo|22023/i.test(error.message)
+                ? 'Ese código no es de ningún grupo. Fijate si lo copiaste bien.'
+                : error.message
+            }
+            onListo()
+            return null
+          }}
+        />
+      </div>
+    </div>
+  )
 }
 
 export function MiCuenta({ compact = false }: MiCuentaProps) {
@@ -12,7 +88,7 @@ export function MiCuenta({ compact = false }: MiCuentaProps) {
   const [nombre, setNombre] = useState(profile?.full_name ?? '')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [cambiandoGrupo, setCambiandoGrupo] = useState(false)
+  const [hojaGrupo, setHojaGrupo] = useState(false)
   const [conductorVinculado, setConductorVinculado] = useState<string | null>(null)
 
   useEffect(() => {
@@ -31,6 +107,7 @@ export function MiCuenta({ compact = false }: MiCuentaProps) {
       })
     return () => { vivo = false }
   }, [profile?.driver_id])
+
   const save = async (event: FormEvent) => {
     event.preventDefault()
     if (!supabase || busy) return
@@ -54,72 +131,73 @@ export function MiCuenta({ compact = false }: MiCuentaProps) {
     catch { setError('No pudimos cerrar la sesión. Volvé a intentar.') }
     finally { setBusy(false) }
   }
-  return <details className={compact ? 'miCuenta compacto' : 'panel'}>
-    <summary className="boton secundario cuenta-resumen" aria-label="Abrir Mi cuenta">
-      {compact && <span className="cuentaIcono" aria-hidden="true">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <circle cx="12" cy="8" r="3.5" />
-          <path d="M5 20c.8-3.4 3.2-5 7-5s6.2 1.6 7 5" />
-        </svg>
-      </span>}
-      <span className={compact ? 'cuentaTexto' : undefined}>Mi cuenta</span>
-    </summary>
-    <form className="auth-form" onSubmit={save}>
-      <label>Tu nombre visible
-        <input value={nombre} onChange={event => setNombre(event.target.value)} autoComplete="name" required minLength={2} maxLength={120} disabled={busy} />
-      </label>
-      <p className="sub">Tu nombre no cambia los territorios ni los permisos asignados a tu cuenta.</p>
-      {contexto?.group_id ? (
-        <p className="sub">
-          {contexto.group_number ? `Grupo ${contexto.group_number}` : contexto.group_name} ·{' '}
-          {contexto.rol_en_grupo === 'superintendente'
-            ? 'Superintendente'
-            : contexto.rol_en_grupo === 'auxiliar'
-              ? 'Auxiliar'
-              : contexto.rol_en_grupo === 'conductor'
-                ? 'Conductor'
-                : 'Publicador'}
-          {contexto.miembro_estado === 'pendiente' ? ' · esperando confirmación' : ''}
+
+  // Tres cosas y en este orden: como te llamas, en que grupo estas, y la
+  // sesion. Antes eran seis controles del mismo peso en una sola columna.
+  return <>
+    <details className={compact ? 'miCuenta compacto' : 'panel'}>
+      <summary className="boton secundario cuenta-resumen" aria-label="Abrir Mi cuenta">
+        {compact && <span className="cuentaIcono" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="8" r="3.5" />
+            <path d="M5 20c.8-3.4 3.2-5 7-5s6.2 1.6 7 5" />
+          </svg>
+        </span>}
+        <span className={compact ? 'cuentaTexto' : undefined}>Mi cuenta</span>
+      </summary>
+      <form className="auth-form" onSubmit={save}>
+        <label>Tu nombre visible
+          <input value={nombre} onChange={event => setNombre(event.target.value)} autoComplete="name" required minLength={2} maxLength={120} disabled={busy} />
+        </label>
+        <button
+          className={nombreCambio ? 'boton principal' : 'boton secundario'}
+          disabled={busy || !nombreCambio}
+          type="submit"
+        >{busy ? 'Procesando…' : 'Guardar nombre'}</button>
+
+        <p className="cuentaGrupo">
+          {contexto?.group_id ? (
+            <>
+              <strong>
+                {contexto.group_number ? `Grupo ${contexto.group_number}` : contexto.group_name}
+                {' · '}
+                {nombreDelRol(contexto.rol_en_grupo)}
+              </strong>
+              {contexto.miembro_estado === 'pendiente' ? <small>Esperando confirmación</small> : null}
+            </>
+          ) : (
+            <strong>Todavía no estás en un grupo</strong>
+          )}
+          {profile?.driver_id ? (
+            <small>Conductor: {conductorVinculado ?? 'nombre no disponible'}</small>
+          ) : contexto?.rol_en_grupo === 'conductor' ? (
+            <small>Todavía no te vincularon como conductor. Pedíselo al siervo de territorios.</small>
+          ) : null}
         </p>
-      ) : (
-        <p className="sub">Todavía no estás en un grupo.</p>
-      )}
-      {profile?.driver_id ? (
-        <p className="sub">Sos conductor vinculado a: {conductorVinculado ?? 'nombre no disponible'}.</p>
-      ) : contexto?.rol_en_grupo === 'conductor' ? (
-        <p className="sub">Todavía no te vincularon como conductor. Pedíselo al siervo de territorios.</p>
-      ) : null}
-      {cambiandoGrupo ? (
-        <section className="panel">
-          <p className="sub">El código nuevo cierra tu pertenencia actual y te deja esperando confirmación en el otro grupo.</p>
-          <CampoCodigoGrupo
-            ocupado={busy}
-            alUnir={async (codigo) => {
-              if (!supabase) return 'Todavía no está la conexión.'
-              if (!window.confirm('¿Cambiás de grupo? Vas a dejar de ver la salida del grupo actual.')) return 'No se cambió el grupo.'
-              setBusy(true)
-              const { error: joinError } = await supabase.rpc('unirme_a_grupo', { p_codigo: codigo })
-              setBusy(false)
-              if (joinError) return joinError.message
-              setCambiandoGrupo(false)
-              retryAuth()
-              return null
-            }}
-          />
-          <button type="button" className="boton secundario" disabled={busy} onClick={() => setCambiandoGrupo(false)}>Cancelar</button>
-        </section>
-      ) : (
-        <button className="boton secundario" disabled={busy} type="button" onClick={() => setCambiandoGrupo(true)}>
+        <button
+          className="boton secundario"
+          disabled={busy}
+          type="button"
+          onClick={(event) => {
+            // El popover se cierra al abrir la hoja: dos capas apiladas
+            // diciendo cosas distintas sobre el mismo grupo es una de mas.
+            event.currentTarget.closest('details')?.removeAttribute('open')
+            setHojaGrupo(true)
+          }}
+        >
           {contexto?.group_id ? 'Cambiar de grupo' : 'Sumarme a un grupo'}
         </button>
-      )}
-      {error && <p className="nota" role="alert">{error}</p>}
-      <button
-        className={nombreCambio ? 'boton principal' : 'boton secundario'}
-        disabled={busy || !nombreCambio}
-        type="submit"
-      >{busy ? 'Procesando…' : 'Guardar nombre'}</button>
-      <button className="boton chico" disabled={busy} type="button" onClick={() => void leave()}>Cerrar sesión</button>
-    </form>
-  </details>
+
+        {error && <p className="nota" role="alert">{error}</p>}
+        <button className="boton chico" disabled={busy} type="button" onClick={() => void leave()}>Cerrar sesión</button>
+      </form>
+    </details>
+    {hojaGrupo ? (
+      <HojaGrupoCodigo
+        cambio={Boolean(contexto?.group_id)}
+        onCerrar={() => setHojaGrupo(false)}
+        onListo={() => { setHojaGrupo(false); retryAuth() }}
+      />
+    ) : null}
+  </>
 }
