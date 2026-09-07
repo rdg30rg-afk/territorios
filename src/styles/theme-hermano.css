@@ -189,7 +189,6 @@
   }
   .mobile-admin-header button { min-height: 44px; padding: .6rem .9rem; color: #f4f3ef; background: transparent; border: 1px solid #777; border-radius: 10px; font: inherit; }
   .mobile-admin-header button:focus-visible { outline: 3px solid #cbea5b; outline-offset: 3px; }
-  .sidebar-menu .importacion-link { display: none; }
   .sidebar-menu:not(.is-open) { display: none; }
   .sidebar-menu.is-open { max-height: calc(100dvh - 68px); overflow-y: auto; overscroll-behavior: contain; }
 }
