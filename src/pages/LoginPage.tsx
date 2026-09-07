@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/useAuth'
+import { accessLanding } from '../lib/access'
+import { normalizarCodigoGrupo } from '../lib/vistaHermano'
 
 const getFriendlyAuthError = (error: string | null) => {
   if (!error) {
@@ -15,7 +17,7 @@ const getFriendlyAuthError = (error: string | null) => {
 }
 
 export function LoginPage() {
-  const { isConfigured, isAuthenticated, isLoading, signIn, signUp } = useAuth()
+  const { isConfigured, isAuthenticated, isLoading, signIn, signUp, profile, moduleAccess } = useAuth()
   const location = useLocation()
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [login, setLogin] = useState('')
@@ -23,13 +25,14 @@ export function LoginPage() {
   const [fullName, setFullName] = useState('')
   const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
+  const [groupCode, setGroupCode] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const redirectTo = location.state?.from?.pathname ?? '/'
+  const redirectTo = accessLanding(profile, moduleAccess, location.state?.from?.pathname)
 
-  if (isAuthenticated) {
+  if (isAuthenticated && !isLoading) {
     return <Navigate to={redirectTo} replace />
   }
 
@@ -39,10 +42,14 @@ export function LoginPage() {
     setMessage(null)
     setIsSubmitting(true)
 
-    const result = await signIn(login, password)
-    setError(getFriendlyAuthError(result.error))
-
-    setIsSubmitting(false)
+    try {
+      const result = await signIn(login, password)
+      setError(getFriendlyAuthError(result.error))
+    } catch {
+      setError('No pudimos ingresar. Revisá la conexión y volvé a intentar.')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const handleRegister = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -51,31 +58,41 @@ export function LoginPage() {
     setMessage(null)
     setIsSubmitting(true)
 
-    const result = await signUp(fullName, email, password, username)
-
-    if (result.error) {
-      setError(result.error)
-    } else {
-      setMessage('Solicitud enviada. Un administrador debe autorizar tu acceso.')
-      setMode('login')
-      setFullName('')
-      setUsername('')
-      setEmail('')
-      setPassword('')
+    try {
+      const result = await signUp(fullName, email, password, username, groupCode)
+      if (result.error) {
+        setError(result.error)
+      } else if (result.joined) {
+        setMessage('Entraste al grupo. Ya podés ver el programa.')
+        setFullName('')
+        setUsername('')
+        setEmail('')
+        setPassword('')
+        setGroupCode('')
+      } else {
+        setMessage('Solicitud enviada. Si tenés el código de tu grupo, volvé a entrar y ponelo: entrás al instante.')
+        setMode('login')
+        setFullName('')
+        setUsername('')
+        setEmail('')
+        setPassword('')
+        setGroupCode('')
+      }
+    } catch {
+      setError('No pudimos confirmar el envío. Revisá la conexión antes de volver a intentar.')
+    } finally {
+      setIsSubmitting(false)
     }
-
-    setIsSubmitting(false)
   }
 
   return (
     <div className="auth-layout">
       <section className="auth-card">
         <div className="auth-copy">
-          <p className="eyebrow">Acceso seguro</p>
-          <h2>Ingresar al gestor territorial</h2>
+          <p className="eyebrow">Territorios</p>
+          <h2>Entrá a tu cuenta</h2>
           <p className="lead">
-            Entrá con tu usuario o email y tu contraseña. Los permisos por
-            modulo y rol siguen controlados desde Supabase.
+            Usá tu usuario o email y tu contraseña para ver el programa y tu territorio.
           </p>
         </div>
 
@@ -90,6 +107,8 @@ export function LoginPage() {
               <button
                 type="button"
                 className={mode === 'login' ? 'active' : ''}
+                aria-pressed={mode === 'login'}
+                disabled={isSubmitting}
                 onClick={() => {
                   setMode('login')
                   setError(null)
@@ -100,6 +119,8 @@ export function LoginPage() {
               <button
                 type="button"
                 className={mode === 'register' ? 'active' : ''}
+                aria-pressed={mode === 'register'}
+                disabled={isSubmitting}
                 onClick={() => {
                   setMode('register')
                   setError(null)
@@ -115,6 +136,8 @@ export function LoginPage() {
                   Usuario o email
                   <input
                     value={login}
+                    autoComplete="username"
+                    autoCapitalize="none"
                     onChange={(event) => setLogin(event.target.value)}
                     placeholder="usuario o nombre@ejemplo.com"
                     required
@@ -125,6 +148,7 @@ export function LoginPage() {
                   Contraseña
                   <input
                     type="password"
+                    autoComplete="current-password"
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
                     placeholder="Minimo 6 caracteres"
@@ -133,8 +157,8 @@ export function LoginPage() {
                   />
                 </label>
 
-                {error ? <div className="form-feedback error">{error}</div> : null}
-                {message ? <div className="form-feedback success">{message}</div> : null}
+                {error ? <div className="form-feedback error" role="alert">{error}</div> : null}
+                {message ? <div className="form-feedback success" role="status">{message}</div> : null}
 
                 <button type="submit" className="primary-button" disabled={isSubmitting || isLoading}>
                   {isSubmitting ? 'Procesando...' : 'Ingresar'}
@@ -146,6 +170,7 @@ export function LoginPage() {
                   Nombre completo
                   <input
                     value={fullName}
+                    autoComplete="name"
                     onChange={(event) => setFullName(event.target.value)}
                     placeholder="Ej. Juan Perez"
                     required
@@ -156,6 +181,8 @@ export function LoginPage() {
                   Usuario
                   <input
                     value={username}
+                    autoComplete="username"
+                    autoCapitalize="none"
                     onChange={(event) => setUsername(event.target.value)}
                     placeholder="Ej. jperez"
                     required
@@ -166,6 +193,8 @@ export function LoginPage() {
                   Email
                   <input
                     type="email"
+                    autoComplete="email"
+                    autoCapitalize="none"
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}
                     placeholder="nombre@ejemplo.com"
@@ -177,6 +206,7 @@ export function LoginPage() {
                   Contraseña
                   <input
                     type="password"
+                    autoComplete="new-password"
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
                     placeholder="Minimo 6 caracteres"
@@ -185,7 +215,19 @@ export function LoginPage() {
                   />
                 </label>
 
-                {error ? <div className="form-feedback error">{error}</div> : null}
+                <label>
+                  Código de tu grupo (opcional)
+                  <input
+                    value={groupCode}
+                    autoCapitalize="characters"
+                    autoComplete="off"
+                    maxLength={6}
+                    onChange={(event) => setGroupCode(normalizarCodigoGrupo(event.target.value))}
+                    placeholder="Te lo pasa el superintendente"
+                  />
+                </label>
+
+                {error ? <div className="form-feedback error" role="alert">{error}</div> : null}
 
                 <button type="submit" className="primary-button" disabled={isSubmitting || isLoading}>
                   {isSubmitting ? 'Enviando...' : 'Enviar solicitud'}

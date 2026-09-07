@@ -1,10 +1,20 @@
 # Qué falta
 
+> Actualización de coordinación, 6 de septiembre de 2026: el estado del 3/9 que
+> sigue abajo es histórico, no una aceptación actual. Consultar también
+> `IMPLEMENTACION-2026-09-05.md` y `QA-LUNA-BROWSER-CONDUCTOR-2026-09-05.md`.
+> La cobertura del conductor pasó una prueba real offline con reapertura tras
+> reconectar y replay idempotente en DEV. No prueba arranque offline en frío ni
+> recuperación offline del formulario de resultados. Hay respaldo privado en
+> `backups/snapshot-20260905T033510Z-mapa-por-manzanas`, pero su restauración
+> completa sigue sin verificar por incompatibilidad del servidor local.
+> El sistema no está terminado ni estos cambios sincronizados/publicados.
+
 Estado del proyecto y lista de pendientes. **Leer esto al empezar una sesión**
 y al volver de una compactación, antes de tocar nada.
 
-Actualizado: 3 de septiembre de 2026 · rama `mapa-por-manzanas` (43 commits sin
-mergear a `main`).
+Actualizado: 7 de septiembre de 2026 · rama `dev` (roles/grupos en curso;
+rotación todavía no).
 
 > Estado DEV del histórico (3 de septiembre de 2026): la staging de 3.346 filas
 > está reconciliada (3.275 aplicadas, 71 cerradas como descartadas/auditables,
@@ -57,6 +67,39 @@ en los tres.
   con el polígono equivocado.
 - **El borrador del editor vive en la base, no en localStorage.** Pedido
   explícito: "se me va a borrar todo al coño".
+- **Los mapas pasaron de OpenStreetMap a MapTiler.**
+  El disparador fue que a Mateo se le cayó el fondo del editor y pareció que
+  se había roto la pantalla. No se había roto: las teselas de
+  openstreetmap.org están donadas y su política corta a quien pide muchas
+  seguidas. El editor muestra los sesenta y pico de territorios a la vez y
+  llega a ese límite sin esfuerzo; cuando pasa, quedan los polígonos flotando
+  en gris.
+
+  El MapTiler propio ("Mapa territorio", 160 capas) sigue sin poder usarse:
+  sus teselas raster dan 403 y pasarlo a vector obliga a cambiar Leaflet por
+  MapLibre, que es reescribir la pantalla. Lo que sí funciona con la misma
+  clave son los estilos estándar, y el editor ahora usa `dataviz-light`, que
+  es gris parejo: los polígonos de colores se leen encima y los nombres de
+  calle atraviesan igual. Todo eso vive en `src/lib/fondoMapa.ts`.
+
+  La vista del hermano fue detrás, por decisión de Mateo. El reparo era la
+  cuota: esa pantalla la usa la congregación entera y no cinco personas, y
+  agotarla dejaría sin mapa a quien está parado en la esquina. Por eso
+  `ponerFondo()` vuelve solo a OpenStreetMap si MapTiler falla seis teselas
+  seguidas. Nadie se queda sin calles; a lo sumo se vuelve al fondo de antes.
+
+  Queda por ver de cerca: los nombres de calle de `dataviz-light` son gris
+  medio y los de OSM eran negros. En pantalla se leen mejor que antes porque
+  el fondo dejó de competir, pero al sol el que manda es el contraste, y eso
+  todavía no se probó en un teléfono a la intemperie. Si pierde, el cambio es
+  una línea: `streets-v2` tiene las etiquetas más oscuras.
+- **No armamos un planificador de colectivos propio.** Red Tulum ya está en
+  Google Maps. El botón "Cómo llegar" se partió en **En auto** y **En
+  colectivo**: cada uno abre una ruta desde la ubicación del teléfono
+  (`travelmode=driving|transit`), no una búsqueda de la esquina. OSM y
+  MapTiler no geocodifican "Manuel Zaballa y Talcahuano" (devuelven el
+  centro de la ciudad); Google sí. El motor propio queda para cuando la
+  provincia publique el GTFS, si alguna vez hace falta no salir de la app.
 
 ---
 
@@ -78,6 +121,17 @@ en los tres.
 - [x] Procedencia estructurada de las 1.790 salidas importadas y edición
       progresiva histórica, sin mover la fecha ni borrar el linaje. Ver
       `docs/PROCEDENCIA-Y-EDICION-SALIDAS-HISTORICAS.md`.
+
+- [x] Auditoría de la vista del hermano, medida en el navegador contra DEV.
+      Salidas traía las 1.000 más viejas —el mismo error que en el admin, que
+      acá dejaba la pantalla diciendo "No hay salidas cargadas" con 16
+      próximas en la base— y ahora pide de hoy en adelante: 17 filas y 294
+      nodos donde había 1.000 y 8.444. Se lee la columna `tipo`, así que las
+      telefónicas dejan de mostrarse como una salida común con un "Cómo
+      llegar" a ninguna parte. La letra de la manzana en el mapa sube de 15 a
+      16 px y obedece la perilla del tamaño, que además se recuerda entre
+      sesiones. Los modos "Manzana entera" y "Por cuadra" pasan a estar
+      adentro del mapa grande, donde se marca.
 
 ---
 
@@ -110,18 +164,66 @@ en los tres.
       hermano) = ~2.100 líneas pisándose por especificidad. Cuando Mateo elija,
       borrar las otras dos.
 
-### Vistas mobile que no existen
+### Vista del hermano — lo que quedó de la auditoría
 
-Hay **cinco roles** (`admin`, `superintendente`, `siervo`, `conductor`, `viewer`)
-y **una sola pantalla mobile** (`/predicacion`). Los demás entran al panel de
-escritorio desde el teléfono.
+- [x] **Aplicar `20260904120000_programa_visible_para_el_publicador.sql`.**
+      Aplicada el 4 de septiembre de 2026, solo en el clon DEV. Conductor
+      1781, barrio 1286, código 1784, priorizar 274 (91 "Todo" + 183
+      indicaciones reales; el umbral ~185 era un error de cuenta).
 
-- [ ] **Antes de diseñar: contar cuántas personas hay de cada rol en la base.**
-      Si ningún conductor tiene usuario todavía, esa pantalla es la última, no la
-      primera. Pendiente de consultar.
-- [ ] Pantalla del conductor: a quién lleva y adónde. Acción: confirmar que va.
-- [ ] Pantalla del siervo de grupo: si su grupo tiene territorio para el finde.
-- [ ] Pantalla del superintendente: qué territorio está sin tocar hace meses.
+      **El dato existía y no llegaba.** El conductor, el barrio, las manzanas
+      a priorizar y el código de territorio quedaron en
+      `salida_importacion_procedencia` y en `importacion_registros`. Ahora
+      ese texto vive en `salidas`, que es la tabla que la pantalla lee.
+
+      **La pantalla del hermano era, en los hechos, una pantalla de admin.**
+      Cada tabla que lee pedía un módulo del panel. Un publicador con rol
+      `viewer` veía todo vacío. La migración agrega lectura para cualquier
+      usuario activo. Informar lo que se caminó queda para los conductores
+      y para quien tiene ese territorio a su nombre.
+- [ ] **La columna "priorizar" del Excel está sucia y hay que decidir qué
+      hacer con ella.** Sobre 1.790 filas tiene 183 valores distintos, y no
+      todos hablan de manzanas: 40 son nombres de conductores ("Ariel
+      Riveros" siete veces), ocho dicen "Telefónica" y algunos son el
+      resultado de la salida ("se completó", "no se predicó"). La migración
+      descarta lo que puede reconocer —un nombre que ya está en la tabla de
+      alias— y la pantalla pinta el mapa sólo cuando lo que queda son letras
+      y nada más: 129 filas se pintan, 54 se explican con palabras ("Priorizá
+      Monoblocks", "Todo menos Mza C"). Lo que no se resolvió es el origen:
+      el Excel sigue teniendo una columna que se usa para tres cosas.
+- [ ] **Nadie tiene territorio personal asignado.** Cero reservas activas en
+      DEV: la mitad de la pantalla (marcar, historial, mapa propio) no la
+      puede usar ningún hermano todavía. Antes de seguir puliendo esa mitad,
+      asignar aunque sea uno de verdad.
+- [ ] **Probarla en un teléfono, al sol.** Todo lo de arriba se midió en el
+      navegador de escritorio a 734 px de ancho.
+
+### Vista del hermano por rol (7 de septiembre de 2026)
+
+Hay **cinco roles** y **una sola pantalla de teléfono** (`/predicacion`). El rol
+cambia qué paneles aparecen adentro, no a qué ruta se va. El plan está en
+`PLAN-ROLES-GRUPOS-Y-VISTA-HERMANO-2026-09-07.md`. Rama de trabajo: `dev`.
+
+- [x] Lista «Mirar territorio» propia (sin `<select>` nativo).
+- [x] Tarjeta oscura «Tu territorio / Te faltan» solo si el territorio está asignado.
+- [x] «Cómo llegar» exige GPS; las filas `SG` no inventan destino.
+- [x] Pertenencia a grupo (`grupo_miembros`), código de invitación y `mi_contexto`.
+- [x] Super del grupo puede confirmar hermanos, definir el punto y aprobar el
+      territorio de alguien de su grupo.
+- [ ] **Aplicar la migración en DEV**
+      (`20260908020000_grupos_miembros_e_invitaciones.sql`) cuando estén las
+      credenciales locales. Producción no se toca.
+- [ ] Recorrer en teléfono real (390 px y 320 px) con cuatro usuarios de prueba.
+
+Quedó fuera de este corte (no hacerlo acá):
+
+- Excepciones por fecha para la salida de grupo.
+- Programa propio por grupo con rotación (va con
+  `PLAN-ROTACION-Y-PROPUESTA-DE-PROGRAMA-2026-09-06.md`).
+- Que el super cree conductores desde el teléfono.
+- Notificaciones push o WhatsApp automático al confirmar.
+- Una persona en dos grupos a la vez.
+- Cuenta sin email (solo teléfono / OTP).
 
 ### Datos
 
@@ -136,7 +238,14 @@ escritorio desde el teléfono.
       procedencia relaciona 1.781 coincidencias exactas con `conductor_alias`,
       pero eso no asigna automáticamente `salidas.driver_id`; la identidad
       operativa sigue requiriendo evidencia y decisión explícita.
-- [ ] `grupos_servicio` tiene 11 filas para 5 grupos.
+- [ ] **Llenar `puntos_encuentro` con las coordenadas de los 145 enlaces de
+      Maps del Excel.** La tabla ya existe y `salidas.meeting_point_id` ya
+      apunta. Hoy las salidas importadas tienen el nombre de la esquina y
+      casi nunca lat/lng: OSM/MapTiler no geocodifican "calle y calle" en
+      San Juan. Los enlaces del Excel sí traen el pin (`@lat,lng` o un
+      goo.gl que hay que resolver). `coordsDeMapsUrl` en `src/lib/comoLlegar.ts`
+      ya parsea el caso largo. Con eso el programa semanal puede asignar el
+      punto solo, que es para lo que se pidió geolocalizar las intersecciones.
 - [ ] `reserved_for` sigue siendo texto libre.
 - [ ] Territorio 57: le faltan al menos 5 manzanas; 3 manzanas muestran 2 caras.
 - [ ] Mateo tiene ~24 territorios con cambios sin publicar en el editor.
@@ -158,6 +267,19 @@ escritorio desde el teléfono.
 
 - [ ] **Rotar la contraseña que quedó commiteada en el README.** Sigue en el
       historial de git. Es el único pendiente que es un riesgo hoy.
+- [ ] **Restringir la clave de MapTiler por dominio.** Ya está en `.env` como
+      `VITE_MAPTILER_KEY` y el editor la usa, pero una clave de mapas viaja
+      sí o sí al navegador: queda escrita en `dist/assets/editor-*.js` y
+      cualquiera que abra la pantalla la puede copiar. La única defensa es la
+      lista de dominios permitidos en el panel de MapTiler. Sin eso, la cuota
+      es de quien la encuentre.
+- [ ] **La clave sigue escrita a mano en `comparar-mapa.html`**, que es uno
+      de los archivos sin trackear de la raíz. Si se commitea sin mirar,
+      repite la historia del README. Ahora que está en `.env`, ese archivo
+      debería leerla de ahí o borrarse.
+- [ ] **`src/lib/mapsiMapStyle.ts` no lo usa nadie.** Son 164 líneas para
+      recolorear el estilo de MapTiler, escritas y nunca conectadas. O se usa
+      cuando se decida el motor del mapa, o se borra.
 
 ### Higiene
 

@@ -91,6 +91,7 @@
   background: var(--canvas); border-bottom: 1px solid var(--line);
 }
 .vh .marca { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: var(--t-label); }
+.vh .barra-controles { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
 .vh .marca .logo {
   width: 36px; height: 36px; border-radius: 11px; background: var(--ink); color: var(--lime);
   display: grid; place-items: center; font-size: 19px;
@@ -98,6 +99,28 @@
 .vh .btnIcono {
   width: var(--tap); height: var(--tap); border-radius: 16px; border: 1px solid var(--line);
   background: var(--surface); display: grid; place-items: center; font-size: 21px; cursor: pointer;
+}
+.vh .miCuenta.compacto { position: relative; }
+.vh .miCuenta.compacto > summary { list-style: none; }
+.vh .miCuenta.compacto > summary::-webkit-details-marker { display: none; }
+.vh .miCuenta.compacto .cuenta-resumen {
+  width: auto; min-width: 44px; min-height: 56px; height: 56px; margin: 0;
+  padding: 0 12px; border-radius: 16px; white-space: nowrap;
+  font-size: var(--t-label); color: var(--fg); background: var(--surface);
+}
+.vh .cuentaIcono { display: inline-flex; align-items: center; }
+.vh .miCuenta.compacto .auth-form {
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 30;
+  width: min(360px, calc(100vw - 24px)); max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 88px); max-height: min(520px, calc(100dvh - 88px));
+  overflow-y: auto; overscroll-behavior: contain; margin: 0; padding: 18px;
+  background: var(--surface); color: var(--fg); border: 1px solid var(--line);
+  border-radius: 18px; box-shadow: 0 12px 28px rgba(22, 25, 29, .16);
+}
+.vh .miCuenta.compacto .auth-form label { color: var(--fg); }
+.vh .miCuenta.compacto .auth-form .boton { flex: 0 0 auto; }
+.vh .miCuenta.compacto .auth-form .boton.secundario {
+  color: var(--fg); background: var(--surface); border-color: var(--line);
 }
 
 /* -------------------------------------------------------- saludo */
@@ -151,6 +174,18 @@
 .vh .boton.principal { background: var(--lime); color: var(--ink); margin-top: 18px; }
 .vh .boton.principal:active { background: var(--lime-deep); }
 .vh .boton.secundario { background: transparent; color: #fff; border: 1px solid rgba(255,255,255,.28); margin-top: 10px; }
+.vh .boton.secundario.cuenta-resumen,
+.vh .boton.secundario.actualizar-programa {
+  min-height: 56px;
+  background: var(--surface-2, #f0eee8); color: #16191d; border: 1px solid var(--line);
+}
+.vh .tarjeta .boton.secundario { background: transparent; color: #fff; border-color: rgba(255,255,255,.28); }
+.vh .boton.alternativa {
+  background: transparent; border: 2px solid var(--line); color: var(--fg); margin-top: 10px;
+}
+.vh .boton.alternativa:active { background: var(--canvas); }
+.vh .tarjeta .boton.alternativa { border-color: rgba(255,255,255,.5); color: #fff; }
+.vh .tarjeta .boton.alternativa:active { background: rgba(255,255,255,.08); }
 /* "Chico" es de peso, no de altura: sigue midiendo 56px porque la regla 2
    no se negocia. Lo que baja es el cuerpo de la letra y el relleno. */
 .vh .boton.chico { background: transparent; border: 1px solid var(--line); color: var(--fg); font-size: var(--t-body); font-weight: 600; margin-top: 10px; }
@@ -172,16 +207,25 @@
 .vh .manzana.hecha { background: var(--good-bg); border-color: var(--good-line); color: var(--good-fg); }
 .vh .manzana.hecha small { color: var(--good-fg); }
 
-.vh .leyenda { display: flex; gap: 18px; margin-top: 16px; font-size: var(--t-label); color: var(--fg-2); }
+.vh .leyenda { display: flex; flex-wrap: wrap; gap: 10px 18px; margin-top: 16px; font-size: var(--t-label); color: var(--fg-2); }
 .vh .leyenda span { display: flex; align-items: center; gap: 7px; }
 .vh .punto { width: 14px; height: 14px; border-radius: 5px; border: 1px solid var(--line); background: var(--canvas); }
-.vh .punto.ok { background: var(--good-bg); border-color: var(--good-line); }
+/* Los mismos rellenos que pinta() usa en el mapa. Una leyenda que no es del
+   color exacto de lo que explica no es una leyenda. */
+.vh .punto.ok { background: #59c48f; border-color: var(--good-fg); }
+.vh .punto.media { background: #f0c987; border-color: var(--warn-fg); }
 
 /* --------------------------------------------------------- salidas */
 .vh .horaGrande { font-size: var(--t-num); font-weight: 700; line-height: 1; letter-spacing: -.02em; }
 .vh .salidaDia { margin: 26px 0 10px; font-size: var(--t-lead); font-weight: 600; }
 .vh .salidaDia small { display: block; font-size: var(--t-label); font-weight: 500; color: var(--fg-3); }
 .vh .salidaDia.esHoy { color: var(--olive); }
+.vh .salidasEncabezado { display: flex; align-items: flex-start; gap: 12px; }
+.vh .salidasEncabezado .saludo { flex: 1; min-width: 0; }
+.vh .salidasEncabezado .actualizar-programa {
+  width: auto; flex: 0 0 auto; margin: 26px 0 0; padding: 0 14px;
+  font-size: var(--t-label); white-space: nowrap;
+}
 
 /* La columna de la hora se ajusta a su contenido: fijarla en 78px partia
    los barrios al medio ("Bo. Los / Tilos"). Y el barrio se fue de aca: es
@@ -218,6 +262,28 @@
 }
 .vh .salidaDetalle .mapaMini { margin-top: 0; }
 
+/* Auto y colectivo son dos viajes distintos: no se esconden en un solo
+   "Cómo llegar" que abre Maps en auto y deja al que va en bondi cambiando
+   el modo con un dedo. El título va arriba; los dos botones, al lado,
+   mismos 56 px. */
+.vh .paresLlegar {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 18px;
+}
+.vh .paresLlegarTitulo {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: var(--t-label);
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+.vh .tarjeta .paresLlegarTitulo { color: #a4a8b0; }
+.vh .paresLlegar .boton { margin-top: 0; font-size: var(--t-body); }
+
 .vh .marcas { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 14px; }
 .vh .marca-chip.priorizar { flex-basis: 100%; margin-top: 4px; }
 .vh .marca-chip {
@@ -251,6 +317,9 @@
 .vh .marca-chip.priorizar span { flex: 1; }
 .vh .marca-chip.tel { background: var(--olive-bg); border-color: var(--olive-line); color: var(--olive-ink); }
 
+/* display:flex le gana a [hidden], que solo vale display:none. Sin esto, la
+   region de avisos se veria vacia todo el tiempo. */
+.vh .nota[hidden] { display: none; }
 .vh .nota {
   display: flex; gap: 12px; align-items: flex-start; margin-top: 22px; padding: 16px;
   border-radius: 16px; background: var(--surface); border: 1px solid var(--line);
@@ -275,8 +344,28 @@
 .vh .mapaPie .llave { width: 15px; height: 15px; border-radius: 4px; background: var(--lime); border: 2px solid var(--ink); flex: 0 0 auto; margin-top: 3px; }
 .vh .tarjeta .mapaPie .llave { border-color: #fff; }
 .vh .tarjeta .mapaPie { color: #a4a8b0; }
+/* La letra de la manzana es el dato mas consultado del mapa y estaba en
+   15px, debajo del piso, y sorda a la perilla del tamanio. Ahora usa la
+   misma escala que el resto: al agrandar el texto, el mapa acompania. */
+/* El tamanio ya no viene del JS: se calcula desde la misma escala del texto
+   y se centra sobre su punto. Asi la perilla llega tambien al mapa. */
+/* El credito del mapa. No es contenido: no compite con la regla del piso de
+   16px, pero tampoco se esconde. */
+.vh .leaflet-control-attribution {
+  font: 400 11px/1.4 Urbanist, sans-serif;
+  background: rgba(255, 255, 255, .78); color: var(--fg-3);
+  padding: 1px 7px; border-radius: 8px 0 0 0;
+}
+.vh .leaflet-control-attribution a { color: var(--fg-3); }
+
 .vh .etiquetaMz {
-  display: grid; place-items: center; font: 700 15px Urbanist, sans-serif;
+  position: absolute; transform: translate(-50%, -50%);
+  display: grid; place-items: center;
+  min-width: calc(var(--t-label) * 2); height: calc(var(--t-label) * 2); padding: 0 5px;
+  font: 700 var(--t-label)/1 Urbanist, sans-serif;
+  /* La misma letra que en la rejilla: en el mapa se veian "a, b, c" y en la
+     lista "A, B, C", y es la misma manzana. */
+  text-transform: uppercase;
   border-radius: 9999px; border: 2px solid #fff; color: #fff;
 }
 
@@ -327,7 +416,9 @@
 .vh .sobreBarra h2 { flex: 1; min-width: 0; margin: 0; font-size: var(--t-lead); font-weight: 600; letter-spacing: -.02em; }
 .vh .sobreBarra h2 small { display: block; font-size: var(--t-label); font-weight: 500; color: var(--fg-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vh .sobreCuerpo { position: relative; flex: 1; min-height: 0; }
-.vh #mapaTerr { position: absolute; inset: 0; }
+/* Clase y no id: el historial y el mapa grande son dos componentes con la
+   misma caja, y dos elementos con el mismo id es HTML invalido. */
+.vh .mapaGrande { position: absolute; inset: 0; }
 .vh .sobrePie {
   display: flex; gap: 10px; align-items: flex-start; margin: 0;
   padding: 15px var(--pad) calc(15px + env(safe-area-inset-bottom, 0px));
@@ -356,6 +447,12 @@
 .vh .manzana.media small { color: var(--warn-fg); }
 
 .vh .oculto { display: none !important; }
+
+@media (max-width: 380px) {
+  .vh .barra { gap: 8px; padding-inline: 12px; }
+  .vh .barra .miCuenta.compacto .cuenta-resumen { padding-inline: 11px; }
+  .vh .barra .miCuenta.compacto .cuentaTexto { display: none; }
+}
 
 /* Solo mirar: una manzana que no se puede cambiar no se muestra apagada
    —su estado sigue siendo el dato— pero deja de invitar al dedo. */
@@ -390,3 +487,90 @@
   font: 700 17px/1 Urbanist, sans-serif; text-transform: uppercase;
 }
 .vh .histDeshecho b { background: var(--warn-bg); color: var(--warn-fg); }
+
+.vh .tarjeta.consulta {
+  background: var(--surface);
+  color: var(--fg);
+  border: 1px solid var(--line);
+}
+.vh .tarjeta.consulta .rotulo,
+.vh .tarjeta.consulta .sub { color: var(--fg-3); }
+.vh .tarjeta.consulta .numeroGrande { color: var(--fg); }
+.vh .tarjeta.lima {
+  background: var(--lime);
+  color: var(--ink);
+}
+.vh .tarjeta.lima .rotulo { color: var(--olive-ink); }
+.vh .tarjeta.lima .boton.principal { background: var(--ink); color: #fff; }
+
+.vh .elegir-lista,
+.vh .elegir-territorio {
+  width: 100%;
+  justify-content: space-between;
+  text-align: left;
+}
+.vh .elegir-lista small,
+.vh .elegir-territorio small {
+  display: block;
+  font-size: var(--t-label);
+  color: var(--fg-3);
+  font-weight: 500;
+}
+.vh .elegir-lista-cuerpo,
+.vh .elegir-territorio-cuerpo {
+  overflow: auto;
+  padding: 16px var(--pad) calc(24px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.vh .elegir-lista-opcion {
+  flex-direction: column;
+  align-items: flex-start;
+  min-height: var(--tap);
+}
+.vh .elegir-lista-opcion.elegida,
+.vh .elegir-territorio-celda.elegida {
+  border-color: var(--ink);
+  box-shadow: inset 0 0 0 2px var(--ink);
+}
+.vh .elegir-territorio-grilla {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.vh .elegir-territorio-celda {
+  min-height: var(--tap);
+  flex-direction: column;
+  padding: 8px 4px;
+}
+.vh .elegir-territorio-celda small {
+  font-size: 12px;
+  color: var(--olive-ink);
+}
+@media (max-width: 360px) {
+  .vh .elegir-territorio-grilla { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+.vh .codigo-grupo {
+  letter-spacing: 0.35em;
+  text-transform: uppercase;
+  font-size: var(--t-h2);
+  text-align: center;
+}
+.vh .campo-codigo-grupo { display: grid; gap: 10px; }
+.vh .filtros-salidas {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 0 0 16px;
+}
+.vh .filtros-salidas .boton { min-height: var(--tap); }
+.vh .codigo-grande {
+  font-size: var(--t-big);
+  letter-spacing: 0.18em;
+  font-weight: 700;
+  margin: 8px 0;
+}
+.vh .lista-hermanos { display: grid; gap: 8px; }
+.vh .lista-hermanos .boton { justify-content: space-between; }

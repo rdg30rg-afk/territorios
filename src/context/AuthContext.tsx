@@ -2,10 +2,14 @@ import type { Session } from '@supabase/supabase-js'
 import {
   useCallback,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
+import { hasActiveAccess, hasModuleAccess } from '../lib/access'
+import { readAllRows } from '../lib/readAllRows'
+import { pendingBeforeLogout } from '../lib/pendingBeforeLogout'
 import {
   AuthContext,
   type AuthContextValue,
@@ -15,6 +19,48 @@ import {
   type Profile,
   type ProfileRole,
 } from './AuthTypes'
+import type { ContextoHermano } from '../lib/vistaHermano'
+
+function contextoDesdeFila(
+  fila: ContextoHermano | null,
+  profileRow: Profile | null,
+): ContextoHermano | null {
+  if (fila) {
+    return {
+      role: fila.role,
+      access_status: fila.access_status,
+      driver_id: fila.driver_id,
+      full_name: fila.full_name,
+      group_id: fila.group_id,
+      group_number: fila.group_number,
+      group_name: fila.group_name,
+      rol_en_grupo: fila.rol_en_grupo,
+      miembro_estado: fila.miembro_estado,
+      punto_grupo_id: fila.punto_grupo_id,
+      punto_grupo_nombre: fila.punto_grupo_nombre,
+      punto_grupo_lat: fila.punto_grupo_lat,
+      punto_grupo_lng: fila.punto_grupo_lng,
+      es_super_de_grupo: Boolean(fila.es_super_de_grupo),
+    }
+  }
+  if (!profileRow) return null
+  return {
+    role: profileRow.role,
+    access_status: profileRow.access_status,
+    driver_id: profileRow.driver_id,
+    full_name: profileRow.full_name,
+    group_id: null,
+    group_number: null,
+    group_name: null,
+    rol_en_grupo: null,
+    miembro_estado: null,
+    punto_grupo_id: null,
+    punto_grupo_nombre: null,
+    punto_grupo_lat: null,
+    punto_grupo_lng: null,
+    es_super_de_grupo: false,
+  }
+}
 
 type PendingUserRow = {
   id: string
@@ -26,10 +72,19 @@ type PendingUserRow = {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
+  const [contexto, setContexto] = useState<ContextoHermano | null>(null)
   const [moduleAccess, setModuleAccess] = useState<ModuleKey[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [authError, setAuthError] = useState<string | null>(null)
+  const [authAttempt, setAuthAttempt] = useState(0)
   const [pendingRequests, setPendingRequests] = useState<PendingUserRequest[]>([])
   const [managedUsers, setManagedUsers] = useState<ManagedUser[]>([])
+  const [managedUsersError, setManagedUsersError] = useState<string | null>(null)
+  const managedGeneration = useRef(0)
+  const authIdentity = useRef<string | null>(null)
+  // Sobrevive a la reejecución del efecto que dispara "Volver a intentar".
+  // Una misma sesión ya verificada no debe desmontar la pantalla protegida.
+  const verifiedUser = useRef<string | null>(null)
 
   useEffect(() => {
     if (!supabase) {
@@ -40,24 +95,71 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const client = supabase
 
     let mounted = true
+    let generation = 0
+    let pendingUser: string | null = null
+    let deadline: ReturnType<typeof setTimeout> | undefined
+    const deferred = new Set<ReturnType<typeof setTimeout>>()
+    const expire = () => {
+      if (!mounted) return
+      generation++
+      pendingUser = null
+      verifiedUser.current = null
+      setProfile(null)
+      setContexto(null)
+      setModuleAccess([])
+      setAuthError('La comprobación tardó demasiado. Revisá la conexión y volvé a intentar.')
+      setIsLoading(false)
+    }
+    deadline = setTimeout(expire, 15000)
 
     const hydrateUser = async (activeSession: Session | null) => {
       if (!mounted) {
         return
       }
 
+      const userId = activeSession?.user.id ?? null
+      // INITIAL_SESSION, SIGNED_IN y getSession pueden describir la misma
+      // sesión simultáneamente. Compartir la lectura que ya está pendiente.
       setSession(activeSession)
+      if (userId && pendingUser === userId) return
+      const request = ++generation
+      const sameUser = Boolean(userId && verifiedUser.current === userId)
+      if (authIdentity.current !== userId) {
+        managedGeneration.current++
+        setManagedUsers([])
+        setPendingRequests([])
+        setManagedUsersError(null)
+      }
+      authIdentity.current = userId
+      setAuthError(null)
+      clearTimeout(deadline)
+      if (!sameUser) {
+        setProfile(null)
+        setContexto(null)
+        setModuleAccess([])
+        verifiedUser.current = null
+      }
 
       if (!activeSession?.user) {
+        pendingUser = null
+        setManagedUsers([])
+        setPendingRequests([])
+        setManagedUsersError(null)
         setProfile(null)
+        setContexto(null)
         setModuleAccess([])
         setIsLoading(false)
         return
       }
 
-      setIsLoading(true)
+      pendingUser = userId
+      // Actualizar permisos en segundo plano conserva el Outlet y sus
+      // formularios. Si se revocan o falla la comprobación, cerrar el acceso.
+      if (!sameUser) setIsLoading(true)
+      deadline = setTimeout(expire, 15000)
 
-      const [{ data: profileRow }, { data: accessRows }] = await Promise.all([
+      try {
+      const [{ data: profileRow, error: profileError }, { data: accessRows, error: accessError }, contextoRes] = await Promise.all([
         client
           .from('profiles')
           .select('id, full_name, role, driver_id, access_status')
@@ -67,13 +169,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .from('user_module_access')
           .select('module_key')
           .eq('user_id', activeSession.user.id),
+        client.from('mi_contexto').select('*').maybeSingle(),
       ])
+      const contextoRow = contextoRes.error?.code === '42P01' || contextoRes.error?.code === '42703'
+        ? null
+        : (contextoRes.data as ContextoHermano | null)
 
-      if (!mounted) {
+      if (!mounted || request !== generation) {
         return
       }
 
-      setProfile(profileRow ?? null)
+      if (profileError || accessError) throw profileError ?? accessError
+
+      clearTimeout(deadline)
+      pendingUser = null
+      verifiedUser.current = userId
+      // No reiniciar efectos/formularios que dependen del perfil cuando
+      // Supabase devuelve los mismos valores con otra identidad de objeto.
+      setProfile(previous => {
+        const next = (profileRow ?? null) as Profile | null
+        if (previous && next && previous.id === next.id &&
+          previous.full_name === next.full_name && previous.role === next.role &&
+          previous.driver_id === next.driver_id && previous.access_status === next.access_status) return previous
+        return next
+      })
+      setContexto(contextoDesdeFila(contextoRow, (profileRow ?? null) as Profile | null))
       setModuleAccess(
         (accessRows ?? [])
           .map((row) => row.module_key)
@@ -88,23 +208,72 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           ),
       )
       setIsLoading(false)
+      } catch {
+        if (!mounted || request !== generation) return
+        clearTimeout(deadline)
+        pendingUser = null
+        verifiedUser.current = null
+        setProfile(null)
+        setContexto(null)
+        setModuleAccess([])
+        setAuthError('No pudimos comprobar tu acceso. Revisá la conexión y volvé a intentar.')
+        setIsLoading(false)
+      }
     }
 
-    client.auth.getSession().then(({ data }) => {
+    const initialGeneration = generation
+    client.auth.getSession().then(({ data, error }) => {
+      if (!mounted || generation !== initialGeneration) return
+      if (error) {
+        clearTimeout(deadline)
+        setAuthError('No pudimos recuperar tu sesión. Volvé a intentar.')
+        setIsLoading(false)
+        return
+      }
       void hydrateUser(data.session)
+    }).catch(() => {
+      if (!mounted || generation !== initialGeneration) return
+      clearTimeout(deadline)
+      setAuthError('No pudimos recuperar tu sesión. Volvé a intentar.')
+      setIsLoading(false)
     })
 
     const {
       data: { subscription },
     } = client.auth.onAuthStateChange((_event, activeSession) => {
-      void hydrateUser(activeSession)
+      deferred.forEach(clearTimeout)
+      deferred.clear()
+      // Salir/cambiar de cuenta invalida inmediatamente. Las consultas se
+      // inician fuera del callback de Auth para no competir con su lock.
+      if ((activeSession?.user.id ?? null) !== authIdentity.current) {
+        generation++
+        pendingUser = null
+        verifiedUser.current = null
+        authIdentity.current = null
+        managedGeneration.current++
+        setProfile(null)
+        setContexto(null)
+        setModuleAccess([])
+        setManagedUsers([])
+        setPendingRequests([])
+        setSession(activeSession)
+        setIsLoading(Boolean(activeSession))
+      }
+      const timer = setTimeout(() => {
+        deferred.delete(timer)
+        void hydrateUser(activeSession)
+      }, 0)
+      deferred.add(timer)
     })
 
     return () => {
       mounted = false
+      clearTimeout(deadline)
+      deferred.forEach(clearTimeout)
+      managedGeneration.current++
       subscription.unsubscribe()
     }
-  }, [])
+  }, [authAttempt])
 
   const signIn = async (login: string, password: string) => {
     if (!supabase) {
@@ -139,43 +308,64 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    await supabase.auth.signOut()
+    if (session?.user.id) {
+      let warning: string | null
+      try {
+        const project = new URL(import.meta.env.VITE_SUPABASE_URL).hostname.split('.')[0]
+        warning = pendingBeforeLogout(localStorage, project, session.user.id)
+      } catch {
+        warning = 'No pudimos comprobar los envíos pendientes. No borres los datos del navegador. ¿Querés cerrar sesión igualmente?'
+      }
+      if (warning && !window.confirm(warning)) return
+    }
+    const { error } = await supabase.auth.signOut()
+    if (error) throw error
   }
 
-  const isApproved = Boolean(
-    profile?.role === 'admin' || (profile && moduleAccess.length > 0),
-  )
+  const isApproved = hasActiveAccess(profile)
 
   const loadManagedUsers = useCallback(async () => {
-    if (!supabase || profile?.role !== 'admin') {
+    const request = ++managedGeneration.current
+    if (!supabase || profile?.role !== 'admin' || !hasActiveAccess(profile) || authIdentity.current !== profile.id) {
       setManagedUsers([])
+      setPendingRequests([])
       return
     }
-
-    const [
-      { data: profileRows, error: profileError },
-      { data: accessRows, error: accessError },
-      { data: pendingRows, error: pendingError },
-    ] =
-      await Promise.all([
-        supabase
+    const client = supabase
+    setManagedUsersError(null)
+    try {
+    const [profileRows, accessRows, pendingRows, memberRows] = await Promise.all([
+        readAllRows((from, to) => client
           .from('profiles')
           .select('id, full_name, username, auth_email, role, driver_id, access_status')
-          .order('created_at', { ascending: false }),
-        supabase.from('user_module_access').select('user_id, module_key'),
-        supabase
+          .order('created_at', { ascending: false }).order('id').range(from, to)),
+        readAllRows((from, to) => client.from('user_module_access').select('user_id, module_key')
+          .order('user_id').order('module_key').range(from, to)),
+        readAllRows((from, to) => client
           .from('pending_users')
           .select('id, full_name, email, username')
-          .order('requested_at', { ascending: false }),
+          .order('requested_at', { ascending: false }).order('id').range(from, to)),
+        client
+          .from('grupo_miembros')
+          .select('profile_id, estado, grupos_servicio(group_number, group_name)')
+          .is('hasta', null)
+          .then((res) => (res.error ? [] : res.data ?? []))
+          .catch(() => []),
       ])
+    if (request !== managedGeneration.current || authIdentity.current !== profile.id) return
 
-    if (profileError || accessError) {
-      console.error(profileError?.message ?? accessError?.message)
-      return
-    }
-
-    if (pendingError) {
-      console.error(pendingError.message)
+    const gruposPorPersona = new Map<string, { groupName: string | null; groupNumber: number | null; miembroEstado: ManagedUser['miembroEstado'] }>()
+    for (const fila of memberRows as Array<{
+      profile_id: string
+      estado: ManagedUser['miembroEstado']
+      grupos_servicio: { group_number: number | null; group_name: string | null } | { group_number: number | null; group_name: string | null }[] | null
+    }>) {
+      const grupo = Array.isArray(fila.grupos_servicio) ? fila.grupos_servicio[0] : fila.grupos_servicio
+      gruposPorPersona.set(fila.profile_id, {
+        groupName: grupo?.group_name ?? null,
+        groupNumber: grupo?.group_number ?? null,
+        miembroEstado: fila.estado,
+      })
     }
 
     const users: ManagedUser[] = ((profileRows ?? []) as Array<{
@@ -189,6 +379,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }>).map((user) => ({
       ...user,
       access_status: user.access_status ?? 'pending',
+      groupName: gruposPorPersona.get(user.id)?.groupName ?? null,
+      groupNumber: gruposPorPersona.get(user.id)?.groupNumber ?? null,
+      miembroEstado: gruposPorPersona.get(user.id)?.miembroEstado ?? null,
       moduleAccess: ((accessRows ?? []) as Array<{
         user_id: string
         module_key: ModuleKey
@@ -222,10 +415,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setPendingRequests(
       allUsers
         .filter(
-          (user) =>
-            user.role !== 'admin' &&
-            user.access_status !== 'inactive' &&
-            user.moduleAccess.length === 0,
+          (user) => user.access_status === 'pending',
         )
         .map((user) => ({
           id: user.id,
@@ -233,38 +423,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: user.auth_email ?? '',
         })),
     )
-  }, [profile?.role])
-
-  // Compatibilidad con la vista anterior: pendientes = usuarios sin modulos.
-  const loadPendingRequests = useCallback(async () => {
-    if (!supabase || profile?.role !== 'admin') {
-      setPendingRequests([])
-      return
+    } catch {
+      if (request !== managedGeneration.current || authIdentity.current !== profile.id) return
+      setManagedUsersError('No pudimos actualizar los accesos. La lista puede estar desactualizada; volvé a intentar.')
     }
-
-    await loadManagedUsers()
-  }, [loadManagedUsers, profile?.role])
+  }, [profile])
 
   useEffect(() => {
-    if (profile?.role === 'admin') {
+    if (profile?.role === 'admin' && hasActiveAccess(profile)) {
       void loadManagedUsers()
-      void loadPendingRequests()
       return
     }
 
     setPendingRequests([])
     setManagedUsers([])
-  }, [loadManagedUsers, loadPendingRequests, profile?.role])
+    setManagedUsersError(null)
+  }, [loadManagedUsers, profile])
 
-  const signUp = async (fullName: string, email: string, password: string, username?: string) => {
+  const signUp = async (
+    fullName: string,
+    email: string,
+    password: string,
+    username?: string,
+    groupCode?: string,
+  ) => {
     if (!supabase) {
       return { error: 'Faltan las variables de entorno de Supabase.' }
     }
 
     const normalizedEmail = email.trim()
     const normalizedUsername = username?.trim() || normalizedEmail.split('@')[0]
+    const codigo = groupCode?.trim().toUpperCase()
 
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email: normalizedEmail,
       password,
       options: {
@@ -279,13 +470,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { error: error.message }
     }
 
-    await supabase.auth.signOut()
+    if (codigo && data.session) {
+      const { error: joinError } = await supabase.rpc('unirme_a_grupo', { p_codigo: codigo })
+      if (joinError) {
+        await supabase.auth.signOut()
+        return {
+          error: /ningún grupo|ningun grupo|22023/i.test(joinError.message)
+            ? 'Ese código no es de ningún grupo. Fijate si lo copiaste bien.'
+            : joinError.message,
+        }
+      }
+      return { error: null, joined: true }
+    }
 
-    return { error: null }
+    await supabase.auth.signOut()
+    return { error: null, joined: false }
   }
 
   const approveUser = async (userId: string) => {
-    return updateUserAccess(userId, 'viewer', ['mapas'])
+    return updateUserAccess(userId, 'viewer', [])
   }
 
   const updateUserAccess = async (
@@ -298,59 +501,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { error: 'No tiene permisos de admin.' }
     }
 
-    const profileUpdate: {
-      role: ProfileRole
-      driver_id?: string | null
-      access_status: 'pending' | 'active' | 'inactive'
-    } = {
-      role,
-      access_status: role === 'admin' || modules.length > 0 ? 'active' : 'pending',
-    }
-
-    if (driverId !== undefined) {
-      profileUpdate.driver_id = driverId || null
-    }
-
-    const { error: profileError } = await supabase
-      .from('profiles')
-      .update(profileUpdate)
-      .eq('id', userId)
-
-    if (profileError) {
-      return { error: profileError.message }
-    }
-
-    const { error: deleteAccessError } = await supabase
-      .from('user_module_access')
-      .delete()
-      .eq('user_id', userId)
-
-    if (deleteAccessError) {
-      return { error: deleteAccessError.message }
-    }
-
-    const uniqueModules = Array.from(new Set(modules))
-
-    if (uniqueModules.length > 0) {
-      const { error: insertAccessError } = await supabase
-        .from('user_module_access')
-        .insert(
-          uniqueModules.map((moduleKey) => ({
-            user_id: userId,
-            module_key: moduleKey,
-          })),
-        )
-
-      if (insertAccessError) {
-        return { error: insertAccessError.message }
-      }
-    }
-
-    const authorizedUser = managedUsers.find((user) => user.id === userId)
-
-    if (authorizedUser?.auth_email) {
-      await supabase.from('pending_users').delete().eq('email', authorizedUser.auth_email)
-    }
+    const { error } = await supabase.rpc('administrar_acceso', {
+      p_user_id: userId, p_role: role, p_status: 'active',
+      p_modules: Array.from(new Set(modules)), p_driver_id: driverId || null,
+    })
+    if (error) return { error: error.message }
 
     await loadManagedUsers()
 
@@ -362,58 +517,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { error: 'No tiene permisos de admin.' }
     }
 
-    const deactivatedUser = managedUsers.find((user) => user.id === userId)
-
-    const { error: profileError } = await supabase
-      .from('profiles')
-      .update({
-        role: 'viewer',
-        driver_id: null,
-        access_status: 'inactive',
-      })
-      .eq('id', userId)
-
-    if (profileError) {
-      return { error: profileError.message }
-    }
-
-    const { error: deleteAccessError } = await supabase
-      .from('user_module_access')
-      .delete()
-      .eq('user_id', userId)
-
-    if (deleteAccessError) {
-      return { error: deleteAccessError.message }
-    }
-
-    if (deactivatedUser?.auth_email) {
-      await supabase.from('pending_users').delete().eq('email', deactivatedUser.auth_email)
-    }
+    const { error } = await supabase.rpc('administrar_acceso', {
+      p_user_id: userId, p_role: 'viewer', p_status: 'inactive',
+      p_modules: [], p_driver_id: null,
+    })
+    if (error) return { error: error.message }
 
     await loadManagedUsers()
 
     return { error: null }
   }
 
-  const canAccessModule = (moduleKey: ModuleKey) => {
-    if (profile?.role === 'admin') {
-      return true
-    }
-
-    return moduleAccess.includes(moduleKey)
-  }
+  const canAccessModule = (moduleKey: ModuleKey) => hasModuleAccess(profile, moduleAccess, moduleKey)
 
   const value: AuthContextValue = {
     isConfigured: isSupabaseConfigured,
     isLoading,
+    authError,
+    retryAuth: () => setAuthAttempt((attempt) => attempt + 1),
     isAuthenticated: Boolean(session?.user),
     session,
     user: session?.user ?? null,
     profile,
+    contexto,
     moduleAccess,
     isApproved,
     pendingRequests,
     managedUsers,
+    managedUsersError,
     signIn,
     signUp,
     signOut,

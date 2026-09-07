@@ -46,6 +46,54 @@ function getGroupKey(group: GroupRecord) {
   return group.group_number ? `number-${group.group_number}` : `legacy-${group.group_name}`
 }
 
+function GrupoFichaExtra({ groupId }: { groupId: string }) {
+  const client = supabase
+  const [codigo, setCodigo] = useState<string | null>(null)
+  const [miembros, setMiembros] = useState(0)
+  const [pendientes, setPendientes] = useState(0)
+  const [punto, setPunto] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!client) return
+    let vivo = true
+    void Promise.all([
+      client.from('grupo_invitaciones').select('codigo').eq('group_id', groupId).maybeSingle(),
+      client.from('grupo_miembros').select('id, estado').eq('group_id', groupId).is('hasta', null),
+      client.from('puntos_encuentro').select('nombre').eq('group_id', groupId).eq('tipo', 'grupo').eq('activo', true).maybeSingle(),
+    ]).then(([inv, miembrosRes, puntoRes]) => {
+      if (!vivo) return
+      setCodigo(inv.data?.codigo ?? null)
+      const filas = miembrosRes.data ?? []
+      setMiembros(filas.length)
+      setPendientes(filas.filter((f) => f.estado === 'pendiente').length)
+      setPunto(puntoRes.data?.nombre ?? null)
+    })
+    return () => {
+      vivo = false
+    }
+  }, [client, groupId])
+
+  return (
+    <>
+      <div className="module-detail-card">
+        <span>Hermanos</span>
+        <strong>
+          {miembros}
+          {pendientes ? ` · ${pendientes} esperan confirmación` : ''}
+        </strong>
+      </div>
+      <div className="module-detail-card">
+        <span>Punto de encuentro del grupo</span>
+        <strong>{punto ?? 'Todavía no está cargado'}</strong>
+      </div>
+      <div className="module-detail-card">
+        <span>Código de invitación</span>
+        <strong>{codigo ?? 'Se crea al aplicar la migración'}</strong>
+      </div>
+    </>
+  )
+}
+
 export function GruposPage() {
   const { profile } = useAuth()
   const client = supabase
@@ -259,7 +307,7 @@ export function GruposPage() {
     setMessage(null)
 
     if (!client) {
-      setError('Primero debes configurar Supabase.')
+      setError('Falta conectar la base para cargar grupos.')
       return
     }
 
@@ -607,6 +655,7 @@ export function GruposPage() {
                   <span>Asignacion</span>
                   <strong>{assignmentLabels[selectedGroup.manager_role]}</strong>
                 </div>
+                <GrupoFichaExtra groupId={selectedGroup.id} />
                 <div className="module-detail-card">
                   <span>Uso esperado</span>
                   <strong>

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, Navigate, useLocation } from 'react-router-dom'
 import type { ModuleKey, ProfileRole } from '../context/AuthTypes'
 import { Desplegable } from '../components/Desplegable'
+import { TerritorySuggestions } from '../components/TerritorySuggestions'
 import { useAuth } from '../context/useAuth'
 import { decirElError } from '../lib/decirElError'
 import { supabase } from '../lib/supabase'
@@ -17,7 +18,7 @@ const moduleLabels: Record<ModuleKey, string> = {
 }
 
 const manageableRoles: Array<{ value: ProfileRole; label: string }> = [
-  { value: 'viewer', label: 'Pendiente' },
+  { value: 'viewer', label: 'Publicador' },
   { value: 'conductor', label: 'Conductor' },
   { value: 'siervo', label: 'Siervo' },
   { value: 'superintendente', label: 'Superintendente' },
@@ -31,12 +32,15 @@ type DriverOption = {
 }
 
 export function DashboardPage() {
-  const { profile } = useAuth()
+  const { profile, moduleAccess } = useAuth()
+
+  if (profile?.role !== 'admin' && moduleAccess.length === 0) return <Navigate to="/predicacion" replace />
 
   return (
     <div className="page">
       <Saludo />
       <QueNecesitaAtencion />
+      {profile?.role === 'admin' ? <TerritorySuggestions /> : null}
 
       {profile?.role === 'admin' ? <UserAccessPanel /> : null}
     </div>
@@ -84,14 +88,16 @@ type Pendiente = {
 }
 
 function QueNecesitaAtencion() {
-  const { profile, managedUsers } = useAuth()
+  const { profile, managedUsers, managedUsersError, loadManagedUsers } = useAuth()
   const [items, setItems] = useState<Pendiente[] | null>(null)
+  const [unavailable, setUnavailable] = useState<string[]>([])
+  const [reload, setReload] = useState(0)
   const esAdmin = profile?.role === 'admin'
 
   const enEspera = useMemo(
     () =>
       managedUsers.filter(
-        (u) => u.role !== 'admin' && u.access_status !== 'inactive' && u.moduleAccess.length === 0,
+        (u) => u.access_status === 'pending',
       ).length,
     [managedUsers],
   )
@@ -99,18 +105,21 @@ function QueNecesitaAtencion() {
   useEffect(() => {
     if (!supabase || !esAdmin) {
       setItems([])
+      setUnavailable(esAdmin ? ['conexión con la base'] : [])
       return
     }
     const cliente = supabase
     let vivo = true
+    setItems(null)
+    setUnavailable([])
     void (async () => {
-      // Cada cuenta va por separado y ninguna puede tumbar al resto: si una
-      // tabla todavia no existe en este entorno, esa fila no aparece y las
-      // demas si. Un tablero a medias sirve; uno que no carga, no.
+      // Mostrar lo que sí se pudo consultar, pero jamás confundir errores con
+      // cero pendientes ni afirmar que todo está al día.
+      try {
       const cuenta = async (p: PromiseLike<{ count: number | null; error: unknown }>) => {
         try {
           const { count, error } = await p
-          return error ? null : (count ?? 0)
+          return error ? null : count
         } catch {
           return null
         }
@@ -121,13 +130,13 @@ function QueNecesitaAtencion() {
       // quedo marcada 'revertida' con sus 1.800 filas: contarlas aca
       // inflaba el numero -decia 94 cuando eran 59- y un tablero que
       // exagera es peor que no tenerlo, porque se le deja de creer.
-      const { data: corridas } = await cliente
+      const { data: corridas, error: corridaError } = await cliente
         .from('importaciones')
         .select('id')
         .neq('estado', 'revertida')
         .order('corrida_at', { ascending: false })
         .limit(1)
-      const corrida = (corridas as { id: string }[] | null)?.[0]?.id ?? null
+      const corrida = corridaError ? null : (corridas as { id: string }[] | null)?.[0]?.id ?? null
 
       const [conflictos, sinConductor, solicitudes] = await Promise.all([
         corrida
@@ -138,14 +147,25 @@ function QueNecesitaAtencion() {
                 .eq('importacion_id', corrida)
                 .eq('estado', 'conflicto'),
             )
-          : Promise.resolve(null),
-        cuenta(
-          cliente
-            .from('salidas')
-            .select('id', cuantas)
-            .is('driver_id', null)
-            .gte('scheduled_for', new Date().toISOString()),
-        ),
+          : Promise.resolve(corridaError ? null : 0),
+        (async () => {
+          const conTexto = await cuenta(
+            cliente
+              .from('salidas')
+              .select('id', cuantas)
+              .is('driver_id', null)
+              .or('conductor_texto.is.null,conductor_texto.eq.')
+              .gte('scheduled_for', new Date().toISOString()),
+          )
+          if (conTexto !== null) return conTexto
+          return cuenta(
+            cliente
+              .from('salidas')
+              .select('id', cuantas)
+              .is('driver_id', null)
+              .gte('scheduled_for', new Date().toISOString()),
+          )
+        })(),
         cuenta(
           cliente
             .from('territorio_personal_reservas')
@@ -154,6 +174,11 @@ function QueNecesitaAtencion() {
         ),
       ])
       if (!vivo) return
+      setUnavailable([
+        ...(conflictos === null ? ['conflictos de importación'] : []),
+        ...(sinConductor === null ? ['salidas sin conductor'] : []),
+        ...(solicitudes === null ? ['solicitudes de territorio'] : []),
+      ])
 
       const lista: Pendiente[] = []
       if (enEspera > 0) {
@@ -162,7 +187,7 @@ function QueNecesitaAtencion() {
           cuantos: enEspera,
           titulo: enEspera === 1 ? 'Una persona espera acceso' : `${enEspera} personas esperan acceso`,
           detalle: 'Se registraron y todavía no pueden entrar a nada.',
-          a: '/',
+          a: '/#accesos',
           accion: 'Darles acceso',
         })
       }
@@ -188,7 +213,7 @@ function QueNecesitaAtencion() {
               ? 'Una salida no tiene conductor'
               : `${sinConductor} salidas no tienen conductor`,
           detalle: 'Están programadas y nadie las conduce todavía.',
-          a: '/salidas',
+          a: '/salidas?agenda=sin-conductor',
           accion: 'Asignar conductor',
         })
       }
@@ -203,11 +228,14 @@ function QueNecesitaAtencion() {
         })
       }
       setItems(lista)
+      } catch {
+        if (vivo) { setUnavailable(['pendientes del sistema']); setItems([]) }
+      }
     })()
     return () => {
       vivo = false
     }
-  }, [esAdmin, enEspera])
+  }, [esAdmin, enEspera, reload])
 
   if (!esAdmin) return null
 
@@ -219,7 +247,16 @@ function QueNecesitaAtencion() {
     )
   }
 
-  if (!items.length) {
+  const missing = [...unavailable, ...(managedUsersError ? ['personas que esperan acceso'] : [])]
+  const warning = missing.length ? <div className="form-feedback error" role="alert">
+    <p>No se pudo comprobar: {missing.join(', ')}. No podemos afirmar que esté todo al día.</p>
+    <button type="button" className="secondary-button" onClick={() => {
+      setReload(value => value + 1)
+      if (managedUsersError) void loadManagedUsers().catch(() => setUnavailable(current => [...current, 'accesos']))
+    }}>Volver a consultar pendientes</button>
+  </div> : null
+
+  if (!items.length && !missing.length) {
     return (
       <section className="panel inicio-tranquilo">
         <p className="eyebrow">Al día</p>
@@ -234,6 +271,7 @@ function QueNecesitaAtencion() {
 
   return (
     <section className="panel">
+      {warning}
       <p className="eyebrow">Te está esperando</p>
       <ul className="inicio-lista">
         {items.map((p) => (
@@ -258,9 +296,11 @@ function UserAccessPanel() {
     deactivateUser,
     loadManagedUsers,
     managedUsers,
+    managedUsersError,
     profile,
     updateUserAccess,
   } = useAuth()
+  const location = useLocation()
   const [draftRoles, setDraftRoles] = useState<Record<string, ProfileRole>>({})
   const [draftModules, setDraftModules] = useState<Record<string, ModuleKey[]>>({})
   const [draftDriverIds, setDraftDriverIds] = useState<Record<string, string>>({})
@@ -273,9 +313,7 @@ function UserAccessPanel() {
     () =>
       managedUsers.filter(
         (user) =>
-          user.role !== 'admin' &&
-          user.access_status !== 'inactive' &&
-          user.moduleAccess.length === 0,
+          user.access_status === 'pending',
       ),
     [managedUsers],
   )
@@ -283,8 +321,7 @@ function UserAccessPanel() {
     () =>
       managedUsers.filter(
         (user) =>
-          user.access_status !== 'inactive' &&
-          (user.role === 'admin' || user.moduleAccess.length > 0),
+          user.access_status === 'active',
       ),
     [managedUsers],
   )
@@ -292,10 +329,6 @@ function UserAccessPanel() {
     () => managedUsers.filter((user) => user.access_status === 'inactive'),
     [managedUsers],
   )
-
-  useEffect(() => {
-    void loadManagedUsers()
-  }, [loadManagedUsers])
 
   const loadDrivers = useCallback(async () => {
     if (!supabase || profile?.role !== 'admin') {
@@ -336,6 +369,11 @@ function UserAccessPanel() {
     )
     setIsRefreshing(false)
   }
+
+  useEffect(() => {
+    if (location.hash !== '#accesos') return
+    document.getElementById('accesos')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [location.hash, pendingUsers.length, approvedUsers.length])
 
   const getDraftRole = (userId: string, fallback: ProfileRole) =>
     draftRoles[userId] ?? fallback
@@ -385,6 +423,17 @@ function UserAccessPanel() {
   }
 
   const disableUser = async (userId: string) => {
+    const persona =
+      managedUsers.find((u) => u.id === userId)
+    const nombre = persona?.full_name || persona?.auth_email || 'esta cuenta'
+    if (
+      !window.confirm(
+        `¿Dás de baja a ${nombre}? Deja de poder entrar hasta que lo reactives.`,
+      )
+    ) {
+      return
+    }
+
     setError(null)
     setFeedback(null)
     setIsSavingUserId(userId)
@@ -403,7 +452,7 @@ function UserAccessPanel() {
     setIsSavingUserId(null)
   }
 
-  const renderUserAccessCard = (user: (typeof managedUsers)[number], isPendingCard = false) => {
+  const renderUserAccessCard = (user: (typeof managedUsers)[number], variant: 'pending' | 'active' | 'inactive' = 'active') => {
     const draftRole = getDraftRole(user.id, user.role)
     const draftAccess = getDraftModules(user.id, user.moduleAccess)
     const draftDriverId = getDraftDriverId(user.id, user.driver_id)
@@ -415,7 +464,7 @@ function UserAccessPanel() {
       <article
         key={user.id}
         className={
-          isPendingCard
+          variant === 'pending'
             ? 'admin-user-card admin-user-card-pending'
             : 'admin-user-card'
         }
@@ -424,33 +473,40 @@ function UserAccessPanel() {
           <strong>{user.full_name || user.username || user.auth_email}</strong>
           <span>
             {user.auth_email ||
-              'Sin email registrado: falta sincronizar con Supabase Auth'}
+              'Sin email registrado en la cuenta.'}
+          </span>
+          <span>
+            {user.groupNumber
+              ? `Grupo ${user.groupNumber}`
+              : user.groupName
+                ? user.groupName
+                : 'Sin grupo'}
+            {user.miembroEstado === 'pendiente' ? ' · espera confirmación' : ''}
           </span>
           <span
             className={
-              user.moduleAccess.length > 0 || user.role === 'admin'
+              user.access_status === 'active'
                 ? 'status-pill status-activo'
                 : 'status-pill status-pendiente'
             }
           >
             {isRequestOnly
               ? 'Solicitud recibida'
-              : user.moduleAccess.length > 0 || user.role === 'admin'
+              : user.access_status === 'active'
               ? 'Autorizado'
-              : 'Pendiente'}
+              : user.access_status === 'inactive' ? 'Inactivo' : 'Pendiente'}
           </span>
           {!user.auth_email || isRequestOnly ? (
             <span>
-              Si no puede entrar, fijate también que el email esté
-              confirmado en Supabase Authentication.
+              Si no puede entrar, fijate también que haya confirmado el email.
             </span>
           ) : null}
         </div>
 
         <label>
-          Asignacion
+          Rol
           <Desplegable
-            etiqueta="Asignacion"
+            etiqueta="Rol"
             valor={draftRole}
             deshabilitado={isDisabled}
             alElegir={(valor) =>
@@ -485,6 +541,9 @@ function UserAccessPanel() {
           />
         </label>
 
+        {draftRole === 'admin' ? (
+          <p className="admin-access-complete">Acceso completo al panel.</p>
+        ) : (
         <div className="admin-module-checks">
           {Object.entries(moduleLabels).map(([moduleKey, label]) => (
             <label key={moduleKey}>
@@ -494,12 +553,13 @@ function UserAccessPanel() {
                 onChange={() =>
                   toggleModule(user.id, moduleKey as ModuleKey, user.moduleAccess)
                 }
-                disabled={isDisabled || draftRole === 'admin'}
+                disabled={isDisabled}
               />
               <span>{label}</span>
             </label>
           ))}
         </div>
+        )}
 
         <div className="admin-user-actions">
           <button
@@ -512,10 +572,13 @@ function UserAccessPanel() {
           >
             {isSavingUserId === user.id
               ? 'Guardando...'
-              : isPendingCard
+              : variant === 'pending'
                 ? 'Autorizar acceso'
-                : 'Guardar acceso'}
+                : variant === 'inactive'
+                  ? 'Reactivar'
+                  : 'Guardar acceso'}
           </button>
+          {variant !== 'inactive' ? (
           <button
             type="button"
             className="danger-button"
@@ -524,13 +587,14 @@ function UserAccessPanel() {
           >
             Dar de baja
           </button>
+          ) : null}
         </div>
       </article>
     )
   }
 
   return (
-    <section className="panel admin-access-panel">
+    <section className="panel admin-access-panel" id="accesos">
       <div className="section-heading">
         <div>
           <p className="eyebrow">Administración</p>
@@ -547,6 +611,7 @@ function UserAccessPanel() {
       </div>
 
       {error ? <div className="form-feedback error">{error}</div> : null}
+      {managedUsersError ? <div className="form-feedback error" role="alert">{managedUsersError}</div> : null}
       {feedback ? <div className="form-feedback success">{feedback}</div> : null}
 
       <div className="admin-notification-panel">
@@ -555,7 +620,7 @@ function UserAccessPanel() {
             <p className="eyebrow">Notificaciones</p>
             <h4>Esperando que les des acceso</h4>
             <span>
-              Elegí a qué puede entrar antes de darle el acceso.
+              Autorizá su cuenta como publicador. Los módulos del panel son opcionales.
             </span>
           </div>
           {/* El contador solo aparece si hay algo que contar. Un globo
@@ -568,7 +633,7 @@ function UserAccessPanel() {
           <div className="status-card">Nadie está esperando acceso.</div>
         ) : (
           <div className="admin-user-list">
-            {pendingUsers.map((user) => renderUserAccessCard(user, true))}
+            {pendingUsers.map((user) => renderUserAccessCard(user, 'pending'))}
           </div>
         )}
       </div>
@@ -594,6 +659,9 @@ function UserAccessPanel() {
           <span>{inactiveUsers.length} dado/s de baja</span>
         </div>
       ) : null}
+      <div className="admin-user-list">
+        {inactiveUsers.map((user) => renderUserAccessCard(user, 'inactive'))}
+      </div>
     </section>
   )
 }

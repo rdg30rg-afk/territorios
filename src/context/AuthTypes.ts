@@ -1,5 +1,6 @@
 import { createContext } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
+import type { ContextoHermano } from '../lib/vistaHermano'
 
 export type ProfileRole =
   | 'admin'
@@ -39,27 +40,35 @@ export type ManagedUser = {
   driver_id: string | null
   access_status: 'pending' | 'active' | 'inactive'
   moduleAccess: ModuleKey[]
+  groupName?: string | null
+  groupNumber?: number | null
+  miembroEstado?: 'pendiente' | 'confirmado' | 'retirado' | null
   requestOnly?: boolean
 }
 
 export type AuthContextValue = {
   isConfigured: boolean
   isLoading: boolean
+  authError: string | null
+  retryAuth: () => void
   isAuthenticated: boolean
   session: Session | null
   user: User | null
   profile: Profile | null
+  contexto: ContextoHermano | null
   moduleAccess: ModuleKey[]
   isApproved: boolean
   pendingRequests: PendingUserRequest[]
   managedUsers: ManagedUser[]
+  managedUsersError: string | null
   signIn: (login: string, password: string) => Promise<{ error: string | null }>
   signUp: (
     fullName: string,
     email: string,
     password: string,
     username?: string,
-  ) => Promise<{ error: string | null }>
+    groupCode?: string,
+  ) => Promise<{ error: string | null; joined?: boolean }>
   signOut: () => Promise<void>
   approveUser: (userId: string) => Promise<{ error: string | null }>
   loadManagedUsers: () => Promise<void>

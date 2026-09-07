@@ -580,9 +580,9 @@ def classify_salida_type(value: Any) -> str | None:
         return "telefonica"
     if text in {"ac", "ar"} or "asamblea" in text:
         return "asamblea"
-    if text in {"zo", "zoom"}:
+    if text in {"zo", "zoom", "sr", "ss"}:
         return "especial"
-    if "grupo" in text:
+    if text == "sg" or "grupo" in text:
         return "grupos"
     return None
 
@@ -993,6 +993,7 @@ def build_territory_records(
         target = source_e.hyperlink.target if source_e.hyperlink is not None else None
         reasons: list[str] = []
         normalized: dict[str, Any] | None = {
+            "codigo": source_code_text(code),
             "codigo_bruto": json_value(code),
             "punto_encuentro_bruto": json_value(meeting),
             "barrio_bruto": json_value(neighborhood),
