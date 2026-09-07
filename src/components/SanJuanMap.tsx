@@ -41,6 +41,11 @@ L.drawLocal.edit.handlers.edit.tooltip.subtext = 'Guardá cuando termines.'
 L.drawLocal.edit.handlers.remove.tooltip.text = 'Tocá un territorio para retirarlo.'
 
 const SAN_JUAN_CENTER: L.LatLngExpression = [-31.5375, -68.5364]
+
+/* Desde acá se ven las manzanas. Más lejos, una manzana mide tres píxeles:
+   las letras ya se ocultaban por eso, y las formas -que es lo que hay que ir
+   a buscar a la base- no tenían por qué correr otra suerte. */
+const MANZANA_ZOOM = 15
 const DEFAULT_COMPANY_NAME = 'Territorios San Juan'
 const SNAP_DISTANCE_PX = 16
 const TERRITORY_COLORS = [
@@ -922,6 +927,10 @@ export function SanJuanMap({ initialTerritoryId = null }: SanJuanMapProps) {
   const [territories, setTerritories] = useState<TerritoryRecord[]>([])
   const [territoryBlocks, setTerritoryBlocks] = useState<TerritoryBlockRecord[]>([])
   const [manzanaFormas, setManzanaFormas] = useState<Record<string, ManzanaForma[]>>({})
+  // Las formas de manzana que ya trajimos de la base, por territorio. Se
+  // piden de a un territorio y sólo cuando se lo va a dibujar: son el 90%
+  // del peso de esta pantalla y sirven a partir del zoom 15.
+  const [formasBase, setFormasBase] = useState<Map<string, ManzanaForma[]>>(() => new Map())
   const [selectedTerritoryId, setSelectedTerritoryId] = useState<string | null>(null)
   // La ficha del territorio vivia en una tercera columna a la derecha del
   // mapa. Entre la lista, el mapa y ella, el mapa -que es la pantalla- se
@@ -943,6 +952,7 @@ export function SanJuanMap({ initialTerritoryId = null }: SanJuanMapProps) {
   const [isDrawing, setIsDrawing] = useState(false)
   const [modoCrear, setModoCrear] = useState(false)
   const [mapZoom, setMapZoom] = useState(11)
+  const [vistaMovida, setVistaMovida] = useState(0)
   const [isMarkingBlocks, setIsMarkingBlocks] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isSavingBlock, setIsSavingBlock] = useState(false)
@@ -1255,24 +1265,105 @@ export function SanJuanMap({ initialTerritoryId = null }: SanJuanMapProps) {
     [selectedColor],
   )
 
+  // El respaldo de 281 kB para bases sin la columna de geometria. Se pedia
+  // siempre, incluso cuando la base tiene las formas y el archivo -segun el
+  // comentario de arriba- ni se mira. Ahora se busca cuando hace falta
+  // dibujar manzanas, y detras de las de la base.
+  const formasPedidas = useRef<Set<string>>(new Set())
+  const respaldoPedido = useRef(false)
+
+  const territoriosADibujar = useMemo(() => {
+    const cerca = mapZoom >= MANZANA_ZOOM
+    if (!cerca && !selectedTerritoryId) return [] as string[]
+
+    const map = mapRef.current
+    const encuadre = cerca && map ? map.getBounds() : null
+
+    const ids = territories
+      .filter((territorio) => {
+        if (territorio.id === selectedTerritoryId) return true
+        if (!encuadre) return false
+        const anillo = territorio.polygon_geojson?.coordinates?.[0]
+        if (!anillo?.length) return false
+        // Basta con que un vertice caiga en pantalla: los territorios son
+        // chicos comparados con el encuadre a zoom 15.
+        return anillo.some(([lng, lat]) => encuadre.contains([lat, lng]))
+      })
+      .map((territorio) => territorio.id)
+
+    return ids
+    // `vistaMovida` entra a proposito: al arrastrar cambia el encuadre, que
+    // Leaflet no publica como estado.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapZoom, selectedTerritoryId, territories, vistaMovida])
+
+  // La clave y no el arreglo: `territoriosADibujar` se recalcula en cada
+  // arrastre del mapa, y con el arreglo como dependencia el efecto se
+  // limpiaba y volvia a empezar a mitad de la consulta. La respuesta que ya
+  // venia en camino quedaba descartada y el pedido no se repetia, porque el
+  // id ya figuraba como pedido: las manzanas no aparecian nunca.
+  const claveADibujar = territoriosADibujar.join(',')
+
   useEffect(() => {
-    let vigente = true
+    const client = supabase
+    if (!client) return
+
+    const faltan = claveADibujar
+      .split(',')
+      .filter((id) => id && !formasPedidas.current.has(id))
+    if (faltan.length === 0) return
+    for (const id of faltan) formasPedidas.current.add(id)
+
+    // Sin bandera de cancelacion: esto solo llena una cache por id, y
+    // aplicarla tarde no descoloca nada.
+    void client
+      .from('territorio_manzanas')
+      .select('territory_id, label, geometry_geojson')
+      .in('territory_id', faltan)
+      .is('vigente_hasta', null)
+      .not('geometry_geojson', 'is', null)
+      .then(({ data, error: fallo }) => {
+        if (fallo) {
+          // Base sin la columna: que caiga en el respaldo del archivo.
+          for (const id of faltan) formasPedidas.current.delete(id)
+          return
+        }
+        setFormasBase((previas) => {
+          const siguiente = new Map(previas)
+          // Se guarda tambien el vacio: sin esto, un territorio sin formas
+          // vuelve a preguntar cada vez que entra en pantalla.
+          for (const id of faltan) siguiente.set(id, [])
+          for (const fila of (data ?? []) as Array<{
+            territory_id: string
+            label: string
+            geometry_geojson: ManzanaForma['geom'] | null
+          }>) {
+            if (!fila.geometry_geojson?.coordinates?.length) continue
+            siguiente.get(fila.territory_id)?.push({
+              letra: fila.label,
+              geom: fila.geometry_geojson,
+            })
+          }
+          return siguiente
+        })
+      })
+  }, [claveADibujar])
+
+  useEffect(() => {
+    if (claveADibujar === '' || respaldoPedido.current) return
+    respaldoPedido.current = true
 
     void fetch('/datos/manzanas-territorios.json')
       .then((respuesta) => (respuesta.ok ? respuesta.json() : null))
       .then((datos) => {
-        if (vigente && datos?.territorios) {
+        if (datos?.territorios) {
           setManzanaFormas(datos.territorios as Record<string, ManzanaForma[]>)
         }
       })
       .catch(() => {
         // Sin formas se muestran los puntos, que es el comportamiento previo.
       })
-
-    return () => {
-      vigente = false
-    }
-  }, [])
+  }, [claveADibujar])
 
   const renderBlockMarkers = useCallback(() => {
     const blockLayer = blockLayerRef.current
@@ -1286,20 +1377,18 @@ export function SanJuanMap({ initialTerritoryId = null }: SanJuanMapProps) {
     // omiten sus puntos, para no mostrar las dos cosas encima.
     const conForma = new Set<string>()
 
-    // La base primero. Emparejada por territory_id, que es exacto, y no por
-    // el numero del territorio como el archivo.
-    const formasDeLaBase = new Map<string, ManzanaForma[]>()
-    territoryBlocks.forEach((block) => {
-      if (!block.geometry_geojson?.coordinates?.length) {
-        return
-      }
-      const lista = formasDeLaBase.get(block.territory_id) ?? []
-      lista.push({ letra: block.label, geom: block.geometry_geojson })
-      formasDeLaBase.set(block.territory_id, lista)
-    })
+    // La base primero -emparejada por territory_id, que es exacto, y no por
+    // el numero del territorio como el archivo-, y solo para los territorios
+    // que se estan mirando: `formasBase` se llena a pedido.
+    const aDibujar = new Set(territoriosADibujar)
 
     territories.forEach((territory, index) => {
-      const formas = formasDeLaBase.get(territory.id) ?? manzanaFormas[territory.name]
+      if (!aDibujar.has(territory.id)) {
+        return
+      }
+
+      const deLaBase = formasBase.get(territory.id)
+      const formas = deLaBase?.length ? deLaBase : manzanaFormas[territory.name]
       if (!formas?.length) {
         return
       }
@@ -1334,7 +1423,7 @@ export function SanJuanMap({ initialTerritoryId = null }: SanJuanMapProps) {
 
         // Las letras a zoom ciudad tapan las calles. Desde 15 se leen;
         // el territorio seleccionado las muestra un poco antes.
-        if (esSeleccionado || mapZoom >= 15) {
+        if (esSeleccionado || mapZoom >= MANZANA_ZOOM) {
         L.marker(centro as [number, number], {
           interactive: false,
           icon: L.divIcon({
@@ -1356,7 +1445,7 @@ export function SanJuanMap({ initialTerritoryId = null }: SanJuanMapProps) {
       }
 
       const isSelectedBlock = block.territory_id === selectedTerritoryId
-      if (!(isSelectedBlock || mapZoom >= 15)) {
+      if (!(isSelectedBlock || mapZoom >= MANZANA_ZOOM)) {
         return
       }
       const marker = L.marker([block.lat, block.lng], {
@@ -1373,7 +1462,15 @@ export function SanJuanMap({ initialTerritoryId = null }: SanJuanMapProps) {
 
       marker.addTo(blockLayer)
     })
-  }, [manzanaFormas, mapZoom, selectedTerritoryId, territories, territoryBlocks])
+  }, [
+    formasBase,
+    manzanaFormas,
+    mapZoom,
+    selectedTerritoryId,
+    territories,
+    territoriosADibujar,
+    territoryBlocks,
+  ])
 
   const renderSnapGuide = useCallback(
     (point: [number, number] | null) => {
@@ -1684,9 +1781,14 @@ export function SanJuanMap({ initialTerritoryId = null }: SanJuanMapProps) {
         // La geometria y el versionado pueden no existir todavia (base sin
         // la migracion de cobertura). Se piden, y si las columnas no estan
         // se reintenta sin ellas en vez de dejar el mapa sin manzanas.
+        // Sin `geometry_geojson`. Con la forma de cada manzana esta consulta
+        // pesaba 381 kB y tardaba entre 1,4 y 2,3 s en resolver, para dibujar
+        // -a zoom de ciudad- un mosaico ilegible de 600 poligonos de 3 px.
+        // Acá sólo vienen la letra y el punto, que es lo que necesita la
+        // lista de la ficha; la forma se pide por territorio más abajo.
         client
           .from('territorio_manzanas')
-          .select('id, territory_id, label, lat, lng, created_at, geometry_geojson')
+          .select('id, territory_id, label, lat, lng, created_at')
           .is('vigente_hasta', null)
           .order('label', { ascending: true })
           .then((res) =>
@@ -1744,6 +1846,10 @@ export function SanJuanMap({ initialTerritoryId = null }: SanJuanMapProps) {
     map.attributionControl.setPrefix(false)
     ponerFondo(L, map)
     map.on('zoomend', () => setMapZoom(map.getZoom()))
+    // Al arrastrar tambien cambia que territorios estan a la vista, y con
+    // ellos que formas de manzana hay que ir a buscar. El contador sube y
+    // el efecto de mas abajo mira el encuadre; no redibuja nada por si solo.
+    map.on('moveend', () => setVistaMovida((n) => n + 1))
     setMapZoom(map.getZoom())
 
     const existingTerritoryLayer = L.layerGroup().addTo(map)
@@ -2232,7 +2338,27 @@ export function SanJuanMap({ initialTerritoryId = null }: SanJuanMapProps) {
     setError(`El territorio ${territory.name} no se puede borrar físicamente: se perderían sus relaciones históricas. El retiro completo todavía no está habilitado; primero debe resolver sus reservas y salidas asociadas.`)
   }
 
-  const handleExportTerritoriesJson = () => {
+  // El respaldo sí lleva la forma de cada manzana, y por eso se va a
+  // buscarla acá: es el único momento en que se necesitan las 2.000 de una
+  // vez, y es alguien pidiendo explícitamente una copia completa. Cargarlas
+  // al abrir el mapa, por si algún día alguien exporta, costaba 381 kB a
+  // todos los que sólo venían a mirar un territorio.
+  const handleExportTerritoriesJson = async () => {
+    const formas = new Map<string, ManzanaForma['geom']>()
+    if (client) {
+      const { data } = await client
+        .from('territorio_manzanas')
+        .select('id, geometry_geojson')
+        .is('vigente_hasta', null)
+        .not('geometry_geojson', 'is', null)
+      for (const fila of (data ?? []) as Array<{
+        id: string
+        geometry_geojson: ManzanaForma['geom']
+      }>) {
+        formas.set(fila.id, fila.geometry_geojson)
+      }
+    }
+
     const payload = {
       exported_at: new Date().toISOString(),
       count: territoriesWithIndex.length,
@@ -2243,7 +2369,12 @@ export function SanJuanMap({ initialTerritoryId = null }: SanJuanMapProps) {
         color: territory.color,
         created_at: territory.created_at,
         polygon_geojson: territory.polygon_geojson,
-        blocks: territoryBlocks.filter((block) => block.territory_id === territory.id),
+        blocks: territoryBlocks
+          .filter((block) => block.territory_id === territory.id)
+          .map((block) => ({
+            ...block,
+            geometry_geojson: formas.get(block.id) ?? null,
+          })),
       })),
     }
 
@@ -2866,7 +2997,7 @@ export function SanJuanMap({ initialTerritoryId = null }: SanJuanMapProps) {
                     <button
                       type="button"
                       className="ghost-button"
-                      onClick={handleExportTerritoriesJson}
+                      onClick={() => void handleExportTerritoriesJson()}
                       disabled={territoriesWithIndex.length === 0}
                     >
                       Exportar GeoJSON
