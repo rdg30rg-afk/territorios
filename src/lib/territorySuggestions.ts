@@ -20,11 +20,15 @@ export function suggestTerritories(rows: TerritoryCoverage[], now = Date.now()) 
     const allSidesWalked = countsValid && walkedSides === sides
     const category: SuggestionCategory = row.reservado ? 'asignado' : !Number.isFinite(sides) || sides <= 0 ? 'sin_geometria'
       : percent === null || !countsValid ? 'verificar' : allSidesWalked && percent === 100 ? 'completo' : 'completar'
-    const reason = category === 'asignado' ? 'Tiene una reserva activa; coordinar antes de programarlo.'
-      : category === 'sin_geometria' ? 'Faltan lados para evaluar la cobertura.'
-      : category === 'verificar' ? 'Sin cobertura concluyente: verificar antes de decidir; no equivale a 0%.'
-      : category === 'completar' ? `${percent}% de los metros figura recorrido (porcentaje redondeado); ${walkedSides} de ${sides} lados recorridos. Revisar qué falta.`
-      : 'Todos los metros figuran recorridos; revisar antigüedad antes de iniciar otra ronda.'
+    // El dato primero y en una linea. La version larga explicaba el metodo
+    // -"porcentaje redondeado", "no equivale a 0%"- en el lugar donde se
+    // decide, y para leer tres territorios habia que leer nueve renglones.
+    // La aclaracion metodologica vive en el "Como se ordenan" del panel.
+    const reason = category === 'asignado' ? 'Con reserva activa · coordinar'
+      : category === 'sin_geometria' ? 'Sin lados cargados'
+      : category === 'verificar' ? 'Sin dato concluyente · verificar'
+      : category === 'completar' ? `${walkedSides} de ${sides} ${sides === 1 ? 'lado' : 'lados'} · ${percent}%`
+      : 'Todos los lados · revisar antigüedad'
     return { ...row, percent, age, category, reason }
   }).sort((a,b) => {
     const order = { completar:0, verificar:1, completo:2, sin_geometria:3, asignado:4 }

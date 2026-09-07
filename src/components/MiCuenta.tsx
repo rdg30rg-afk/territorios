@@ -43,6 +43,10 @@ export function MiCuenta({ compact = false }: MiCuentaProps) {
       setError(failure && typeof failure === 'object' && 'message' in failure ? String(failure.message) : 'No se pudo guardar tu nombre. Conservamos lo que escribiste.')
     } finally { setBusy(false) }
   }
+  // Lima es "esto es lo que hay que hacer aca". Con "Guardar nombre" siempre
+  // lima, el popover gritaba una accion que casi nunca hace falta y tapaba a
+  // la que si: sumarse a un grupo.
+  const nombreCambio = nombre.trim() !== (profile?.full_name ?? '').trim()
   const leave = async () => {
     if (busy) return
     setBusy(true); setError(null)
@@ -110,8 +114,12 @@ export function MiCuenta({ compact = false }: MiCuentaProps) {
         </button>
       )}
       {error && <p className="nota" role="alert">{error}</p>}
-      <button className="boton principal" disabled={busy} type="submit">{busy ? 'Procesando…' : 'Guardar nombre'}</button>
-      <button className="boton secundario" disabled={busy} type="button" onClick={() => void leave()}>Cerrar sesión</button>
+      <button
+        className={nombreCambio ? 'boton principal' : 'boton secundario'}
+        disabled={busy || !nombreCambio}
+        type="submit"
+      >{busy ? 'Procesando…' : 'Guardar nombre'}</button>
+      <button className="boton chico" disabled={busy} type="button" onClick={() => void leave()}>Cerrar sesión</button>
     </form>
   </details>
 }

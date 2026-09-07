@@ -285,7 +285,12 @@ button {
   min-width: 0;
 }
 
-@media (max-width: 1099px) {
+/* El mismo punto de quiebre que .map-workspace (1280) y no 1099. Con 1099
+   habia un tramo -entre 1100 y 1280- con dos grillas de dos columnas, una
+   adentro de la otra, peleando por 760 px de contenido: la columna de
+   herramientas quedaba cortada. La grilla de afuera no puede sostener dos
+   columnas mientras la de adentro todavia pide dos. */
+@media (max-width: 1280px) {
   .territory-stage {
     grid-template-columns: 1fr;
     grid-template-areas:
@@ -358,13 +363,33 @@ button {
   align-items: center;
 }
 
+/* El panel de la lista mide 240-340 px y la segunda pista pedia 340 px
+   minimos: el titulo caia a casi cero y el buscador se le montaba encima.
+   Adentro de una columna angosta, el encabezado se apila: titulo arriba,
+   buscador y "Nuevo territorio" abajo. */
 .territory-registry-toolbar {
-  grid-template-columns: minmax(0, 1fr) minmax(340px, auto);
+  grid-template-columns: minmax(0, 1fr);
   margin-bottom: 1rem;
 }
 
+/* Flex y no grid: en un panel de 320 px, "minmax(0,1fr) auto" le dejaba al
+   buscador 150 px y su propio placeholder salia cortado ("Buscar por nun").
+   Con wrap, cuando no entran los dos al lado, el boton baja entero. */
 .territory-registry-actions {
-  grid-template-columns: minmax(220px, 1fr) auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+  align-items: center;
+}
+
+.territory-registry-actions .territory-search-field {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.territory-registry-actions .primary-button {
+  flex: 0 1 auto;
+  white-space: nowrap;
 }
 
 .territory-prep-bar {
@@ -562,12 +587,21 @@ button {
   padding: 1rem 1.1rem 1.15rem;
 }
 
+/* Sin wrap, el titulo era lo unico que cedia: los controles no se encogen
+   -el buscador pedia 320 px fijos- y "Salidas programadas" con su nota
+   terminaba en una columna de 130 px, una palabra por renglon. */
 .module-registry-toolbar {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 1rem;
   align-items: center;
   margin-bottom: 1rem;
+}
+
+.module-registry-toolbar > :first-child {
+  min-width: min(260px, 100%);
+  flex: 1 1 auto;
 }
 
 .module-registry-actions {
@@ -578,7 +612,7 @@ button {
 }
 
 .module-search-field {
-  min-width: 320px;
+  min-width: min(320px, 100%);
 }
 
 .module-search-field input {
@@ -1222,13 +1256,21 @@ button {
   gap: 0.75rem;
 }
 
+/* Estos botones no llevaban clase de diseno y arrastraban la paleta del
+   tema viejo: beige sobre marron, rosados en medio de una interfaz oliva.
+   Son acciones secundarias y se ven como tales. */
 .toolbar-actions button {
   padding: 0.75rem 1rem;
-  border-radius: 999px;
-  border: none;
-  background: #ecd8ca;
-  color: #8a4b2d;
-  font-weight: 700;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel-bg);
+  color: var(--text-main);
+  font-weight: 600;
+}
+
+.toolbar-actions button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent-dark);
 }
 
 .territory-toolbar-actions {
@@ -1246,11 +1288,16 @@ button {
   position: relative;
 }
 
+/* La paleta vivia a la izquierda con un desplazamiento fijo de 6,35rem
+   calculado a ojo para caer debajo del zoom. Cuando la barra de dibujo
+   sumo sus botones, la columna izquierda paso de largo y la paleta quedo
+   encima del lapiz y del tacho. A la derecha no compite con nada, asi que
+   el offset deja de depender de cuantos controles haya del otro lado. */
 .territory-map-sidecar {
   position: absolute;
   z-index: 500;
-  top: 6.35rem;
-  left: 0.9rem;
+  top: 0.9rem;
+  right: 0.9rem;
   display: flex;
   flex-direction: column;
   gap: 0.45rem;
@@ -2380,6 +2427,17 @@ button {
 
   .admin-user-actions {
     justify-content: flex-start;
+  }
+}
+
+@media (max-width: 720px) {
+  .module-registry-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .module-registry-actions > * {
+    flex: 1 1 min(160px, 100%);
   }
 }
 

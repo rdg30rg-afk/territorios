@@ -52,7 +52,9 @@ export function TerritorySuggestions() {
       : visible.length===0 ? <p>No hay territorios en este grupo.</p>
       : <ul>{displayed.map(row=><li key={row.territory_id}>
         <strong>Territorio {row.name}</strong> — {row.reason}
-        <p>{row.age===null ? 'Sin fecha válida de última marca.' : `Última marca hace ${row.age} días.`}</p>
+        <p>{row.age===null ? 'Sin fecha de última marca'
+          : row.age===0 ? 'Última marca hoy'
+          : `Última marca hace ${row.age} ${row.age===1 ? 'día' : 'días'}`}</p>
         <Link to={`/mapas?territorio=${encodeURIComponent(row.territory_id)}`}>
           Abrir en el mapa
         </Link>

@@ -27,11 +27,17 @@ test('los helpers QA solo habilitan la salida sintética por notes y leen qa=1',
   assert.equal(showQaFromSearch('?qa=10'), false)
 })
 
-test('las dos superficies de QA visual tienen clases y contraste explícitos', () => {
+test('el botón secundario se lee sobre papel y solo invierte en la tarjeta oscura', () => {
   assert.match(miCuenta, /className="boton secundario cuenta-resumen"/)
   assert.match(predicacion, /actualizar-programa/)
-  assert.match(css, /\.vh \.boton\.secundario\.cuenta-resumen,\s*\.vh \.boton\.secundario\.actualizar-programa\s*\{[\s\S]*?min-height:\s*56px;[\s\S]*?background:\s*var\(--surface-2,\s*#f0eee8\);[\s\S]*?color:\s*#16191d;[\s\S]*?border:\s*1px solid var\(--line\);/)
-  assert.match(css, /\.vh \.tarjeta \.boton\.secundario\s*\{[\s\S]*?background:\s*transparent;[\s\S]*?color:\s*#fff;/)
+  // Antes el secundario era blanco sobre blanco por defecto y se corregia
+  // caso por caso: la grilla de territorios se quedo sin arreglo y no se
+  // veia. El contraste tiene que venir del valor por defecto.
+  assert.match(css, /\.vh \.boton\.secundario \{[\s\S]*?background:\s*var\(--surface\);[\s\S]*?color:\s*var\(--fg\);[\s\S]*?border:\s*1px solid var\(--line\);/)
+  // Y la inversion solo donde el fondo es oscuro de verdad: "consulta" es
+  // papel y "lima" es lima, ahi el texto blanco tampoco se lee.
+  assert.match(css, /\.vh \.tarjeta:not\(\.consulta\):not\(\.lima\) \.boton\.secundario \{[\s\S]*?background:\s*transparent;[\s\S]*?color:\s*#fff;/)
+  assert.match(css, /\.vh \.tarjeta\.lima \.boton\.secundario \{[\s\S]*?color:\s*var\(--ink\);/)
 })
 
 test('la vista móvil no usa select nativo y conserva controles de 56 px', () => {

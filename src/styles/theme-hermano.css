@@ -180,7 +180,13 @@
     padding: .75rem 1rem;
   }
   .mobile-admin-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
-  .mobile-admin-header small { display: block; font-size: .8rem; color: #cbea5b; }
+  /* "Territorios" y "Base de prueba" en un renglon: apilados, la cabecera
+     movil medía 68 px de puro texto antes de que empiece la pagina. */
+  .mobile-admin-header > span { display: flex; align-items: baseline; gap: .5rem; min-width: 0; }
+  .mobile-admin-header small {
+    flex: 0 0 auto; font-size: .75rem; font-weight: 600; color: #cbea5b;
+    border: 1px solid rgba(203, 234, 91, .38); border-radius: 999px; padding: .1rem .45rem;
+  }
   .mobile-admin-header button { min-height: 44px; padding: .6rem .9rem; color: #f4f3ef; background: transparent; border: 1px solid #777; border-radius: 10px; font: inherit; }
   .mobile-admin-header button:focus-visible { outline: 3px solid #cbea5b; outline-offset: 3px; }
   .sidebar-menu:not(.is-open) { display: none; }

@@ -139,9 +139,6 @@
 }
 .vh .miCuenta.compacto .auth-form label { color: var(--fg); }
 .vh .miCuenta.compacto .auth-form .boton { flex: 0 0 auto; }
-.vh .miCuenta.compacto .auth-form .boton.secundario {
-  color: var(--fg); background: var(--surface); border-color: var(--line);
-}
 
 /* -------------------------------------------------------- saludo */
 .vh .saludo { margin: 26px 0 20px; font-size: var(--t-h2); font-weight: 600; line-height: 1.18; letter-spacing: -.02em; }
@@ -193,23 +190,30 @@
 }
 .vh .boton.principal { background: var(--lime); color: var(--ink); margin-top: 18px; }
 .vh .boton.principal:active { background: var(--lime-deep); }
-.vh .boton.secundario { background: transparent; color: #fff; border: 1px solid rgba(255,255,255,.28); margin-top: 10px; }
-.vh .boton.secundario.cuenta-resumen,
-.vh .boton.secundario.actualizar-programa {
-  min-height: 56px;
-  background: var(--surface-2, #f0eee8); color: #16191d; border: 1px solid var(--line);
+/* El secundario vive sobre papel claro, que es donde esta casi siempre: las
+   hojas de elegir, Mi cuenta, los filtros. Con el blanco por defecto la
+   grilla de territorios era blanco sobre blanco -- los numeros estaban ahi
+   y no se veian. La inversion queda para la unica tarjeta oscura. */
+.vh .boton.secundario {
+  background: var(--surface); color: var(--fg);
+  border: 1px solid var(--line); margin-top: 10px;
 }
-.vh .tarjeta .boton.secundario { background: transparent; color: #fff; border-color: rgba(255,255,255,.28); }
+/* Solo la tarjeta oscura invierte. "consulta" es papel y "lima" es lima:
+   ahi el texto blanco tampoco se lee. */
+.vh .tarjeta:not(.consulta):not(.lima) .boton.secundario {
+  background: transparent; color: #fff; border-color: rgba(255,255,255,.28);
+}
+.vh .tarjeta.lima .boton.secundario { border-color: rgba(22,25,29,.32); color: var(--ink); }
 .vh .boton.alternativa {
   background: transparent; border: 2px solid var(--line); color: var(--fg); margin-top: 10px;
 }
 .vh .boton.alternativa:active { background: var(--canvas); }
-.vh .tarjeta .boton.alternativa { border-color: rgba(255,255,255,.5); color: #fff; }
-.vh .tarjeta .boton.alternativa:active { background: rgba(255,255,255,.08); }
+.vh .tarjeta:not(.consulta):not(.lima) .boton.alternativa { border-color: rgba(255,255,255,.5); color: #fff; }
+.vh .tarjeta:not(.consulta):not(.lima) .boton.alternativa:active { background: rgba(255,255,255,.08); }
 /* "Chico" es de peso, no de altura: sigue midiendo 56px porque la regla 2
    no se negocia. Lo que baja es el cuerpo de la letra y el relleno. */
 .vh .boton.chico { background: transparent; border: 1px solid var(--line); color: var(--fg); font-size: var(--t-body); font-weight: 600; margin-top: 10px; }
-.vh .tarjeta .boton.chico { border-color: rgba(255,255,255,.28); color: #fff; }
+.vh .tarjeta:not(.consulta):not(.lima) .boton.chico { border-color: rgba(255,255,255,.28); color: #fff; }
 
 /* ------------------------------------------------------ manzanas */
 .vh .panel { scroll-margin-top: 84px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); padding: 22px 20px; margin-bottom: 18px; }
@@ -435,6 +439,11 @@
 .vh .sobre[hidden] { display: none; }
 .vh .sobreBarra { display: flex; align-items: center; gap: 14px; padding: 12px var(--pad); background: var(--surface); border-bottom: 1px solid var(--line); }
 .vh .sobreBarra h2 { flex: 1; min-width: 0; margin: 0; font-size: var(--t-lead); font-weight: 600; letter-spacing: -.02em; }
+/* .boton mide 100% del ancho, que es lo correcto en una columna y un
+   desastre en una barra: "Cerrar" se quedaba con todo el lugar y el titulo
+   caia a min-content -- "Mirar / el / territorio", tres renglones para tres
+   palabras. En la barra el boton mide lo que dice. */
+.vh .sobreBarra .boton { width: auto; flex: 0 0 auto; margin-top: 0; padding-inline: 18px; }
 .vh .sobreBarra h2 small { display: block; font-size: var(--t-label); font-weight: 500; color: var(--fg-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vh .sobreCuerpo { position: relative; flex: 1; min-height: 0; }
 /* Clase y no id: el historial y el mapa grande son dos componentes con la
@@ -473,6 +482,41 @@
   .vh .barra { gap: 8px; padding-inline: 12px; }
   .vh .barra .miCuenta.compacto .cuenta-resumen { padding-inline: 11px; }
   .vh .barra .miCuenta.compacto .cuentaTexto { display: none; }
+}
+
+/* ------------------------------------------ la misma columna en pantalla grande */
+/* .hoja ya vive en 520 px, pero la barra de arriba y las pestanias de abajo
+   se estiraban al ancho de la ventana: en una notebook el logo quedaba en
+   una punta y "Mi cuenta" en la otra, a 1300 px de distancia. Todo lo que
+   es cascara se alinea con el contenido. */
+@media (min-width: 720px) {
+  .vh .barra { padding-inline: max(var(--pad), calc((100% - 560px) / 2)); }
+  .vh .pestanias { padding-inline: max(var(--pad), calc((100vw - 560px) / 2)); }
+  .vh .pieFijo { padding-inline: max(var(--pad), calc((100vw - 560px) / 2)); }
+
+  /* Las hojas de elegir son un dialogo, no una pantalla: se muestran en la
+     misma columna sobre el fondo atenuado. El mapa grande y el historial
+     siguen ocupando todo, que ahi el ancho es el dato. */
+  .vh .sobre:has(.elegir-territorio-cuerpo, .elegir-lista-cuerpo) {
+    justify-content: center;
+    padding: 24px 0;
+    background: rgba(22, 25, 29, .42);
+  }
+  .vh .sobre:has(.elegir-territorio-cuerpo, .elegir-lista-cuerpo) > * {
+    width: 100%;
+    max-width: 560px;
+    margin-inline: auto;
+  }
+  .vh .sobre:has(.elegir-territorio-cuerpo, .elegir-lista-cuerpo) .sobreBarra {
+    border-radius: 18px 18px 0 0;
+  }
+  .vh .elegir-territorio-cuerpo,
+  .vh .elegir-lista-cuerpo {
+    flex: 0 1 auto;
+    max-height: min(620px, calc(100dvh - 190px));
+    background: var(--canvas);
+    border-radius: 0 0 18px 18px;
+  }
 }
 
 /* Solo mirar: una manzana que no se puede cambiar no se muestra apagada
@@ -517,6 +561,8 @@
 .vh .tarjeta.consulta .rotulo,
 .vh .tarjeta.consulta .sub { color: var(--fg-3); }
 .vh .tarjeta.consulta .numeroGrande { color: var(--fg); }
+.vh .tarjeta.consulta .numeroGrande small,
+.vh .tarjeta.lima .numeroGrande small { color: var(--fg-3); }
 .vh .tarjeta.lima {
   background: var(--lime);
   color: var(--ink);
@@ -555,9 +601,12 @@
   border-color: var(--ink);
   box-shadow: inset 0 0 0 2px var(--ink);
 }
+/* auto-fill y no cuatro fijas: con cuatro columnas al ancho de la ventana,
+   en una notebook cada celda medía 250 px -- un boton de 250 px para decir
+   "12". El minimo manda y la cantidad de columnas sale del ancho real. */
 .vh .elegir-territorio-grilla {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
   gap: 8px;
 }
 .vh .elegir-territorio-celda {
@@ -569,8 +618,15 @@
   font-size: var(--t-label);
   color: var(--olive-ink);
 }
-@media (max-width: 360px) {
-  .vh .elegir-territorio-grilla { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+/* El rotulo del campo dentro de las hojas de elegir. Sin esto heredaba el
+   cuerpo de 18px y competia con el titulo de la barra. */
+.vh .elegir-territorio-cuerpo > label,
+.vh .elegir-lista-cuerpo > label {
+  display: grid;
+  gap: 6px;
+  font-size: var(--t-label);
+  font-weight: 600;
+  color: var(--fg-2);
 }
 
 .vh .codigo-grupo {
