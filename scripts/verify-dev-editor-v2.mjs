@@ -27,6 +27,34 @@ select json_build_object(
   'rpc_descartar', to_regprocedure('public.descartar_borrador_editor(bigint)') is not null,
   'historial', to_regclass('public.editor_estado_historial') is not null
 );
+select json_build_object(
+  'rpc_revisar_uuid', to_regprocedure('public.revisar_publicacion_editor_v2(uuid[])') is not null,
+  'rpc_publicar_uuid', to_regprocedure('public.publicar_territorios_atomico_v2(uuid,jsonb)') is not null,
+  'historial_publicaciones', to_regclass('public.editor_publicaciones_historial') is not null,
+  'territorios_70_a_72', count(*) filter (where name in ('70', '71', '72')),
+  'territorios_totales', count(*)
+) from public.territorios;
+do $$
+declare v_admin uuid;
+begin
+  select id into v_admin
+  from public.profiles
+  where access_status = 'active' and system_role in ('admin_territorios', 'superadmin')
+  order by id limit 1;
+  if v_admin is null then raise exception 'DEV no tiene un admin territorial activo para probar la RPC'; end if;
+  perform set_config('request.jwt.claim.sub', v_admin::text, false);
+end;
+$$;
+select json_build_object(
+  'revision_uuid_filas', jsonb_array_length(revision),
+  'revision_uuid_coincide', revision -> 0 ->> 'territory_id' = territory_id::text,
+  'incluye_alerta_cobertura', revision -> 0 ? 'lados_vigentes_con_cobertura'
+)
+from (
+  select t.id as territory_id,
+    public.revisar_publicacion_editor_v2(array[t.id]) as revision
+  from public.territorios t where t.name = '70'
+) prueba;
 `
 
 const result = spawnSync('/opt/homebrew/opt/libpq/bin/psql', [
