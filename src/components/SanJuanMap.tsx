@@ -20,6 +20,10 @@ import {
   loadEditorCandidates,
   type EditorCandidate,
 } from '../features/map-editor/data/editorRepository.ts'
+import {
+  loadEditorWorkspace,
+  type LoadedEditorWorkspace,
+} from '../features/map-editor/data/loadEditorWorkspace.ts'
 
 L.drawLocal.draw.toolbar.buttons.polygon = 'Polígono'
 L.drawLocal.draw.toolbar.buttons.rectangle = 'Rectángulo'
@@ -983,6 +987,9 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
   const [editorCandidates, setEditorCandidates] = useState<EditorCandidate[]>([])
   const [isLoadingCandidates, setIsLoadingCandidates] = useState(false)
   const [candidateError, setCandidateError] = useState<string | null>(null)
+  const [editorWorkspace, setEditorWorkspace] = useState<LoadedEditorWorkspace | null>(null)
+  const [isLoadingEditorWorkspace, setIsLoadingEditorWorkspace] = useState(false)
+  const [editorWorkspaceError, setEditorWorkspaceError] = useState<string | null>(null)
   const [isMarkingBlocks, setIsMarkingBlocks] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isSavingBlock, setIsSavingBlock] = useState(false)
@@ -2034,6 +2041,50 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
 
     return () => abortController.abort()
   }, [client, editingEnabled, mapZoom, vistaMovida])
+
+  useEffect(() => {
+    if (!client || !canManageTerritories || isLoading || !territories.length) {
+      setEditorWorkspace(null)
+      setIsLoadingEditorWorkspace(false)
+      setEditorWorkspaceError(null)
+      return
+    }
+
+    const abortController = new AbortController()
+    let active = true
+    setIsLoadingEditorWorkspace(true)
+    setEditorWorkspaceError(null)
+    void loadEditorWorkspace(
+      createSupabaseEditorTransport(client),
+      territories.map((territory) => ({
+        id: territory.id,
+        number: territory.name,
+        color: territory.polygon_geojson.color ?? null,
+      })),
+      abortController.signal,
+    )
+      .then((workspace) => {
+        if (active) setEditorWorkspace(workspace)
+      })
+      .catch((workspaceError: unknown) => {
+        if (workspaceError instanceof DOMException && workspaceError.name === 'AbortError') return
+        if (!active) return
+        setEditorWorkspace(null)
+        setEditorWorkspaceError(
+          workspaceError instanceof Error
+            ? workspaceError.message
+            : 'No se pudo abrir el borrador compartido.',
+        )
+      })
+      .finally(() => {
+        if (active) setIsLoadingEditorWorkspace(false)
+      })
+
+    return () => {
+      active = false
+      abortController.abort()
+    }
+  }, [canManageTerritories, client, isLoading, territories])
 
   useEffect(() => {
     renderSnapGuide(snapPreviewPoint)
@@ -3267,14 +3318,25 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
 
               <div className="territory-map-footer">
                 {editingEnabled && !modoEdicion ? (
-                  <div className="territory-map-help editor-candidate-status">
-                    {candidateError
-                      ? `No se pudo cargar la base de manzanas: ${candidateError}`
-                      : mapZoom < EDITOR_CANDIDATE_ZOOM
-                        ? 'Acercate al barrio para ver la base de manzanas.'
-                        : isLoadingCandidates
-                          ? 'Cargando manzanas del encuadre…'
-                          : `${editorCandidates.length} manzanas de referencia en este encuadre.`}
+                  <div className="editor-workspace-status" role="status" aria-live="polite">
+                    <div className="territory-map-help editor-candidate-status">
+                      {candidateError
+                        ? `No se pudo cargar la base de manzanas: ${candidateError}`
+                        : mapZoom < EDITOR_CANDIDATE_ZOOM
+                          ? 'Acercate al barrio para ver la base de manzanas.'
+                          : isLoadingCandidates
+                            ? 'Cargando manzanas del encuadre…'
+                            : `${editorCandidates.length} manzanas de referencia en este encuadre.`}
+                    </div>
+                    <div className={editorWorkspaceError ? 'form-feedback error' : 'territory-map-help'}>
+                      {editorWorkspaceError
+                        ? `El taller sigue bloqueado: ${editorWorkspaceError}`
+                        : isLoadingEditorWorkspace
+                          ? 'Abriendo el borrador compartido…'
+                          : editorWorkspace
+                            ? `${Object.values(editorWorkspace.draft.document.blocks).filter((block) => block.territoryId).length} manzanas asignadas · revisión ${editorWorkspace.revision}${editorWorkspace.draft.migratedFromLegacy ? ' · formato anterior protegido' : ''}.`
+                            : 'El borrador compartido todavía no está disponible.'}
+                    </div>
                   </div>
                 ) : null}
                 {modoEdicion ? (

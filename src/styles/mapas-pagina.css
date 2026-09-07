@@ -187,6 +187,11 @@
   font-size: 0.88rem;
 }
 
+.editor-workspace-status {
+  display: grid;
+  gap: 0.35rem;
+}
+
 /* En telefono el mapa es la pantalla. La lista era otra pagina completa
    debajo: 70 filas despues de un mapa de 70dvh. Queda cerrada, un renglon. */
 @media (max-width: 1280px) {
