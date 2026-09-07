@@ -40,17 +40,28 @@ type RpcResult = {
   error: { message: string; code?: string } | null
 }
 
+type CandidateQueryResult = {
+  data: CandidateRow[] | null
+  error: { message: string } | null
+}
+
 export type EditorDataTransport = {
   queryCandidates: (
     viewport: EditorViewport,
     from: number,
     to: number,
     signal?: AbortSignal,
-  ) => Promise<{ data: CandidateRow[] | null; error: { message: string } | null }>
+  ) => Promise<CandidateQueryResult>
+  queryAllCandidates: (
+    from: number,
+    to: number,
+    signal?: AbortSignal,
+  ) => Promise<CandidateQueryResult>
   callRpc: (name: string, args?: Record<string, unknown>) => Promise<RpcResult>
 }
 
 const CANDIDATE_PAGE_SIZE = 500
+const CANDIDATE_COLUMNS = 'id, source_key, dataset_version, geometry_geojson, centro_lat, centro_lng, diagnostics'
 
 function assertViewport(viewport: EditorViewport) {
   const values = Object.values(viewport)
@@ -82,25 +93,42 @@ function parseCandidate(row: CandidateRow): EditorCandidate {
   }
 }
 
+function selectActiveCandidates(client: SupabaseClient) {
+  return client
+    .from('manzana_candidatas')
+    .select(CANDIDATE_COLUMNS)
+    .eq('activa', true)
+}
+
+async function resolveCandidateQuery(
+  query: ReturnType<typeof selectActiveCandidates>,
+  signal?: AbortSignal,
+): Promise<CandidateQueryResult> {
+  if (signal) query = query.abortSignal(signal)
+  const result = await query
+  return {
+    data: result.data as CandidateRow[] | null,
+    error: result.error ? { message: result.error.message } : null,
+  }
+}
+
 export function createSupabaseEditorTransport(client: SupabaseClient): EditorDataTransport {
   return {
     async queryCandidates(viewport, from, to, signal) {
-      let query = client
-        .from('manzana_candidatas')
-        .select('id, source_key, dataset_version, geometry_geojson, centro_lat, centro_lng, diagnostics')
-        .eq('activa', true)
+      const query = selectActiveCandidates(client)
         .lte('bbox_min_lng', viewport.east)
         .gte('bbox_max_lng', viewport.west)
         .lte('bbox_min_lat', viewport.north)
         .gte('bbox_max_lat', viewport.south)
         .order('source_key')
         .range(from, to)
-      if (signal) query = query.abortSignal(signal)
-      const result = await query
-      return {
-        data: result.data as CandidateRow[] | null,
-        error: result.error ? { message: result.error.message } : null,
-      }
+      return resolveCandidateQuery(query, signal)
+    },
+    async queryAllCandidates(from, to, signal) {
+      const query = selectActiveCandidates(client)
+        .order('source_key')
+        .range(from, to)
+      return resolveCandidateQuery(query, signal)
     },
     async callRpc(name, args) {
       const result = await client.rpc(name, args)
@@ -112,21 +140,17 @@ export function createSupabaseEditorTransport(client: SupabaseClient): EditorDat
   }
 }
 
-export async function loadEditorCandidates(
-  transport: EditorDataTransport,
-  viewport: EditorViewport,
+type CandidatePageQuery = (
+  from: number,
+  to: number,
   signal?: AbortSignal,
-) {
-  assertViewport(viewport)
+) => Promise<CandidateQueryResult>
+
+async function loadCandidatePages(queryPage: CandidatePageQuery, signal?: AbortSignal) {
   const candidates: EditorCandidate[] = []
   for (let from = 0; ; from += CANDIDATE_PAGE_SIZE) {
     if (signal?.aborted) throw new DOMException('Carga cancelada', 'AbortError')
-    const { data, error } = await transport.queryCandidates(
-      viewport,
-      from,
-      from + CANDIDATE_PAGE_SIZE - 1,
-      signal,
-    )
+    const { data, error } = await queryPage(from, from + CANDIDATE_PAGE_SIZE - 1, signal)
     if (error) throw new Error(error.message)
     const page = (data ?? []).map(parseCandidate)
     candidates.push(...page)
@@ -138,6 +162,28 @@ export async function loadEditorCandidates(
     throw new Error('La base devolvió más de una versión activa de candidatas.')
   }
   return candidates
+}
+
+export async function loadEditorCandidates(
+  transport: EditorDataTransport,
+  viewport: EditorViewport,
+  signal?: AbortSignal,
+) {
+  assertViewport(viewport)
+  return loadCandidatePages(
+    (from, to, pageSignal) => transport.queryCandidates(viewport, from, to, pageSignal),
+    signal,
+  )
+}
+
+export async function loadAllEditorCandidates(
+  transport: EditorDataTransport,
+  signal?: AbortSignal,
+) {
+  return loadCandidatePages(
+    (from, to, pageSignal) => transport.queryAllCandidates(from, to, pageSignal),
+    signal,
+  )
 }
 
 function parseDraft<TState>(value: unknown): EditorDraft<TState> {

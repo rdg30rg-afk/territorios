@@ -2,7 +2,9 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  createSupabaseEditorTransport,
   discardEditorDraft,
+  loadAllEditorCandidates,
   loadEditorCandidates,
   readEditorDraft,
   saveEditorDraft,
@@ -38,6 +40,80 @@ test('pagina candidatas por viewport y conserva la versión única', async () =>
   assert.equal(rows.length, 501)
   assert.deepEqual(calls.map(({ from, to }) => [from, to]), [[0, 499], [500, 999]])
   assert.equal(rows[0].sourceKey, 'm0')
+})
+
+test('pagina todas las candidatas activas sin filtro de viewport', async () => {
+  const calls = []
+  const signal = new AbortController().signal
+  const transport = {
+    async queryAllCandidates(from, to, receivedSignal) {
+      calls.push({ from, to, signal: receivedSignal })
+      return { data: from === 0 ? Array.from({ length: 500 }, (_, index) => candidate(index)) : [candidate(500)], error: null }
+    },
+    async queryCandidates() { throw new Error('no corresponde') },
+    async callRpc() { throw new Error('no corresponde') },
+  }
+  const rows = await loadAllEditorCandidates(transport, signal)
+  assert.equal(rows.length, 501)
+  assert.deepEqual(calls.map(({ from, to }) => [from, to]), [[0, 499], [500, 999]])
+  assert.ok(calls.every((call) => call.signal === signal))
+  assert.equal(rows[500].sourceKey, 'm500')
+})
+
+test('la carga completa valida filas, versión única y cancelación', async () => {
+  const transport = {
+    async queryAllCandidates() {
+      return { data: [candidate(1, 'v1'), candidate(2, 'v2')], error: null }
+    },
+    async queryCandidates() { throw new Error('no corresponde') },
+    async callRpc() { throw new Error('no corresponde') },
+  }
+  await assert.rejects(() => loadAllEditorCandidates(transport), /más de una versión/)
+
+  const invalidRows = {
+    ...transport,
+    async queryAllCandidates() { return { data: [{ ...candidate(1), source_key: '' }], error: null } },
+  }
+  await assert.rejects(() => loadAllEditorCandidates(invalidRows), /candidata incompleta/)
+
+  const controller = new AbortController()
+  controller.abort()
+  let queried = false
+  const cancelled = {
+    ...transport,
+    async queryAllCandidates() { queried = true; return { data: [], error: null } },
+  }
+  await assert.rejects(
+    () => loadAllEditorCandidates(cancelled, controller.signal),
+    (error) => error instanceof DOMException && error.name === 'AbortError',
+  )
+  assert.equal(queried, false)
+})
+
+test('el transport consulta todas las candidatas con columnas, orden, rango y AbortSignal', async () => {
+  const calls = []
+  const result = { data: [candidate(1)], error: null }
+  const query = {
+    select(columns) { calls.push(['select', columns]); return this },
+    eq(column, value) { calls.push(['eq', column, value]); return this },
+    order(column) { calls.push(['order', column]); return this },
+    range(from, to) { calls.push(['range', from, to]); return this },
+    abortSignal(signal) { calls.push(['abortSignal', signal]); return Promise.resolve(result) },
+  }
+  const client = {
+    from(table) { calls.push(['from', table]); return query },
+  }
+  const signal = new AbortController().signal
+  const response = await createSupabaseEditorTransport(client).queryAllCandidates(500, 999, signal)
+  assert.deepEqual(response, result)
+  assert.deepEqual(calls, [
+    ['from', 'manzana_candidatas'],
+    ['select', 'id, source_key, dataset_version, geometry_geojson, centro_lat, centro_lng, diagnostics'],
+    ['eq', 'activa', true],
+    ['order', 'source_key'],
+    ['range', 500, 999],
+    ['abortSignal', signal],
+  ])
 })
 
 test('rechaza encuadres y datasets activos ambiguos', async () => {

@@ -25,10 +25,19 @@ test('las candidatas se cargan con el cliente autenticado compartido', () => {
   )
   assertSource(
     repositorySource,
-    /createSupabaseEditorTransport\(client:\s*SupabaseClient\)[\s\S]*?client\s*\.from\('manzana_candidatas'\)/,
-    'el repositorio debe consultar candidatas mediante SupabaseClient',
+    /function selectActiveCandidates\(client:\s*SupabaseClient\)[\s\S]*?return client\s*\.from\('manzana_candidatas'\)/,
+    'el helper de selección debe consultar candidatas mediante SupabaseClient',
   )
-  assertSource(repositorySource, /\.eq\('activa',\s*true\)/)
+  assertSource(
+    repositorySource,
+    /function selectActiveCandidates\(client:\s*SupabaseClient\)[\s\S]*?\.select\(CANDIDATE_COLUMNS\)[\s\S]*?\.eq\('activa',\s*true\)/,
+    'el helper compartido debe conservar columnas y filtro de candidatas activas',
+  )
+  assertSource(
+    repositorySource,
+    /async queryCandidates\(viewport, from, to, signal\)[\s\S]*?const query = selectActiveCandidates\(client\)/,
+    'la consulta por encuadre debe reutilizar el helper de candidatas activas',
+  )
 })
 
 test('el umbral de zoom gobierna tanto la consulta como el dibujo', () => {
@@ -59,8 +68,13 @@ test('los pedidos viejos se abortan hasta el transporte paginado', () => {
   assertSource(repositorySource, /if \(signal\?\.aborted\) throw new DOMException\('Carga cancelada', 'AbortError'\)/)
   assertSource(
     repositorySource,
-    /transport\.queryCandidates\([\s\S]*?from \+ CANDIDATE_PAGE_SIZE - 1,[\s\S]*?signal,[\s\S]*?\)/,
-    'el mismo AbortSignal debe llegar a cada página',
+    /async function loadCandidatePages\(queryPage:\s*CandidatePageQuery, signal\?: AbortSignal\)[\s\S]*?await queryPage\(from, from \+ CANDIDATE_PAGE_SIZE - 1, signal\)/,
+    'el paginador debe pasar el mismo AbortSignal a cada página',
+  )
+  assertSource(
+    repositorySource,
+    /return loadCandidatePages\([\s\S]*?\(from, to, pageSignal\) => transport\.queryCandidates\(viewport, from, to, pageSignal\)/,
+    'la carga por encuadre debe conectar el transporte con el paginador',
   )
 })
 
