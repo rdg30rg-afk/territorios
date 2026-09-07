@@ -10,32 +10,34 @@ import { intersect } from '@turf/intersect'
 import { union } from '@turf/union'
 import { useAuth } from '../context/useAuth'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
+import { getTerritoryDeepLinkTransition } from '../lib/territoryDeepLink'
+import { ponerFondo } from '../lib/fondoMapa'
 
-L.drawLocal.draw.toolbar.buttons.polygon = 'Poligono'
-L.drawLocal.draw.toolbar.buttons.rectangle = 'Rectangulo'
+L.drawLocal.draw.toolbar.buttons.polygon = 'Polígono'
+L.drawLocal.draw.toolbar.buttons.rectangle = 'Rectángulo'
 L.drawLocal.draw.toolbar.actions.title = 'Cancelar dibujo'
 L.drawLocal.draw.toolbar.actions.text = 'Cancelar'
-L.drawLocal.draw.toolbar.finish.title = 'Terminar poligono'
+L.drawLocal.draw.toolbar.finish.title = 'Terminar polígono'
 L.drawLocal.draw.toolbar.finish.text = 'Terminar'
-L.drawLocal.draw.toolbar.undo.title = 'Quitar ultimo punto'
+L.drawLocal.draw.toolbar.undo.title = 'Quitar último punto'
 L.drawLocal.draw.toolbar.undo.text = 'Deshacer'
-L.drawLocal.draw.handlers.polygon.tooltip.start = 'Haz clic para marcar el primer punto.'
-L.drawLocal.draw.handlers.polygon.tooltip.cont = 'Sigue haciendo clic para continuar el contorno.'
-L.drawLocal.draw.handlers.polygon.tooltip.end = 'Haz clic sobre el primer punto para cerrar el poligono.'
-L.drawLocal.draw.handlers.rectangle.tooltip.start = 'Haz clic y arrastra para dibujar un rectangulo.'
+L.drawLocal.draw.handlers.polygon.tooltip.start = 'Tocá para marcar el primer punto.'
+L.drawLocal.draw.handlers.polygon.tooltip.cont = 'Seguí tocando para continuar el contorno.'
+L.drawLocal.draw.handlers.polygon.tooltip.end = 'Tocá el primer punto para cerrar el polígono.'
+L.drawLocal.draw.handlers.rectangle.tooltip.start = 'Hacé clic y arrastrá para dibujar un rectángulo.'
 L.drawLocal.edit.toolbar.buttons.edit = 'Editar territorio'
 L.drawLocal.edit.toolbar.buttons.editDisabled = 'No hay territorios editables'
-L.drawLocal.edit.toolbar.buttons.remove = 'Eliminar territorio'
-L.drawLocal.edit.toolbar.buttons.removeDisabled = 'No hay territorios para eliminar'
+L.drawLocal.edit.toolbar.buttons.remove = 'Retirar territorio'
+L.drawLocal.edit.toolbar.buttons.removeDisabled = 'No hay territorios para retirar'
 L.drawLocal.edit.toolbar.actions.save.title = 'Guardar cambios'
 L.drawLocal.edit.toolbar.actions.save.text = 'Guardar'
-L.drawLocal.edit.toolbar.actions.cancel.title = 'Cancelar edicion'
+L.drawLocal.edit.toolbar.actions.cancel.title = 'Cancelar edición'
 L.drawLocal.edit.toolbar.actions.cancel.text = 'Cancelar'
 L.drawLocal.edit.toolbar.actions.clearAll.title = 'Quitar todos los contornos'
 L.drawLocal.edit.toolbar.actions.clearAll.text = 'Borrar todo'
-L.drawLocal.edit.handlers.edit.tooltip.text = 'Arrastra los puntos para ajustar el territorio.'
-L.drawLocal.edit.handlers.edit.tooltip.subtext = 'Pulsa guardar cuando termines.'
-L.drawLocal.edit.handlers.remove.tooltip.text = 'Haz clic sobre un territorio para eliminarlo.'
+L.drawLocal.edit.handlers.edit.tooltip.text = 'Arrastrá los puntos para ajustar el territorio.'
+L.drawLocal.edit.handlers.edit.tooltip.subtext = 'Guardá cuando termines.'
+L.drawLocal.edit.handlers.remove.tooltip.text = 'Tocá un territorio para retirarlo.'
 
 const SAN_JUAN_CENTER: L.LatLngExpression = [-31.5375, -68.5364]
 const DEFAULT_COMPANY_NAME = 'Territorios San Juan'
@@ -102,6 +104,10 @@ type TerritoryListItem = TerritoryRecord & {
   companyName: string
   isActive: boolean
   color: string
+}
+
+type SanJuanMapProps = {
+  initialTerritoryId?: string | null
 }
 
 type PdfPoint = {
@@ -892,7 +898,7 @@ function downloadBackupFile(filename: string, contents: string, mimeType: string
   window.setTimeout(() => URL.revokeObjectURL(url), 0)
 }
 
-export function SanJuanMap() {
+export function SanJuanMap({ initialTerritoryId = null }: SanJuanMapProps) {
   const { profile } = useAuth()
   const client = supabase
   const canManageTerritories = profile?.role === 'admin'
@@ -910,6 +916,7 @@ export function SanJuanMap() {
   const currentLayerRef = useRef<L.Layer | null>(null)
   const drawHandlerRef = useRef<(L.Draw.Polygon | L.Draw.Rectangle) | null>(null)
   const canManageRef = useRef(canManageTerritories)
+  const lastProcessedTerritoryIdRef = useRef<string | null | undefined>(undefined)
 
   const [territories, setTerritories] = useState<TerritoryRecord[]>([])
   const [territoryBlocks, setTerritoryBlocks] = useState<TerritoryBlockRecord[]>([])
@@ -928,6 +935,8 @@ export function SanJuanMap() {
   >(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [isDrawing, setIsDrawing] = useState(false)
+  const [modoCrear, setModoCrear] = useState(false)
+  const [mapZoom, setMapZoom] = useState(11)
   const [isMarkingBlocks, setIsMarkingBlocks] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isSavingBlock, setIsSavingBlock] = useState(false)
@@ -935,8 +944,15 @@ export function SanJuanMap() {
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  const requestedTerritoryId = initialTerritoryId?.trim() || null
+  const deepLinkTransition = getTerritoryDeepLinkTransition(
+    requestedTerritoryId,
+    lastProcessedTerritoryIdRef.current,
+  )
+
   const selectedVertexCount = getPolygonVertexCount(currentGeometry)
   const territoryCount = territories.length
+  const modoEdicion = isDrawing || Boolean(editingTerritoryId) || modoCrear
 
   const selectedTerritory = useMemo(
     () => territories.find((item) => item.id === selectedTerritoryId) ?? null,
@@ -976,8 +992,6 @@ export function SanJuanMap() {
       const haystack = [
         territory.name,
         territory.description ?? '',
-        territory.code,
-        territory.companyName,
       ]
         .join(' ')
         .toLowerCase()
@@ -1311,6 +1325,9 @@ export function SanJuanMap() {
           [0, 0],
         )
 
+        // Las letras a zoom ciudad tapan las calles. Desde 15 se leen;
+        // el territorio seleccionado las muestra un poco antes.
+        if (esSeleccionado || mapZoom >= 15) {
         L.marker(centro as [number, number], {
           interactive: false,
           icon: L.divIcon({
@@ -1322,6 +1339,7 @@ export function SanJuanMap() {
             iconAnchor: [13, 13],
           }),
         }).addTo(blockLayer)
+        }
       })
     })
 
@@ -1331,6 +1349,9 @@ export function SanJuanMap() {
       }
 
       const isSelectedBlock = block.territory_id === selectedTerritoryId
+      if (!(isSelectedBlock || mapZoom >= 15)) {
+        return
+      }
       const marker = L.marker([block.lat, block.lng], {
         interactive: false,
         icon: L.divIcon({
@@ -1345,7 +1366,7 @@ export function SanJuanMap() {
 
       marker.addTo(blockLayer)
     })
-  }, [manzanaFormas, selectedTerritoryId, territories, territoryBlocks])
+  }, [manzanaFormas, mapZoom, selectedTerritoryId, territories, territoryBlocks])
 
   const renderSnapGuide = useCallback(
     (point: [number, number] | null) => {
@@ -1686,7 +1707,7 @@ export function SanJuanMap() {
       if (blockLoadError) {
         setTerritoryBlocks([])
         if (!loadError) {
-          setMessage('Para usar manzanas, aplica la migracion territorio_manzanas en Supabase.')
+          setMessage('Para usar manzanas hay que cargar el dibujo en la base.')
         }
       } else {
         setTerritoryBlocks(
@@ -1713,10 +1734,10 @@ export function SanJuanMap() {
       zoomControl: true,
     }).setView(SAN_JUAN_CENTER, 11)
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap contributors',
-      maxZoom: 19,
-    }).addTo(map)
+    map.attributionControl.setPrefix(false)
+    ponerFondo(L, map)
+    map.on('zoomend', () => setMapZoom(map.getZoom()))
+    setMapZoom(map.getZoom())
 
     const existingTerritoryLayer = L.layerGroup().addTo(map)
     const editableGroup = new L.FeatureGroup().addTo(map)
@@ -1838,12 +1859,11 @@ export function SanJuanMap() {
       setError(null)
 
       const { data, error: saveBlockError } = await client
-        .from('territorio_manzanas')
-        .insert({
-          territory_id: selectedTerritory.id,
-          label,
-          lat: Number(latLng.lat.toFixed(6)),
-          lng: Number(latLng.lng.toFixed(6)),
+        .rpc('agregar_manzana', {
+          p_territorio_id: selectedTerritory.id,
+          p_label: label,
+          p_lat: Number(latLng.lat.toFixed(6)),
+          p_lng: Number(latLng.lng.toFixed(6)),
         })
         .select('id, territory_id, label, lat, lng, created_at')
         .single()
@@ -2015,12 +2035,20 @@ export function SanJuanMap() {
   }, [selectedColor])
 
   useEffect(() => {
-    if (territories.length > 0 && !selectedTerritoryId && !editingTerritoryId && !currentGeometry) {
+    if (
+      territories.length > 0 &&
+      (!requestedTerritoryId || !deepLinkTransition.changed) &&
+      !selectedTerritoryId &&
+      !editingTerritoryId &&
+      !currentGeometry
+    ) {
       window.setTimeout(() => renderTerritoriesOnMap('all'), 0)
     }
   }, [
     currentGeometry,
+    deepLinkTransition.changed,
     editingTerritoryId,
+    requestedTerritoryId,
     renderTerritoriesOnMap,
     selectedTerritoryId,
     territories.length,
@@ -2038,6 +2066,7 @@ export function SanJuanMap() {
     setSnapPreviewPoint(null)
     setOverlapPreviewGeometry(null)
     setIsDrawing(false)
+    setModoCrear(false)
     setIsMarkingBlocks(false)
     setMessage(null)
     setError(null)
@@ -2046,6 +2075,7 @@ export function SanJuanMap() {
 
   const handlePrepareNewTerritory = () => {
     resetEditor()
+    setModoCrear(true)
   }
 
   const handleStartDrawing = () => {
@@ -2103,7 +2133,7 @@ export function SanJuanMap() {
     })
   }
 
-  const handleFocusTerritory = (territory: TerritoryListItem) => {
+  const handleFocusTerritory = useCallback((territory: TerritoryListItem) => {
     disableActiveDrawHandler()
     setSelectedTerritoryId(territory.id)
     setEditingTerritoryId(null)
@@ -2116,7 +2146,48 @@ export function SanJuanMap() {
     setMessage(null)
     setError(null)
     focusGeometry(territory.polygon_geojson)
-  }
+  }, [disableActiveDrawHandler, focusGeometry])
+
+  useEffect(() => {
+    const transition = getTerritoryDeepLinkTransition(
+      requestedTerritoryId,
+      lastProcessedTerritoryIdRef.current,
+    )
+
+    if (!transition.changed || isLoading || !client) {
+      return
+    }
+
+    // No reemplazar un error de carga de Supabase por un falso "inexistente".
+    if (territories.length === 0 && error) {
+      return
+    }
+
+    lastProcessedTerritoryIdRef.current = requestedTerritoryId
+
+    if (!transition.shouldFocus) {
+      return
+    }
+
+    const requestedTerritory = territoriesWithIndex.find(
+      (territory) => territory.id === requestedTerritoryId,
+    )
+
+    if (!requestedTerritory) {
+      setError('El territorio solicitado no existe o ya no está disponible.')
+      return
+    }
+
+    handleFocusTerritory(requestedTerritory)
+  }, [
+    client,
+    error,
+    handleFocusTerritory,
+    isLoading,
+    requestedTerritoryId,
+    territories.length,
+    territoriesWithIndex,
+  ])
 
   const handleEditMetadata = (territory: TerritoryRecord) => {
     disableActiveDrawHandler()
@@ -2142,38 +2213,11 @@ export function SanJuanMap() {
 
   const handleDeleteTerritory = async (territory: TerritoryRecord) => {
     if (!client) {
-      setError('Conecta Supabase para poder eliminar territorios.')
+      setError('Conectá la base para poder retirar territorios.')
       return
     }
 
-    const confirmed = window.confirm(
-      `Se eliminara el territorio "${territory.name}".`,
-    )
-
-    if (!confirmed) {
-      return
-    }
-
-    const { error: deleteError } = await client
-      .from('territorios')
-      .delete()
-      .eq('id', territory.id)
-
-    if (deleteError) {
-      setError(deleteError.message)
-      return
-    }
-
-    setTerritories((current) => current.filter((item) => item.id !== territory.id))
-    setTerritoryBlocks((current) =>
-      current.filter((item) => item.territory_id !== territory.id),
-    )
-
-    if (selectedTerritoryId === territory.id || editingTerritoryId === territory.id) {
-      resetEditor()
-    }
-
-    setMessage('Territorio eliminado correctamente.')
+    setError(`El territorio ${territory.name} no se puede borrar físicamente: se perderían sus relaciones históricas. El retiro completo todavía no está habilitado; primero debe resolver sus reservas y salidas asociadas.`)
   }
 
   const handleExportTerritoriesJson = () => {
@@ -2518,7 +2562,7 @@ export function SanJuanMap() {
     setIsMarkingBlocks(true)
     setError(null)
     setMessage(
-      `Haz clic dentro del territorio ${selectedTerritory.name} para agregar la manzana ${getNextBlockLabel(selectedTerritoryBlocks)}.`,
+      `Tocá dentro del territorio ${selectedTerritory.name} para agregar la manzana ${getNextBlockLabel(selectedTerritoryBlocks)}.`,
     )
   }
 
@@ -2530,42 +2574,23 @@ export function SanJuanMap() {
 
   const handleDeleteBlock = async (block: TerritoryBlockRecord) => {
     if (!client || !canManageTerritories) {
-      setError('Solo un usuario administrador puede eliminar manzanas.')
+      setError('Solo un usuario administrador puede retirar manzanas.')
       return
     }
 
-    const { error: deleteBlockError } = await client
-      .from('territorio_manzanas')
-      .delete()
-      .eq('id', block.id)
-
-    if (deleteBlockError) {
-      // 23503: la manzana tiene cobertura informada y la clave foranea la
-      // protege. Borrarla se llevaria puesto el trabajo de alguien que
-      // camino esa calle, asi que se retira: deja de estar vigente y lo
-      // informado sigue existiendo.
-      if (deleteBlockError.code !== '23503') {
-        setError(deleteBlockError.message)
-        return
-      }
-      const { error: retireError } = await client.rpc('retirar_manzana', {
-        p_manzana_id: block.id,
-      })
-      if (retireError) {
-        setError(retireError.message)
-        return
-      }
-      setTerritoryBlocks((current) => current.filter((item) => item.id !== block.id))
-      setMessage(
-        `Manzana ${block.label} retirada. Tenia trabajo informado, asi que no se borro: ` +
-          'deja de aparecer en el mapa y lo que se recorrio queda en el historial.',
-      )
-      setError(null)
+    if (!window.confirm(`¿Retirar la manzana ${block.label}? Dejará de aparecer en el mapa actual; su historial se conserva.`)) return
+    // Retirar siempre, incluso sin cobertura: los dibujos anteriores también
+    // son historia. Nunca intentar DELETE como primer paso.
+    const { error: retireError } = await client.rpc('retirar_manzana', {
+      p_manzana_id: block.id,
+    })
+    if (retireError) {
+      setError(retireError.message)
       return
     }
 
     setTerritoryBlocks((current) => current.filter((item) => item.id !== block.id))
-    setMessage(`Manzana ${block.label} eliminada.`)
+    setMessage(`Manzana ${block.label} retirada del mapa actual. Su historial se conserva.`)
     setError(null)
   }
 
@@ -2708,49 +2733,12 @@ export function SanJuanMap() {
 
   return (
     <div className="territory-console">
-      <section className="territory-hero">
-        <div className="territory-hero-copy">
-          <p className="eyebrow">Estudio territorial</p>
-          <h3>Gestiona zonas de San Juan con una edicion tipo Odoo</h3>
-          <p className="toolbar-copy">
-            {canManageTerritories
-              ? 'Crea el numero del territorio, usa la barra lateral de dibujo y deja visibles los territorios guardados para evitar superposiciones.'
-              : 'Podés mirar los territorios. Crearlos y editarlos queda para un administrador.'}
-          </p>
-        </div>
-
-        <div className="territory-hero-metrics">
-          <article className="territory-metric-card">
-            <span>Total guardados</span>
-            <strong>{territoryCount}</strong>
-            <small>Biblioteca actual</small>
-          </article>
-          <article className="territory-metric-card">
-            <span>Manzanas</span>
-            <strong>{selectedTerritoryBlocks.length}</strong>
-            <small>{selectedTerritory ? 'Del territorio seleccionado' : 'Sin seleccion'}</small>
-          </article>
-          <article className="territory-metric-card">
-            <span>Modo</span>
-            <strong>
-              {editingTerritoryId
-                ? 'Edicion'
-                : isDrawing
-                  ? 'Dibujo'
-                  : selectedTerritory
-                    ? 'Revision'
-                    : 'Espera'}
-            </strong>
-            <small>{canManageTerritories ? 'Con control total' : 'Solo lectura'}</small>
-          </article>
-        </div>
-      </section>
-
+      <div className="territory-stage">
       <section className="panel territory-registry-panel">
         <div className="territory-registry-toolbar">
           <div>
             <p className="eyebrow">Territorios</p>
-            <h3>Biblioteca operativa</h3>
+            <h3>{territoryCount} guardados</h3>
           </div>
 
           <div className="territory-registry-actions">
@@ -2760,7 +2748,7 @@ export function SanJuanMap() {
                 type="search"
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
-                placeholder="Buscar por nombre, codigo o compania"
+                placeholder="Buscar por número o referencia"
               />
             </label>
 
@@ -2772,14 +2760,6 @@ export function SanJuanMap() {
             >
               Nuevo territorio
             </button>
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={() => void handleExportTerritoriesPdf()}
-              disabled={territoriesWithIndex.length === 0 || isExportingPdf}
-            >
-              {isExportingPdf ? 'Generando PDF...' : 'Descargar plano PDF'}
-            </button>
           </div>
         </div>
 
@@ -2789,16 +2769,13 @@ export function SanJuanMap() {
           <div className="status-card">
             {isSupabaseConfigured
               ? 'No se encontraron territorios con ese filtro.'
-              : 'Cuando conectes Supabase, aqui aparecera el registro de territorios.'}
+              : 'Cuando conectes la base, acá aparece el registro de territorios.'}
           </div>
         ) : (
           <div className="territory-table-shell">
-            <div className="territory-table territory-table-head">
-              <span>Nombre</span>
-              <span>Codigo</span>
+            <div className="territory-table territory-table-head territory-table-compact">
+              <span>Territorio</span>
               <span>Color</span>
-              <span>Compania</span>
-              <span>Estado</span>
             </div>
 
             <div className="territory-table-body">
@@ -2808,26 +2785,19 @@ export function SanJuanMap() {
                   type="button"
                   className={
                     selectedTerritoryId === territory.id
-                      ? 'territory-table territory-table-row active'
-                      : 'territory-table territory-table-row'
+                      ? 'territory-table territory-table-row territory-table-compact active'
+                      : 'territory-table territory-table-row territory-table-compact'
                   }
                   onClick={() => handleFocusTerritory(territory)}
                 >
                   <strong>{territory.name}</strong>
-                  <span>{territory.code}</span>
                   <span className="territory-color-cell">
                     <span
                       className="territory-color-dot"
                       style={{ backgroundColor: territory.color }}
                       aria-hidden="true"
                     />
-                    <span>{territory.color}</span>
-                  </span>
-                  <span>{territory.companyName}</span>
-                  <span>
-                    <span className="status-pill success">
-                      {territory.isActive ? 'Activo' : 'Pausado'}
-                    </span>
+                    <span className="sr-only">{territory.color}</span>
                   </span>
                 </button>
               ))}
@@ -2841,18 +2811,23 @@ export function SanJuanMap() {
           <div className="map-panel territory-map-panel">
             <div className="map-toolbar territory-toolbar">
               <div className="territory-toolbar-copy">
-                <p className="eyebrow">Mapa base</p>
-                <h3>San Juan sobre OpenStreetMap</h3>
+                <p className="eyebrow">Mapa</p>
+                <h3>San Juan</h3>
+                {modoEdicion ? (
                 <div className="territory-phase-strip">
                   <span className={territoryName.trim() || editingTerritoryId ? 'active' : ''}>
-                    1. Numero
+                    1. Número
                   </span>
-                  <span className={isDrawing || currentGeometry ? 'active' : ''}>2. Poligono</span>
-                  <span className={selectedTerritory ? 'active' : ''}>3. Revision</span>
+                  <span className={isDrawing || currentGeometry ? 'active' : ''}>2. Polígono</span>
+                  <span className={selectedTerritory ? 'active' : ''}>3. Revisión</span>
                 </div>
+                ) : (
+                  <p className="toolbar-copy">Elegí un territorio en la lista o en el mapa.</p>
+                )}
               </div>
             </div>
 
+            {modoEdicion ? (
             <div className="territory-prep-bar">
               <label className="territory-inline-field territory-inline-field-number">
                 <span>Numero del territorio</span>
@@ -2905,6 +2880,16 @@ export function SanJuanMap() {
                 </button>
               </div>
             </div>
+            ) : (
+              <div className="toolbar-actions territory-toolbar-actions">
+                <button type="button" onClick={refreshMapOverlay}>
+                  Refrescar territorios
+                </button>
+                <button type="button" onClick={() => void toggleFullscreen()}>
+                  Pantalla completa
+                </button>
+              </div>
+            )}
 
             <div className="territory-map-stage">
               <div ref={mapFrameRef} className="territory-map-frame">
@@ -2922,6 +2907,7 @@ export function SanJuanMap() {
                       onClick={() => setSelectedColor(color)}
                       disabled={!canManageTerritories}
                       title={`Usar color ${color}`}
+                      aria-label={`Color del territorio ${color}`}
                     />
                   ))}
                 </div>
@@ -2934,15 +2920,20 @@ export function SanJuanMap() {
               </div>
 
               <div className="territory-map-footer">
+                {modoEdicion ? (
                 <div className="territory-map-help">
-                  <strong>Dibuja el territorio actual y deja visibles los ya creados.</strong>
+                  <strong>Dibujá el territorio y dejá visibles los ya creados.</strong>
                   <span>
-                    Usa `Comenzar dibujo` para cargar todos los puntos que
-                    necesites y vuelve a tocar el primer punto para cerrar el
-                    poligono. La barra lateral del mapa queda para editar o
-                    eliminar territorios guardados.
+                    Usá «Comenzar dibujo» y volvé a tocar el primer punto para cerrar
+                    el polígono.
                   </span>
                 </div>
+                ) : (
+                <div className="territory-map-help">
+                  <strong>Tocá un territorio para ver su ficha.</strong>
+                  <span>Las letras de manzana aparecen al acercar el mapa.</span>
+                </div>
+                )}
                 <div className="territory-inline-status">
                   <span>Color activo</span>
                   <strong>
@@ -2960,7 +2951,7 @@ export function SanJuanMap() {
         </div>
 
         <div className="territories-sidebar territory-editor-sidebar">
-          <section className="panel territory-form-panel">
+          {modoEdicion ? <section className="panel territory-form-panel">
             <div className="territory-panel-head">
               <div>
                 <p className="eyebrow">
@@ -3034,15 +3025,12 @@ export function SanJuanMap() {
                     : 'Guardar territorio'}
               </button>
             </div>
-          </section>
+          </section> : null}
 
-          <section className="panel territory-selected-panel">
+          {selectedTerritory ? <section className="panel territory-selected-panel">
             <p className="eyebrow">Territorio enfocado</p>
-            <h3>
-              {selectedTerritory ? selectedTerritory.name : 'Aun no seleccionaste uno'}
-            </h3>
+            <h3>{selectedTerritory.name}</h3>
 
-            {selectedTerritory ? (
               <>
                 <p className="territory-selected-copy">
                   {selectedTerritory.description || 'Sin descripcion registrada todavia.'}
@@ -3053,8 +3041,8 @@ export function SanJuanMap() {
                     <strong>{formatTerritoryDate(selectedTerritory.created_at)}</strong>
                   </div>
                   <div>
-                    <span>Formato</span>
-                    <strong>Poligono GeoJSON</strong>
+                    <span>Forma</span>
+                    <strong>Contorno en el mapa</strong>
                   </div>
                   <div>
                     <span>Color</span>
@@ -3090,7 +3078,7 @@ export function SanJuanMap() {
                       className="danger-button"
                       onClick={() => void handleDeleteTerritory(selectedTerritory)}
                     >
-                      Eliminar territorio
+                      Información sobre retiro
                     </button>
                   </div>
                 ) : null}
@@ -3143,44 +3131,34 @@ export function SanJuanMap() {
                     </div>
                   ) : (
                     <div className="status-card">
-                      Selecciona "Marcar manzanas" y haz clic dentro del
+                      Tocá «Marcar manzanas» y después adentro del
                       territorio para crear las letras a, b, c.
                     </div>
                   )}
                 </div>
               </>
-            ) : (
-              <div className="status-card">
-                Haz clic sobre un territorio del listado o directamente en el mapa
-                para revisar su ficha.
-              </div>
-            )}
-          </section>
+          </section> : null}
 
-          <section className="panel territory-library-panel">
-            <div className="section-heading">
+          <details className="panel territory-library-panel">
+            <summary className="section-heading">
               <div>
-                <p className="eyebrow">Ayuda rapida</p>
-                <h3>Como delimitar un territorio</h3>
+                <p className="eyebrow">Herramientas</p>
+                <h3>Exportar y ver ayuda</h3>
               </div>
-              <div className="territory-count-pill">
-                <strong>{filteredTerritories.length}</strong>
-                <span>visibles</span>
-              </div>
-            </div>
+            </summary>
 
             <div className="territory-summary-box">
               <div className="territory-summary-row">
                 <span>Paso 1</span>
-                <strong>Escribe el numero del territorio</strong>
+                <strong>Escribí el número del territorio</strong>
               </div>
               <div className="territory-summary-row">
                 <span>Paso 2</span>
-                <strong>Presiona "Comenzar dibujo" y marca los vertices en el mapa</strong>
+                <strong>Tocá «Comenzar dibujo» y marcá los vértices en el mapa</strong>
               </div>
               <div className="territory-summary-row">
                 <span>Paso 3</span>
-                <strong>Guarda el poligono para dejarlo visible</strong>
+                <strong>Guardá el polígono para dejarlo visible</strong>
               </div>
               <div className="territory-summary-row">
                 <span>Colores</span>
@@ -3214,8 +3192,9 @@ export function SanJuanMap() {
                 {isExportingPdf ? 'Generando...' : 'Plano PDF'}
               </button>
             </div>
-          </section>
+          </details>
         </div>
+      </div>
       </div>
     </div>
   )

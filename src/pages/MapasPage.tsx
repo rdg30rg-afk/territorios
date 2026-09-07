@@ -1,4 +1,7 @@
 import { SanJuanMap } from '../components/SanJuanMap'
+import { useSearchParams } from 'react-router-dom'
+import { useState } from 'react'
+import { CoverageHeatmapPanel } from '../components/CoverageHeatmapPanel'
 
 /**
  * MAPAS Y TERRITORIOS
@@ -16,6 +19,10 @@ import { SanJuanMap } from '../components/SanJuanMap'
  * mitad de la pantalla debajo del mapa. El mapa es la pantalla.
  */
 export function MapasPage() {
+  const [searchParams] = useSearchParams()
+  const requestedTerritoryId = searchParams.get('territorio')?.trim() || null
+  const [view,setView]=useState<'editor'|'cobertura'>('editor')
+
   return (
     <div className="page">
       <section className="page-header">
@@ -27,7 +34,12 @@ export function MapasPage() {
         </div>
       </section>
 
-      <SanJuanMap />
+      <div className="module-table-actions" aria-label="Vista del mapa">
+        <button type="button" className="secondary-button" aria-pressed={view==='editor'} onClick={()=>setView('editor')}>Territorios y dibujo</button>
+        <button type="button" className="secondary-button" aria-pressed={view==='cobertura'} onClick={()=>setView('cobertura')}>Ver cobertura</button>
+      </div>
+      <div hidden={view!=='editor'}><SanJuanMap initialTerritoryId={requestedTerritoryId} /></div>
+      {view==='cobertura'?<CoverageHeatmapPanel key={requestedTerritoryId??'general'} initialTerritoryId={requestedTerritoryId}/>:null}
     </div>
   )
 }

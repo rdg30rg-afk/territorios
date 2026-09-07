@@ -1,0 +1,17 @@
+.coverage-heatmap { min-width: 0; display: grid; gap: 16px; }
+.coverage-heatmap p { margin: 0; max-width: 80ch; }
+.coverage-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
+.coverage-controls label { display: grid; gap: 6px; min-width: 0; }
+.coverage-controls input, .coverage-controls select { min-height: 44px; font: inherit; max-width: 100%; }
+.coverage-controls button { min-height: 44px; }
+.coverage-legend { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 12px 24px; }
+.coverage-legend li { display: flex; align-items: center; gap: 8px; }
+.coverage-map { height: clamp(320px, 58dvh, 650px); border: 1px solid #d5d3c9; border-radius: 16px; z-index: 0; }
+.coverage-table-wrap { max-width: 100%; overflow-x: auto; }
+.coverage-table-wrap table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.coverage-table-wrap th, .coverage-table-wrap td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #d5d3c9; }
+.coverage-table-wrap caption { text-align: left; padding-bottom: 12px; }
+@media (max-width: 767px) {
+  .coverage-controls { display: grid; grid-template-columns: 1fr; }
+  .coverage-controls input, .coverage-controls select { width: 100%; }
+}

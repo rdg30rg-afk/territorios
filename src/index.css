@@ -266,9 +266,41 @@ button {
   gap: 1rem;
 }
 
+.territory-stage {
+  display: grid;
+  grid-template-columns: minmax(240px, 340px) minmax(0, 1fr);
+  grid-template-areas: 'lista mapa';
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.territory-stage .territory-registry-panel {
+  grid-area: lista;
+  max-height: calc(100vh - 6.5rem);
+  overflow: auto;
+}
+
+.territory-stage .map-workspace {
+  grid-area: mapa;
+  min-width: 0;
+}
+
+@media (max-width: 1099px) {
+  .territory-stage {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      'mapa'
+      'lista';
+  }
+
+  .territory-stage .territory-registry-panel {
+    max-height: none;
+  }
+}
+
 .map-workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(420px, 1fr) minmax(270px, 340px);
   gap: 1rem;
   align-items: start;
 }
@@ -387,13 +419,8 @@ button {
   background: rgba(255, 252, 247, 0.92);
 }
 
-.territory-table {
-  grid-template-columns:
-    minmax(0, 1.1fr)
-    140px
-    130px
-    minmax(150px, 0.85fr)
-    120px;
+.territory-table-compact {
+  grid-template-columns: minmax(0, 1fr) 52px;
 }
 
 .territory-table-head {
@@ -458,6 +485,18 @@ button {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+}
+
+.salidas-agenda {
+  order: 1;
+}
+
+.salidas-planificador {
+  order: 2;
+}
+
+.salidas-detalle {
+  order: 4;
 }
 
 .module-hero {
@@ -796,10 +835,10 @@ button {
 
 .outing-schedule-grid {
   display: grid;
-  grid-template-columns: 76px 140px 96px 92px minmax(220px, 1.2fr) minmax(190px, 1fr) 150px minmax(190px, 1fr) 116px minmax(180px, 0.8fr);
+  grid-template-columns: 76px 140px 96px 92px minmax(280px, 1.5fr) minmax(190px, 1fr) 150px 116px minmax(180px, 0.8fr);
   gap: 0.75rem;
   align-items: center;
-  min-width: 1480px;
+  min-width: 1280px;
 }
 
 .outing-schedule-head {
@@ -834,6 +873,92 @@ button {
 .outing-schedule-row.active {
   background: rgba(217, 119, 6, 0.12);
   box-shadow: inset 4px 0 0 rgba(187, 62, 3, 0.75);
+}
+
+.programa-periodo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0 0 1rem;
+  padding: 0.95rem 1.05rem 1.05rem;
+  border-radius: 18px;
+  background: rgba(255, 252, 247, 0.94);
+  border: 1px solid rgba(109, 76, 65, 0.12);
+}
+
+.programa-periodo .eyebrow {
+  margin: 0;
+}
+
+.programa-periodo-opciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.programa-periodo-opcion {
+  min-height: 38px;
+  padding: 0.45rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid rgba(109, 76, 65, 0.18);
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--text-main);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.programa-periodo-opcion.activa {
+  background: linear-gradient(135deg, #bb3e03, #d97706);
+  border-color: transparent;
+  color: #fff;
+}
+
+.programa-periodo-fechas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+  align-items: end;
+}
+
+.programa-periodo-fechas .inline-filter {
+  min-width: 160px;
+}
+
+.programa-periodo-fechas input[type='date'] {
+  min-height: 38px;
+  padding: 0.45rem 0.65rem;
+  border-radius: 10px;
+  border: 1px solid rgba(109, 76, 65, 0.2);
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--text-main);
+  font: inherit;
+}
+
+.programa-periodo-resumen {
+  margin: 0;
+  color: var(--text-main);
+  font-weight: 650;
+}
+
+.programa-periodo .table-hint {
+  margin: 0;
+}
+
+.programa-semana-rotulo {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  padding: 0.7rem 1rem;
+  background: rgba(78, 52, 46, 0.08);
+  color: var(--text-main);
+  font-size: 0.92rem;
+}
+
+.programa-semana-rotulo span {
+  color: var(--text-soft);
+  font-weight: 600;
 }
 
 .outing-schedule-row input,
@@ -1594,9 +1719,35 @@ button {
 }
 
 .territories-sidebar {
-  display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.95fr) minmax(0, 0.95fr);
+  display: flex;
+  flex-direction: column;
   gap: 1rem;
+}
+
+.territory-library-panel > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.territory-library-panel > summary::-webkit-details-marker {
+  display: none;
+}
+
+.territory-library-panel > summary::after {
+  content: 'Abrir';
+  margin-left: auto;
+  color: var(--accent-dark);
+  font-weight: 800;
+}
+
+.territory-library-panel[open] > summary::after {
+  content: 'Cerrar';
+}
+
+@media (max-width: 1280px) {
+  .map-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .form-stack {

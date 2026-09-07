@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { teselasMapLibre } from '../lib/fondoMapa'
 import * as maplibregl from 'maplibre-gl'
 
 const sanJuanCenter: [number, number] = [-68.5256, -31.5375]
@@ -49,24 +50,24 @@ export function MeetingPointPickerMap({
       return
     }
 
+    const teselas = teselasMapLibre()
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
       style: {
         version: 8,
         sources: {
-          osm: {
+          fondo: {
             type: 'raster',
-            tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+            tiles: [teselas.url],
             tileSize: 256,
-            attribution:
-              '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+            attribution: teselas.credito,
           },
         },
         layers: [
           {
-            id: 'osm',
+            id: 'fondo',
             type: 'raster',
-            source: 'osm',
+            source: 'fondo',
           },
         ],
       },
