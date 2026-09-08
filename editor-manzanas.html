@@ -2363,6 +2363,10 @@ if (!territorios.size && !baseLeida && borradorEstado !== 'sin_sesion') {
 }
 
 refrescar()
+if (territorios.size && !(vinoDe === 'este navegador' && remoto)) {
+  const asignadas = [...manzanas.values()].filter(m => m.territorio).length
+  avisar(`<b>${territorios.size} territorios</b> · ${asignadas.toLocaleString('es-AR')} manzanas cargadas.`)
+}
 if (!territorios.size && (baseLeida || borradorEstado === 'sin_sesion')) {
   avisar(`<b>${manzanas.size.toLocaleString('es-AR')} manzanas</b> en el área de la congregación.<br>Creá un territorio y hacé clic para sumarle manzanas.`)
 }
