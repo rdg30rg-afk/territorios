@@ -446,8 +446,11 @@ let ultimoTextoGuardado = null      // para no escribir cuando no cambio nada
 let sesionVencida = false           // el token de la app se vencio; lo renueva la app, no esta pagina
 let sesionEmbebida = null
 let resolverSesionEmbebida = null
+const ORIGEN_APP = window.self !== window.top && document.referrer
+  ? new URL(document.referrer).origin
+  : location.origin
 window.addEventListener('message', evento => {
-  if (evento.origin !== location.origin || evento.source !== parent || evento.data?.type !== 'territorios:editor:session') return
+  if (evento.origin !== ORIGEN_APP || evento.source !== parent || evento.data?.type !== 'territorios:editor:session') return
   sesionEmbebida = evento.data.session ?? null
   resolverSesionEmbebida?.()
   resolverSesionEmbebida = null
@@ -2262,7 +2265,7 @@ try {
 if (window.self !== window.top) {
   await new Promise(resolve => {
     resolverSesionEmbebida = resolve
-    parent.postMessage({ type: 'territorios:editor:request-session' }, location.origin)
+    parent.postMessage({ type: 'territorios:editor:request-session' }, ORIGEN_APP)
     setTimeout(resolve, 2000)
   })
 }
