@@ -3,7 +3,7 @@
  * qué aparece adentro, no a qué ruta se va.
  */
 
-export type RolEnGrupo = 'publicador' | 'conductor' | 'auxiliar' | 'superintendente'
+export type RolEnGrupo = 'publicador' | 'auxiliar' | 'siervo' | 'superintendente'
 
 export type ContextoHermano = {
   role: 'admin' | 'superintendente' | 'siervo' | 'conductor' | 'viewer'
@@ -20,6 +20,9 @@ export type ContextoHermano = {
   punto_grupo_lat: number | null
   punto_grupo_lng: number | null
   es_super_de_grupo: boolean
+  puede_administrar_grupo?: boolean
+  puede_informar_salidas?: boolean
+  puede_abrir_panel?: boolean
 }
 
 export type PanelHoy =
@@ -69,8 +72,17 @@ export function filtrosSalidas(ctx: ContextoHermano | null | undefined) {
   return {
     lasMias: Boolean(ctx?.driver_id),
     lasDeMiGrupo: Boolean(ctx?.es_super_de_grupo && ctx.group_id),
-    resultado: Boolean(ctx?.driver_id || ctx?.role === 'admin'),
+    resultado: Boolean(ctx?.puede_informar_salidas ?? (ctx?.driver_id || ctx?.role === 'admin')),
   }
+}
+
+export function salidaCorrespondeAlGrupo(
+  salida: { groupId?: string | null; tipo?: string | null },
+  groupId: string | null | undefined,
+): boolean {
+  if (!groupId) return false
+  if (salida.groupId) return salida.groupId === groupId
+  return salida.tipo === 'grupos'
 }
 
 export function tituloSalidaGrupo(params: {
@@ -88,7 +100,7 @@ export function tituloSalidaGrupo(params: {
 export function rotuloRolGrupo(rol: RolEnGrupo | null | undefined): string {
   if (rol === 'superintendente') return 'Superintendente'
   if (rol === 'auxiliar') return 'Auxiliar'
-  if (rol === 'conductor') return 'Conductor'
+  if (rol === 'siervo') return 'Siervo de grupo'
   if (rol === 'publicador') return 'Publicador'
   return 'Sin rol'
 }

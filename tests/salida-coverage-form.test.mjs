@@ -21,7 +21,7 @@ const outing={id:'outing',driverId:'driver',terrId:'territory'}
 const driverProfile={id:'person',access_status:'active',driver_id:'driver'}
 const DesplegableMock=()=>null
 
-function harness({profile=driverProfile,sides=[validSide],blocks=validBlocks,enqueueImpl=null,queueError=null}={}) {
+function harness({profile=driverProfile,contexto=null,sides=[validSide],blocks=validBlocks,enqueueImpl=null,queueError=null}={}) {
   const slots=[],effects=[],enqueued=[],loadTables=[],syncs=[]
   let cursor=0
   let tree=null
@@ -73,7 +73,7 @@ function harness({profile=driverProfile,sides=[validSide],blocks=validBlocks,enq
     if(name==='react')return hooks
     if(name==='react/jsx-runtime')return {jsx,jsxs:jsx,Fragment:'Fragment'}
     if(name==='leaflet')return Leaflet
-    if(name.endsWith('useAuth'))return {useAuth:()=>({profile})}
+    if(name.endsWith('useAuth'))return {useAuth:()=>({profile,contexto})}
     if(name.endsWith('supabase'))return {supabase:client}
     if(name.endsWith('readAllRows'))return {readAllRows:async request=>{
       const result=await request(0,999)
@@ -177,11 +177,17 @@ test('geometría inválida bloquea el envío',async()=>{
   assert.equal(h.enqueued.length,0)
 })
 
-test('conductor ajeno no renderiza el formulario',async()=>{
+test('otro conductor también puede informar la salida',async()=>{
   const h=harness({profile:{...driverProfile,driver_id:'other-driver'}})
+  await h.settle()
+  assert.notEqual(h.render(),null)
+  assert.equal(h.loadTables.length,0)
+  assert.equal(h.enqueued.length,0)
+})
+
+test('publicador sin capacidad no ve el formulario',async()=>{
+  const h=harness({profile:{...driverProfile,driver_id:null},contexto:{puede_informar_salidas:false}})
   await h.settle()
   assert.equal(h.render(),null)
   assert.equal(h.nodes().length,0)
-  assert.equal(h.loadTables.length,0)
-  assert.equal(h.enqueued.length,0)
 })

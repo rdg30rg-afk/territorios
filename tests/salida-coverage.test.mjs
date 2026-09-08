@@ -10,10 +10,12 @@ test('marca del grupo conserva salida, persona y versión exactas para la cola',
     estado:'sin_dato',origen:'cierre_salida',salida_id:'outing',informado_por:'person',
   })
 })
-test('admin sin conductor vinculado, conductor ajeno e inactivo no pueden marcar',()=>{
-  for(const person of [null,{...actor,role:'admin',driver_id:null},{...actor,driver_id:'another'}, {...actor,access_status:'inactive'}]){
+test('capacidad operativa habilita aunque conduzca otro; cuenta común e inactiva no',()=>{
+  assert.equal(canReportSalidaCoverage({...actor,driver_id:'another'},outing),true)
+  assert.equal(canReportSalidaCoverage({...actor,driver_id:null,puede_informar_salidas:true},outing),true)
+  for(const person of [null,{...actor,driver_id:null,puede_informar_salidas:false}, {...actor,access_status:'inactive'}]){
     assert.equal(canReportSalidaCoverage(person,outing),false)
-    assert.throws(()=>prepareSalidaCoverage(person,outing,side,'recorrido'),/conductor asignado/)
+    assert.throws(()=>prepareSalidaCoverage(person,outing,side,'recorrido'),/no puede informar/)
   }
   for(const missing of [{...outing,id:undefined},{...outing,terrId:undefined}])
     assert.equal(canReportSalidaCoverage(actor,missing),false)

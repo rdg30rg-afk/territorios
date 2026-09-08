@@ -741,6 +741,59 @@
 }
 .vh .lista-hermanos { display: grid; gap: 8px; }
 .vh .lista-hermanos .boton { justify-content: space-between; }
+.vh .gestion-salidas-grupo {
+  border-top: 1px solid var(--line);
+  margin-top: 20px;
+  padding-top: 20px;
+}
+.vh .gestion-salidas-grupo-cabecera {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.vh .gestion-salidas-grupo-cabecera h3 { margin: 0; font-size: var(--t-lead); }
+.vh .gestion-salidas-grupo-cabecera .sub { margin: 2px 0 0; }
+.vh .gestion-salidas-grupo-cabecera .boton {
+  width: auto;
+  flex: 0 0 auto;
+  margin-top: 0;
+  padding-inline: 16px;
+  font-size: var(--t-body);
+}
+.vh .salidas-grupo-resumen {
+  list-style: none;
+  display: grid;
+  gap: 8px;
+  padding: 0;
+  margin: 14px 0 0;
+}
+.vh .salidas-grupo-resumen li {
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: var(--canvas);
+}
+.vh .salidas-grupo-resumen span { color: var(--fg-2); }
+.vh .gestion-salida-form { margin-top: 16px; }
+.vh .gestion-salida-fecha {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, .7fr);
+  gap: 10px;
+}
+.vh .gestion-salida-fecha label { display: grid; gap: 6px; font-size: 16px; font-weight: 600; }
+.vh .gestion-salida-fecha input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--fg);
+  padding: 0 12px;
+  font-family: inherit;
+}
 
 /* Los desplegables viven en un portal fuera de .vh. La clase viaja tanto
    al disparador como a la lista para conservar el piso táctil del hermano. */
@@ -765,6 +818,9 @@
   .vh .paresLlegar { grid-template-columns: minmax(0, 1fr); }
   .vh .paresLlegarTitulo { grid-column: 1; }
   .vh .filtros-salidas { grid-template-columns: minmax(0, 1fr); }
+  .vh .gestion-salidas-grupo-cabecera { display: grid; }
+  .vh .gestion-salidas-grupo-cabecera .boton { width: 100%; }
+  .vh .gestion-salida-fecha { grid-template-columns: minmax(0, 1fr); }
   .vh .pestanias button { min-width: 0; min-height: 72px; padding-inline: 4px; }
 }
 

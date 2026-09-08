@@ -6,6 +6,7 @@ import {
   panelesHoy,
   puedeMarcarTerritorio,
   puedePedirTerritorio,
+  salidaCorrespondeAlGrupo,
   tituloSalidaGrupo,
 } from '../src/lib/vistaHermano.ts'
 
@@ -68,11 +69,13 @@ test('12: super sin driver_id ve Mi grupo, no conduce', () => {
     miembro_estado: 'confirmado',
     rol_en_grupo: 'superintendente',
     es_super_de_grupo: true,
+    puede_informar_salidas: true,
   }
   assert.ok(panelesHoy(ctx).includes('resumenGrupo'))
   assert.equal(panelesHoy(ctx).includes('sosConductor'), false)
   assert.equal(filtrosSalidas(ctx).lasDeMiGrupo, true)
   assert.equal(filtrosSalidas(ctx).lasMias, false)
+  assert.equal(filtrosSalidas(ctx).resultado, true)
 })
 
 test('13: super que además conduce ve todo', () => {
@@ -106,6 +109,13 @@ test('22: la fila de grupos habla distinto según el grupo', () => {
     tituloSalidaGrupo({ tipo: 'grupos', tieneGrupo: true, puntoNombre: 'Plaza' }),
     'Tu grupo sale de Plaza',
   )
+})
+
+test('una salida específica nunca se mezcla con otro grupo', () => {
+  assert.equal(salidaCorrespondeAlGrupo({ groupId: 'g1', tipo: 'grupos' }, 'g1'), true)
+  assert.equal(salidaCorrespondeAlGrupo({ groupId: 'g2', tipo: 'grupos' }, 'g1'), false)
+  assert.equal(salidaCorrespondeAlGrupo({ groupId: null, tipo: 'grupos' }, 'g1'), true)
+  assert.equal(salidaCorrespondeAlGrupo({ groupId: null, tipo: null }, 'g1'), false)
 })
 
 test('el código del grupo se limpia a 6 letras', () => {

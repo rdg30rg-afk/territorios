@@ -1,22 +1,20 @@
 import type { CoverageInput } from './coverageOutbox'
 import type { CoverageState } from './coverageSummary'
 
-type Actor = { id: string; access_status: string; driver_id: string | null } | null
+type Actor = { id: string; access_status: string; driver_id: string | null; puede_informar_salidas?: boolean } | null
 type Outing = { id?: string; driverId?: string; terrId?: string }
 type Side = {
   id: string; manzana_id: string; territory_id: string
   geometry_version: number; vigente_hasta: string | null
 }
 
-// La cobertura del grupo requiere el conductor exacto, incluso si es admin.
-// Es diferente del resultado de salida, que sí puede informar cualquier admin.
 export function canReportSalidaCoverage(actor: Actor, outing: Outing) {
-  return Boolean(actor?.access_status === 'active' && actor.driver_id && outing.id &&
-    outing.terrId && outing.driverId === actor.driver_id)
+  const capability = actor?.puede_informar_salidas ?? Boolean(actor?.driver_id)
+  return Boolean(actor?.access_status === 'active' && capability && outing.id && outing.terrId)
 }
 
 export function prepareSalidaCoverage(actor: Actor, outing: Outing, side: Side, state: CoverageState): CoverageInput {
-  if (!canReportSalidaCoverage(actor, outing) || !actor) throw Error('Solo el conductor asignado a esta salida puede informar lo recorrido por el grupo.')
+  if (!canReportSalidaCoverage(actor, outing) || !actor) throw Error('Tu cuenta no puede informar lo recorrido en esta salida.')
   if (side.territory_id !== outing.terrId || side.vigente_hasta !== null ||
     !Number.isInteger(side.geometry_version) || side.geometry_version < 1) {
     throw Error('El lado no pertenece al dibujo vigente de esta salida. Actualizá antes de marcar.')

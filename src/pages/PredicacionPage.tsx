@@ -42,6 +42,7 @@ import {
   filtrosSalidas,
   panelesHoy,
   puedePedirTerritorio,
+  salidaCorrespondeAlGrupo,
   tieneGrupo,
   tituloSalidaGrupo,
   type ContextoHermano,
@@ -620,7 +621,7 @@ export function PredicacionPage() {
       return base.filter((salida) => salida.driverId === profile.driver_id)
     }
     if (filtroSalidas === 'grupo' && contexto?.group_id) {
-      return base.filter((salida) => salida.groupId === contexto.group_id || salida.tipo === 'grupos')
+      return base.filter((salida) => salidaCorrespondeAlGrupo(salida, contexto.group_id))
     }
     return base
   }, [salidas, showQA, filtroSalidas, profile?.driver_id, contexto?.group_id])
@@ -663,7 +664,7 @@ export function PredicacionPage() {
     setCierreId('')
     setErrorCierres(null)
     setCargandoCierres(false)
-    if (!supabase || profile?.access_status !== 'active' || (profile.role !== 'admin' && !profile.driver_id)) return
+    if (!supabase || profile?.access_status !== 'active' || !contexto?.puede_informar_salidas) return
     setCargandoCierres(true)
     const client = supabase
     const now = new Date()
@@ -673,14 +674,13 @@ export function PredicacionPage() {
       let query = client.from('salidas').select(CAMPOS_SALIDA)
         .gte('scheduled_for', since.toISOString()).lte('scheduled_for', now.toISOString())
         .order('scheduled_for', { ascending: false }).order('id').range(from, to)
-      if (profile.role !== 'admin') query = query.eq('driver_id', profile.driver_id!)
       return query
     }).then(rows => {
       if (live) setSalidasParaCerrar(rows.map(row => comoSalida(row, [])))
     }).catch(() => { if (live) setErrorCierres('No pudimos cargar las salidas para informar su resultado. Tocá Actualizar para reintentar.') })
       .finally(() => { if (live) setCargandoCierres(false) })
     return () => { live = false }
-  }, [profile, revision])
+  }, [profile, contexto?.puede_informar_salidas, revision])
 
   // Recuperar una asignación o cambiar de territorio nunca reactiva por sí
   // solo el modo de escritura que se abrió sobre otro contexto.
@@ -1339,7 +1339,7 @@ export function PredicacionPage() {
               opciones={[
                 { valor: '', texto: 'Seleccioná una salida…' },
                 ...salidasParaCerrarVisibles
-                  .filter((s) => s.id && canReportSalida(profile, s.driverId))
+                  .filter((s) => s.id && canReportSalida(profile, s.driverId, contexto?.puede_informar_salidas))
                   .map((s) => ({
                     valor: s.id!,
                     texto: `${fechaLarga(s.fecha)} · ${s.hora}`,
@@ -1348,9 +1348,9 @@ export function PredicacionPage() {
               ]}
             />
           )}
-          {salidasParaCerrarVisibles.filter(s => s.id === cierreId && canReportSalida(profile, s.driverId)).map(s =>
+          {salidasParaCerrarVisibles.filter(s => s.id === cierreId && canReportSalida(profile, s.driverId, contexto?.puede_informar_salidas)).map(s =>
             <div key={s.id}>
-              <SalidaResultadoForm salidaId={s.id!} canReport={true} canCorrect={profile?.role === 'admin'} />
+              <SalidaResultadoForm salidaId={s.id!} canReport={true} canCorrect={Boolean(contexto?.puede_abrir_panel)} />
               {!s.terrId && <p role="status">Esta salida no tiene un territorio vinculado en la base. Podés informar su resultado, pero un administrador debe revisar la vinculación antes de registrar lados recorridos.</p>}
               <SalidaCoverageForm outing={s} queue={cola} />
             </div>)}
@@ -1797,8 +1797,9 @@ function TarjetaGrupoSale({
 }) {
   const hoy = hoyISO()
   const salida =
-    salidas.find((s) => s.tipo === 'grupos' && s.fecha >= hoy) ??
-    salidas.find((s) => s.tipo === 'grupos')
+    salidas.find((s) => salidaCorrespondeAlGrupo(s, contexto?.group_id) && s.groupId === contexto?.group_id && s.fecha >= hoy) ??
+    salidas.find((s) => salidaCorrespondeAlGrupo(s, contexto?.group_id) && !s.groupId && s.fecha >= hoy) ??
+    salidas.find((s) => salidaCorrespondeAlGrupo(s, contexto?.group_id))
   const punto = contexto?.punto_grupo_nombre
   const conGps = contexto?.punto_grupo_lat != null && contexto.punto_grupo_lng != null
   const grupo = contexto?.group_number ? `Grupo ${contexto.group_number}` : contexto?.group_name

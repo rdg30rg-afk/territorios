@@ -15,7 +15,7 @@ type Side = { id:string; manzana_id:string; territory_id:string; orden:number; g
 type Outing = { id?:string; driverId?:string; terrId?:string }
 
 export function SalidaCoverageForm({outing,queue}:{outing:Outing;queue:ReturnType<typeof useCoverageOutbox>}) {
-  const {profile}=useAuth()
+  const {profile,contexto}=useAuth()
   const [editing,setEditing]=useState(false)
   const [sides,setSides]=useState<Side[]>([])
   const [labels,setLabels]=useState<Record<string,string>>({})
@@ -29,7 +29,8 @@ export function SalidaCoverageForm({outing,queue}:{outing:Outing;queue:ReturnTyp
   const [confirmed,setConfirmed]=useState(false)
   const running=useRef(false)
   const mapElement=useRef<HTMLDivElement>(null)
-  const allowed=canReportSalidaCoverage(profile,outing)
+  const actor=profile?{...profile,puede_informar_salidas:contexto?.puede_informar_salidas}:null
+  const allowed=canReportSalidaCoverage(actor,outing)
   const side=sides.find(item=>item.id===selected)
   const pending=queue.events.filter(item=>item.salida_id===outing.id)
 
@@ -70,7 +71,7 @@ export function SalidaCoverageForm({outing,queue}:{outing:Outing;queue:ReturnTyp
   if(!allowed)return null
   return <section className="module-detail-list">
     <h3>Lo que recorrió el grupo</h3>
-    <p>Informás como conductor de esta salida. Elegí un lado y comprobá la calle en el mapa antes de enviar. No cambia el resultado general de la salida.</p>
+    <p>Informás con tu cuenta habilitada. Elegí un lado y comprobá la calle en el mapa antes de enviar. No cambia el resultado general de la salida.</p>
     {lastSent&&<p role="status">{confirmed?'Última marca confirmada por el servidor.':'Última marca conservada en este dispositivo; esperando confirmación.'}</p>}
     {pending.length>0&&<p role="status">{pending.length} marca(s) pendientes de confirmación de esta salida.
       <button type="button" className="boton secundario" disabled={queue.sending} onClick={()=>void queue.retry()}><Icono nombre="rehacer" tamaño={18}/>Reintentar pendientes</button></p>}
@@ -94,7 +95,7 @@ export function SalidaCoverageForm({outing,queue}:{outing:Outing;queue:ReturnTyp
           if(!side||running.current)return
           running.current=true;setBusy(true);setError(null)
           try {
-            const saved=await queue.enqueue(prepareSalidaCoverage(profile,outing,side,state))
+            const saved=await queue.enqueue(prepareSalidaCoverage(actor,outing,side,state))
             setLastSent(saved.id);setConfirmed(false)
             setSelected('')
             void queue.sync()

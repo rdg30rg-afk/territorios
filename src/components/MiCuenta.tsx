@@ -12,7 +12,7 @@ type MiCuentaProps = {
 function nombreDelRol(rol: ContextoHermano['rol_en_grupo']) {
   if (rol === 'superintendente') return 'Superintendente'
   if (rol === 'auxiliar') return 'Auxiliar'
-  if (rol === 'conductor') return 'Conductor'
+  if (rol === 'siervo') return 'Siervo de grupo'
   return 'Publicador'
 }
 
@@ -169,8 +169,6 @@ export function MiCuenta({ compact = false }: MiCuentaProps) {
           )}
           {profile?.driver_id ? (
             <small>Conductor: {conductorVinculado ?? 'nombre no disponible'}</small>
-          ) : contexto?.rol_en_grupo === 'conductor' ? (
-            <small>Todavía no te vincularon como conductor. Pedíselo al siervo de territorios.</small>
           ) : null}
         </p>
         <button

@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabase'
 import type { PuntoEncuentro } from '../lib/puntosEncuentro'
 import { rotuloRolGrupo, type ContextoHermano, type RolEnGrupo } from '../lib/vistaHermano'
 import { Icono } from './Icono'
+import { GestionSalidasGrupo } from './GestionSalidasGrupo'
 
 type Miembro = {
   id: string
@@ -14,6 +15,7 @@ type Miembro = {
   estado: 'pendiente' | 'confirmado' | 'retirado'
   created_at: string
   full_name: string
+  driver_id: string | null
 }
 
 type TerritorioDisponible = { id: string; name: string }
@@ -83,13 +85,13 @@ export function HojaMiGrupo({ contexto, abierto, onCerrar, onCambio }: HojaMiGru
       ])
       const ids = [...new Set((filas ?? []).map((fila) => fila.profile_id))]
       const { data: perfiles } = ids.length
-        ? await supabase.from('profiles').select('id, full_name').in('id', ids)
+        ? await supabase.from('profiles').select('id, full_name, driver_id').in('id', ids)
         : { data: [] }
       if (!vivo) return
       const nombres = new Map(
-        ((perfiles ?? []) as Array<{ id: string; full_name: string | null }>).map((perfil) => [
+        ((perfiles ?? []) as Array<{ id: string; full_name: string | null; driver_id: string | null }>).map((perfil) => [
           perfil.id,
-          perfil.full_name?.trim() || 'Sin nombre',
+          perfil,
         ]),
       )
       setMiembros(
@@ -105,7 +107,8 @@ export function HojaMiGrupo({ contexto, abierto, onCerrar, onCambio }: HojaMiGru
           rol_en_grupo: fila.rol_en_grupo,
           estado: fila.estado,
           created_at: fila.created_at,
-          full_name: nombres.get(fila.profile_id) ?? 'Sin nombre',
+          full_name: nombres.get(fila.profile_id)?.full_name?.trim() || 'Sin nombre',
+          driver_id: nombres.get(fila.profile_id)?.driver_id ?? null,
         })),
       )
       setCodigo(inv?.codigo ?? null)
@@ -317,6 +320,7 @@ export function HojaMiGrupo({ contexto, abierto, onCerrar, onCambio }: HojaMiGru
               {contexto.punto_grupo_nombre ? 'Cambiar el punto' : 'Cargar el punto'}
             </button>
           )}
+          <GestionSalidasGrupo contexto={contexto} onCambio={onCambio} />
         </section>
 
         <section className="panel">
@@ -340,6 +344,7 @@ export function HojaMiGrupo({ contexto, abierto, onCerrar, onCambio }: HojaMiGru
                 <p>
                   <strong>{m.full_name}</strong>
                   <span className="sub"> · {rotuloRolGrupo(m.rol_en_grupo)}</span>
+                  {m.driver_id ? <span className="sub"> · Conductor vinculado</span> : null}
                 </p>
                 <button
                   type="button"
@@ -353,27 +358,6 @@ export function HojaMiGrupo({ contexto, abierto, onCerrar, onCambio }: HojaMiGru
                   <Icono nombre="reservar" tamaño={18} />
                   Darle un territorio
                 </button>
-                {m.rol_en_grupo === 'publicador' ? (
-                  <button
-                    type="button"
-                    className="boton secundario"
-                    disabled={ocupado}
-                    onClick={() => void decidir(m.id, 'cambiar_rol', 'conductor')}
-                  >
-                    <Icono nombre="conductor" tamaño={18} />
-                    Es conductor
-                  </button>
-                ) : m.rol_en_grupo === 'conductor' ? (
-                  <button
-                    type="button"
-                    className="boton secundario"
-                    disabled={ocupado}
-                    onClick={() => void decidir(m.id, 'cambiar_rol', 'publicador')}
-                  >
-                    <Icono nombre="persona" tamaño={18} />
-                    Ya no conduce
-                  </button>
-                ) : null}
                 <button
                   type="button"
                   className="boton secundario"
