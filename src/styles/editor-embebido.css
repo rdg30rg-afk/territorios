@@ -1,0 +1,20 @@
+/* Presentation only: preserve the standalone editor and its engine. */
+html.editor-embebido body {
+  --canvas: #fdfcfa;
+  --surface: #f6f4ee;
+  --linea: #dedbd2;
+  --texto: #292c26;
+  --suave: #64685c;
+  --azul: #64732f;
+  --indigo: #64732f;
+}
+.editor-embebido .cabecera { display: none; }
+.editor-embebido button:focus-visible,
+.editor-embebido input:focus-visible,
+.editor-embebido select:focus-visible,
+.editor-embebido a:focus-visible { outline: 3px solid var(--azul); outline-offset: 2px; }
+@media (max-width: 767px) {
+  .editor-embebido button,
+  .editor-embebido input,
+  .editor-embebido select { min-height: 48px; font-size: 16px; }
+}
