@@ -6,9 +6,15 @@ import vm from 'node:vm'
 const html = await readFile(new URL('../editor-manzanas.html', import.meta.url), 'utf8')
 const source = html.slice(html.indexOf('let publicacionEnVuelo = false'), html.indexOf('/* ====================================================================\n   PONER LAS LETRAS A MANO'))
 
-test('el panel abre el editor aparte para mantener viva la renovación de sesión', async () => {
-  const shell = await readFile(new URL('../src/components/AppShell.tsx', import.meta.url), 'utf8')
-  assert.match(shell, /href="\/editor-manzanas\.html"[^>]*target="_blank"[^>]*rel="noopener"/)
+test('el panel no duplica el editor que ya vive completo dentro de Mapas', async () => {
+  const [shell, mapas] = await Promise.all([
+    readFile(new URL('../src/components/AppShell.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../src/pages/MapasPage.tsx', import.meta.url), 'utf8'),
+  ])
+  assert.doesNotMatch(shell, /href="\/editor-manzanas\.html"/)
+  assert.doesNotMatch(shell, />\s*Editor de manzanas\s*</)
+  assert.match(mapas, /srcDoc=\{editorHtml\}/)
+  assert.match(mapas, /title="Editor completo de manzanas y territorios"/)
 })
 
 function fixture({ confirm = true, fail = false, edit = false } = {}) {

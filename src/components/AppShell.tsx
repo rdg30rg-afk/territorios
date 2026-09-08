@@ -82,20 +82,6 @@ export function AppShell() {
           ))}
         </nav>
 
-        {adminPanel && (
-          /* Documento aparte, no una ruta de React: por eso <a> y no
-             NavLink. Comparte origen y sesion con la app. */
-          <a href="/editor-manzanas.html" className="module-link" target="_blank" rel="noopener">
-            <span className="module-icon" aria-hidden="true">
-              ▤
-            </span>
-            <span>
-              <strong>Editor de manzanas</strong>
-              <small>Dibujar manzanas y arreglar sus cuadras. Se abre aparte.</small>
-            </span>
-          </a>
-        )}
-
         <NavLink to="/predicacion" className="module-link vista-hermano-link">
           <span className="module-icon" aria-hidden="true">
             ◆
