@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { SanJuanMap } from '../components/SanJuanMap'
 import { CoverageHeatmapPanel } from '../components/CoverageHeatmapPanel'
@@ -13,6 +13,25 @@ export function MapasPage() {
   const requestedTerritoryId = searchParams.get('territorio')?.trim() || null
   const [view, setView] = useState<'editor' | 'cobertura'>('editor')
   const canEditMap = canOpenAdminPanel(profile, contexto)
+  const [editorHtml, setEditorHtml] = useState<string | null>(null)
+  const [editorError, setEditorError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!canEditMap || editorHtml) return
+    const abortController = new AbortController()
+    fetch('/editor-manzanas.html', { cache: 'no-store', signal: abortController.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        const html = await response.text()
+        if (!html.includes('<title>Editor de manzanas')) throw new Error('respuesta inesperada')
+        setEditorHtml(html)
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === 'AbortError') return
+        setEditorError(error instanceof Error ? error.message : 'No se pudo abrir el editor.')
+      })
+    return () => abortController.abort()
+  }, [canEditMap, editorHtml])
   return (
     <div className="page mapas-pagina">
       <section className="page-header">
@@ -26,12 +45,13 @@ export function MapasPage() {
       </section>
       <div hidden={view !== 'editor'} className="editor-integrado-container">
         {canEditMap ? (
-          <iframe
-            className="editor-integrado-frame"
-            src="/editor-manzanas.html"
-            title="Editor completo de manzanas y territorios"
-            allow="geolocation; screen-wake-lock"
-          />
+          editorHtml ? (
+            <iframe className="editor-integrado-frame" srcDoc={editorHtml} title="Editor completo de manzanas y territorios" allow="geolocation; screen-wake-lock" />
+          ) : (
+            <div className={editorError ? 'form-feedback error' : 'map-editing-notice'} role="status">
+              {editorError ? `No se pudo abrir el editor: ${editorError}` : 'Abriendo el editor completo…'}
+            </div>
+          )
         ) : (
           <SanJuanMap initialTerritoryId={requestedTerritoryId} editingEnabled={false} />
         )}
