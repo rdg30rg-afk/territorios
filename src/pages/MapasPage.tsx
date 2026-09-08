@@ -23,13 +23,17 @@ export function MapasPage() {
     const authClient = supabase
     const sendSession = async () => {
       const { data } = await authClient.auth.getSession()
+      // Un iframe srcDoc tiene un origen opaco ("null"). El frame es el que
+      // creó esta app y se valida abajo por referencia; por eso la respuesta
+      // usa * para que también llegue a ese origen opaco.
       editorFrameRef.current?.contentWindow?.postMessage({
         type: 'territorios:editor:session',
         session: data.session ? { accessToken: data.session.access_token, expiresAt: data.session.expires_at } : null,
-      }, window.location.origin)
+      }, '*')
     }
     const receiveRequest = (event: MessageEvent) => {
-      if (event.origin === window.location.origin && event.source === editorFrameRef.current?.contentWindow && event.data?.type === 'territorios:editor:request-session') void sendSession()
+      const originIsExpected = event.origin === window.location.origin || event.origin === 'null'
+      if (originIsExpected && event.source === editorFrameRef.current?.contentWindow && event.data?.type === 'territorios:editor:request-session') void sendSession()
     }
     window.addEventListener('message', receiveRequest)
     const { data: authListener } = authClient.auth.onAuthStateChange(() => { void sendSession() })
@@ -50,7 +54,11 @@ export function MapasPage() {
         if (!response.ok) throw new Error(`HTTP ${response.status}`)
         const html = await response.text()
         if (!html.includes('<title>Editor de manzanas')) throw new Error('respuesta inesperada')
-        setEditorHtml(html)
+        const bridgedHtml = html.replace(
+          '<head>',
+          `<head><script>window.__TERRITORIOS_APP_ORIGIN__ = ${JSON.stringify(window.location.origin)}</script>`,
+        )
+        setEditorHtml(bridgedHtml)
       })
       .catch((error: unknown) => {
         if (error instanceof DOMException && error.name === 'AbortError') return

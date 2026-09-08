@@ -7,6 +7,7 @@ const mapasPage = await readFile(new URL('../src/pages/MapasPage.tsx', import.me
 
 test('el editor srcDoc deriva el origen confiable desde la app contenedora', () => {
   assert.match(html, /new URL\(document\.referrer\)\.origin/)
+  assert.match(html, /window\.__TERRITORIOS_APP_ORIGIN__/)
   assert.match(html, /evento\.origin !== ORIGEN_APP/)
   assert.match(html, /evento\.source !== parent/)
   assert.match(html, /parent\.postMessage\(\{ type: 'territorios:editor:request-session' \}, ORIGEN_APP\)/)
@@ -17,4 +18,7 @@ test('la app versiona el editor embebido para no reutilizar una copia PWA anteri
   assert.match(mapasPage, /window\.location\.hostname/)
   assert.match(mapasPage, /editorPath = hostLocal \? 'editor-manzanas\.html' : 'editor-manzanas-embedded\.html'/)
   assert.match(mapasPage, /editorPath\}\?embed-session-bridge=2/)
+  assert.match(mapasPage, /__TERRITORIOS_APP_ORIGIN__/)
+  assert.match(mapasPage, /contentWindow\?\.postMessage\([\s\S]*, '\*'\)/)
+  assert.match(mapasPage, /event\.origin === 'null'/)
 })
