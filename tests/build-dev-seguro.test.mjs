@@ -139,6 +139,7 @@ test('comprueba que app y editor resuelvan URL DEV y assets locales', async () =
       '<script type="module" src="/assets/main.js"></script><link rel="manifest" href="/manifest.webmanifest">',
     )
     await writeFile(join(outputDir, 'editor-manzanas.html'), `<script type="module">const url = '${DEV_SUPABASE_URL}'</script>`)
+    await writeFile(join(outputDir, 'editor-manzanas-embedded.html'), `<script type="module">const url = '${DEV_SUPABASE_URL}'</script>`)
     await writeFile(join(outputDir, 'assets', 'main.js'), `const supabaseUrl = '${DEV_SUPABASE_URL}'`)
     await writeFile(join(outputDir, 'manifest.webmanifest'), '{}')
 

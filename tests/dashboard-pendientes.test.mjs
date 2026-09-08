@@ -23,7 +23,7 @@ async function render({failTable=null,missingClient=false,usersError=null,counts
   const jsx=(type,props)=>({type,props})
   vm.runInNewContext(compiled,{
     exports,require:()=>({jsx,jsxs:jsx}),Link:'a',Date,
-    supabase:missingClient?null:client,
+    supabase:missingClient?null:client,Icono:()=>null,
     useAuth:()=>({profile:{role:'admin'},managedUsers:users,managedUsersError:usersError,loadManagedUsers:async()=>{}}),
     useState(initial){const i=cursor++;if(!(i in slots))slots[i]=initial;return [slots[i],value=>{slots[i]=typeof value==='function'?value(slots[i]):value}]},
     useMemo(fn,deps){const i=cursor++;if(!same(slots[i]?.deps,deps))slots[i]={deps,value:fn()};return slots[i].value},

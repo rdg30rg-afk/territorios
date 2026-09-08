@@ -42,6 +42,8 @@ import {
   updateBlockGeometry,
 } from '../features/map-editor/model/editorDocument.ts'
 import { encodeEditorDraftState } from '../features/map-editor/model/draftCodec.ts'
+import { publicationAttemptStore } from '../features/map-editor/data/publicationAttempt.ts'
+import { editorRecoveryStore } from '../features/map-editor/data/localRecovery.ts'
 import {
   buildAtomicPublicationV2,
   createPublicationSnapshot,
@@ -53,6 +55,7 @@ import {
 } from '../features/map-editor/geometry/polygonOperations.ts'
 import { groupsForBlock, polygonCenter } from '../features/map-editor/geometry/blockGeometry.ts'
 import type { EditorHistory, EditorPolygon } from '../features/map-editor/model/types.ts'
+import { Icono } from './Icono'
 
 L.drawLocal.draw.toolbar.buttons.polygon = 'Polígono'
 L.drawLocal.draw.toolbar.buttons.rectangle = 'Rectángulo'
@@ -156,6 +159,7 @@ type TerritoryListItem = TerritoryRecord & {
 type SanJuanMapProps = {
   initialTerritoryId?: string | null
   editingEnabled?: boolean
+  onPendingChange?: (pending: boolean) => void
 }
 
 type PdfPoint = {
@@ -958,7 +962,7 @@ function useHasta(px: number) {
   return si
 }
 
-export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }: SanJuanMapProps) {
+export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false, onPendingChange }: SanJuanMapProps) {
   const { profile, contexto } = useAuth()
   const estrecho = useHasta(1280)
   const client = supabase
@@ -1026,6 +1030,10 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
   const [vertexEditBlockId, setVertexEditBlockId] = useState<string | null>(null)
   const [isSavingEditorDraft, setIsSavingEditorDraft] = useState(false)
   const [isPublishingEditor, setIsPublishingEditor] = useState(false)
+  const editorWriteLock = useRef(false)
+  const workspaceActor = useRef<string | undefined>(undefined)
+  const liveEditorActor = useRef(profile?.id)
+  liveEditorActor.current = profile?.id
   const [isLoadingEditorWorkspace, setIsLoadingEditorWorkspace] = useState(false)
   const [editorWorkspaceError, setEditorWorkspaceError] = useState<string | null>(null)
   const [isMarkingBlocks, setIsMarkingBlocks] = useState(false)
@@ -1045,7 +1053,37 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
   const territoryCount = territories.length
   const modoEdicion = isDrawing || Boolean(editingTerritoryId) || modoCrear
   const editorDocument = editorHistory?.present ?? editorWorkspace?.draft.document ?? null
-  const editorHasLocalChanges = Boolean(editorHistory?.past.length)
+  const liveEditorDocument = useRef(editorDocument)
+  liveEditorDocument.current = editorDocument
+  const editorHasLocalChanges = Boolean(editorHistory && editorWorkspace &&
+    JSON.stringify(editorHistory.present) !== JSON.stringify(editorWorkspace.draft.document))
+  const recoveryStore = useMemo(() => profile?.id && import.meta.env.VITE_SUPABASE_URL
+    ? editorRecoveryStore(sessionStorage, new URL(import.meta.env.VITE_SUPABASE_URL).hostname, profile.id)
+    : null, [profile?.id])
+  useEffect(() => {
+    if (!recoveryStore || !editorHistory || !editorWorkspace || workspaceActor.current !== profile?.id) return
+    try {
+      if (editorHasLocalChanges) recoveryStore.write({ revision: editorWorkspace.revision, document: editorHistory.present })
+      else recoveryStore.clear()
+    } catch {
+      setError('No se pudo conservar la copia local de recuperación. No cierres la página: guardá el borrador compartido.')
+    }
+  }, [recoveryStore, editorHistory, editorWorkspace, editorHasLocalChanges, profile?.id])
+  const editorPending = editorHasLocalChanges || Boolean(vertexEditBlockId) || Boolean(drawingBlockVertices) || Boolean(splitTargetBlockId) || isSavingEditorDraft || isPublishingEditor
+  useEffect(() => { onPendingChange?.(editorPending) }, [editorPending, onPendingChange])
+  useEffect(() => {
+    if (!editorPending) return
+    const preventExit = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = '' }
+    const preventNavigation = (event: MouseEvent) => {
+      if (!(event.target instanceof Element) || !event.target.closest('a[href]')) return
+      if (editorWriteLock.current || !window.confirm('Hay cambios sin guardar en el servidor. ¿Querés salir? El borrador local se recuperará al volver, pero un dibujo o gesto sin confirmar se perderá.')) {
+        event.preventDefault(); event.stopPropagation()
+      }
+    }
+    window.addEventListener('beforeunload', preventExit)
+    document.addEventListener('click', preventNavigation, true)
+    return () => { window.removeEventListener('beforeunload', preventExit); document.removeEventListener('click', preventNavigation, true) }
+  }, [editorPending])
 
   const selectedTerritory = useMemo(
     () => territories.find((item) => item.id === selectedTerritoryId) ?? null,
@@ -1205,6 +1243,10 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
   const joinSelectedBlockSides = useCallback((index: number) => {
     if (!selectedEditorBlock || selectedEditorBlockSides.length < 2) return
     const nextIndex = (index + 1) % selectedEditorBlockSides.length
+    if (selectedEditorBlockSides[index].at(-1) !== selectedEditorBlockSides[nextIndex][0]) {
+      setError('Estas caras no comparten vértice y no se pueden unir.')
+      return
+    }
     const joined = selectedEditorBlockSides[index].concat(selectedEditorBlockSides[nextIndex].slice(1))
     const nextGroups = selectedEditorBlockSides
       .map((group, groupIndex) => groupIndex === index ? joined : [...group])
@@ -1262,6 +1304,19 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
     setError(null)
   }, [editorHistory, selectedTerritoryId])
 
+  const applyManualLettering = useCallback(() => {
+    if (!editorHistory || !selectedTerritoryId || editorWriteLock.current) return
+    try {
+      setEditorHistory(commitEditorChange(editorHistory, (document) =>
+        relabelTerritoryBlocks(document, selectedTerritoryId, selectedEditorBlockIds),
+      ))
+      setMessage('Letras aplicadas en el orden en que seleccionaste las manzanas. Podés deshacer; todavía no se publicó nada.')
+      setError(null)
+    } catch (letteringError) {
+      setError(letteringError instanceof Error ? letteringError.message : 'Seleccioná todas las manzanas del territorio, en el orden deseado.')
+    }
+  }, [editorHistory, selectedTerritoryId, selectedEditorBlockIds])
+
   const finishVertexEditing = useCallback(() => {
     if (!vertexEditBlockId) return
     const layer = editorBlockLayersRef.current.get(vertexEditBlockId)
@@ -1285,9 +1340,13 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
 
   const saveCurrentEditorDraft = useCallback(async () => {
     if (!client || !editorWorkspace || !editorHistory) return false
+    if (workspaceActor.current !== profile?.id) return false
+    if (editorWriteLock.current) return false
+    editorWriteLock.current = true
     setIsSavingEditorDraft(true)
     setError(null)
     try {
+      if (new URL(import.meta.env.VITE_SUPABASE_URL).hostname !== 'rkmioktcsgqqjshrlkmy.supabase.co') throw Error('El guardado del taller está habilitado sólo en DEV.')
       const removedSourceKeys = Object.values(editorWorkspace.draft.document.blocks)
         .filter((block) => block.sourceKey && !editorHistory.present.blocks[block.id])
         .map((block) => block.sourceKey as string)
@@ -1305,6 +1364,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
         editorWorkspace.revision,
         encodeEditorDraftState(nextDraft),
       )
+      if (liveEditorActor.current !== profile?.id) return false
       const nextWorkspace: LoadedEditorWorkspace = {
         revision: saved.revision,
         updatedBy: saved.updatedBy,
@@ -1312,49 +1372,66 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
         draft: nextDraft,
       }
       setEditorWorkspace(nextWorkspace)
-      setEditorHistory(createEditorHistory(editorHistory.present))
+      // Keep the live history: later edits and undo must survive a slow response.
       setMessage(`Borrador guardado en la revisión ${saved.revision}. Nada se publicó todavía.`)
       return true
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'No se pudo guardar el borrador.')
       return false
     } finally {
+      editorWriteLock.current = false
       setIsSavingEditorDraft(false)
     }
-  }, [client, editorHistory, editorWorkspace])
+  }, [client, editorHistory, editorWorkspace, profile?.id])
 
   const publishCurrentEditorChanges = useCallback(async () => {
-    if (!client || !editorHistory || !selectedTerritoryId || isPublishingEditor) return
-    let snapshots
-    try {
-      snapshots = createPublicationSnapshot(editorHistory.present, selectedTerritoryId)
-    } catch (snapshotError) {
-      setError(snapshotError instanceof Error ? snapshotError.message : 'No se pudo preparar la revisión.')
-      return
-    }
-    const summary = snapshots.map((snapshot) => `${snapshot.name}: ${snapshot.blocks.length} manzanas`).join('\n')
-    if (!window.confirm(`Vas a publicar este lote atómico:\n\n${summary}\n\n¿Continuar?`)) return
+    if (!client || !profile?.id || !editorHistory || !selectedTerritoryId || isPublishingEditor || editorWriteLock.current) return
+    if (workspaceActor.current !== profile.id) return
+    editorWriteLock.current = true
     setIsPublishingEditor(true)
     setError(null)
     try {
-      if (editorHasLocalChanges && !(await saveCurrentEditorDraft())) return
       const transport = createSupabaseEditorTransport(client)
+      const project = new URL(import.meta.env.VITE_SUPABASE_URL).hostname.split('.')[0]
+      if (project !== 'rkmioktcsgqqjshrlkmy') throw Error('Este editor está habilitado sólo en DEV.')
+      const store = publicationAttemptStore(localStorage, project, profile.id)
+      const send = async () => {
+      if (liveEditorActor.current !== profile.id) throw Error('La sesión cambió. No se envió el lote.')
+      const pending = store.read()
+      if (pending) {
+        if (!window.confirm('Hay una publicación sin respuesta confirmada. ¿Consultar/reintentar exactamente ese lote pendiente?')) return
+        await publishEditorPublicationV2(transport, pending.operationId, pending.changes)
+        store.confirm(pending.operationId)
+        setMessage('El lote pendiente fue confirmado. Recargá para revisar el estado publicado antes de crear otro lote.')
+        return
+      }
+      const snapshots = createPublicationSnapshot(editorHistory.present, selectedTerritoryId)
+      const summary = snapshots.map((snapshot) => `${snapshot.name}: ${snapshot.blocks.length} manzanas`).join('\n')
       const revisions = await reviewEditorPublicationV2(
         transport,
         snapshots.map((snapshot) => snapshot.territoryId),
       )
-      if (snapshots.some((snapshot) => !publicationStillMatches(editorHistory.present, snapshot))) {
+      if (!liveEditorDocument.current || snapshots.some((snapshot) => !publicationStillMatches(liveEditorDocument.current!, snapshot))) {
         throw new Error('El borrador cambió durante la revisión. Volvé a revisar antes de publicar.')
       }
       const changes = buildAtomicPublicationV2(snapshots, revisions)
-      await publishEditorPublicationV2(transport, crypto.randomUUID(), changes)
+      if (liveEditorActor.current !== profile.id) throw Error('La sesión cambió durante la revisión. No se envió el lote.')
+      const affectedCoverage = revisions.reduce((sum, row) => sum + Number((row as typeof row & { lados_vigentes_con_cobertura?: number }).lados_vigentes_con_cobertura ?? 0), 0)
+      if (!window.confirm(`Revisá el lote:\n${summary}\n\n${affectedCoverage} lados vigentes tienen cobertura. Se conservará su historia; el dibujo nuevo tendrá otra versión.\n\n¿Publicar?`)) return
+      const attempt = store.prepare({ operationId: crypto.randomUUID(), changes })
+      await publishEditorPublicationV2(transport, attempt.operationId, attempt.changes)
+      store.confirm(attempt.operationId)
       setMessage(`Publicación confirmada: ${summary.replaceAll('\n', ' · ')}.`)
+      }
+      if (!navigator.locks) throw Error('Este navegador no permite coordinar publicaciones entre pestañas.')
+      await navigator.locks.request(store.key, send)
     } catch (publishError) {
-      setError(publishError instanceof Error ? publishError.message : 'La respuesta de publicación es desconocida. No reintentes automáticamente.')
+      setError(`${publishError instanceof Error ? publishError.message : 'Respuesta desconocida.'} Si el lote fue enviado, conservamos el intento para verificarlo sin duplicarlo.`)
     } finally {
+      editorWriteLock.current = false
       setIsPublishingEditor(false)
     }
-  }, [client, editorHasLocalChanges, editorHistory, isPublishingEditor, saveCurrentEditorDraft, selectedTerritoryId])
+  }, [client, editorHistory, isPublishingEditor, profile?.id, selectedTerritoryId])
 
   const territoriesWithIndex = useMemo<TerritoryListItem[]>(
     () =>
@@ -1393,8 +1470,9 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
   }, [searchTerm, territoriesWithIndex])
 
   const snapCandidates = useMemo(
-    () => collectSnapCandidates(territories, editingTerritoryId),
-    [editingTerritoryId, territories],
+    () => [...collectSnapCandidates(territories, editingTerritoryId),
+      ...Object.values(editorDocument?.blocks ?? {}).flatMap((block) => block.geometry.coordinates[0].map(([lng, lat]) => [lng, lat] as [number, number]))],
+    [editingTerritoryId, territories, editorDocument],
   )
 
   const disableActiveDrawHandler = useCallback(() => {
@@ -2321,6 +2399,12 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
 
   useEffect(() => {
     const layer = candidateLayerRef.current
+    // Leaflet owns provisional vertex handles until the user confirms/cancels.
+    if (vertexEditBlockId && editorBlockLayersRef.current.has(vertexEditBlockId)) {
+      const editing = (editorBlockLayersRef.current.get(vertexEditBlockId) as L.Polygon & { editing: { enable: () => void; enabled: () => boolean } }).editing
+      if (!editing.enabled()) editing.enable()
+      return
+    }
     layer?.clearLayers()
     editorBlockLayersRef.current.clear()
     if (!layer || !editingEnabled || mapZoom < EDITOR_CANDIDATE_ZOOM) return
@@ -2354,8 +2438,9 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
       }
       if (editorDocument && canManageTerritories) {
         candidatePolygon.on('click', (event) => {
-          if (drawingBlockVertices) return
           L.DomEvent.stopPropagation(event)
+          if (editorWriteLock.current || vertexEditBlockId) return
+          if (drawingBlockVertices) return
           if (applyEditorSplitPoint([event.latlng.lng, event.latlng.lat])) return
           toggleEditorBlock(draftBlock.id)
         })
@@ -2427,6 +2512,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
     let active = true
     setIsLoadingEditorWorkspace(true)
     setEditorWorkspaceError(null)
+    const loadingActor = liveEditorActor.current
     void loadEditorWorkspace(
       createSupabaseEditorTransport(client),
       territories.map((territory) => ({
@@ -2437,9 +2523,15 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
       abortController.signal,
     )
       .then((workspace) => {
-        if (active) {
+        if (active && loadingActor === liveEditorActor.current) {
+          const recovery = recoveryStore?.read()
+          if (recovery && recovery.revision !== workspace.revision) {
+            throw Error('Hay cambios locales recuperables, pero otra persona guardó una revisión nueva. Conservamos tu copia local y bloqueamos la edición para no sobrescribir ninguna versión.')
+          }
           setEditorWorkspace(workspace)
-          setEditorHistory(createEditorHistory(workspace.draft.document))
+          workspaceActor.current = loadingActor
+          setEditorHistory(createEditorHistory(recovery?.document ?? workspace.draft.document))
+          if (recovery) setMessage('Recuperamos los cambios locales de esta pestaña. Revisalos antes de guardar o publicar.')
           setSelectedEditorBlockIds([])
         }
       })
@@ -2463,11 +2555,10 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
       active = false
       abortController.abort()
     }
-  }, [canManageTerritories, client, isLoading, territories])
+  }, [canManageTerritories, client, isLoading, territories, recoveryStore])
 
   useEffect(() => {
     if (!editingEnabled) {
-      setEditorHistory(null)
       setSelectedEditorBlockIds([])
       setSplitTargetBlockId(null)
       setSplitPoints([])
@@ -2478,6 +2569,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
   useEffect(() => {
     if (!canManageTerritories || !editorHistory) return
     const handleEditorHistoryKey = (event: KeyboardEvent) => {
+      if (editorWriteLock.current || vertexEditBlockId || drawingBlockVertices || splitTargetBlockId) return
       if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'z') return
       const target = event.target as HTMLElement | null
       if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
@@ -2493,7 +2585,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
     }
     window.addEventListener('keydown', handleEditorHistoryKey)
     return () => window.removeEventListener('keydown', handleEditorHistoryKey)
-  }, [canManageTerritories, editorHistory])
+  }, [canManageTerritories, editorHistory, vertexEditBlockId, drawingBlockVertices, splitTargetBlockId])
 
   useEffect(() => {
     renderSnapGuide(snapPreviewPoint)
@@ -2586,6 +2678,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
     }
 
     const handleManualPolygonClick = (event: L.LeafletMouseEvent) => {
+      if (editorWriteLock.current || vertexEditBlockId) return
       if (drawingBlockVertices) {
         const snapped = snapLngLat(event.latlng).latLng
         setDrawingBlockVertices((current) => current
@@ -2671,6 +2764,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
     handleAddBlock,
     isDrawing,
     isMarkingBlocks,
+    vertexEditBlockId,
     selectedColor,
     snapLngLat,
     territories,
@@ -3498,6 +3592,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
               className="ghost-button"
               onClick={handlePrepareNewTerritory}
             >
+              <Icono nombre="dibujar" tamaño={18} />
               Nuevo
             </button>
           ) : null}
@@ -3580,6 +3675,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
               <div className="map-toolbar-acciones">
                 {!modoEdicion && canManageTerritories ? (
                   <button type="button" className="secondary-button" onClick={handlePrepareNewTerritory}>
+                    <Icono nombre="dibujar" tamaño={18} />
                     Dibujar
                   </button>
                 ) : null}
@@ -3590,7 +3686,8 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
                     ocupaba una columna entera al lado del mapa. */}
                 <details className="map-mas">
                   <summary aria-label="Más herramientas del mapa">
-                    <span aria-hidden="true">⋯</span>
+                    <Icono nombre="chevron-abajo" tamaño={18} />
+                    <span>Más herramientas</span>
                   </summary>
                   <div className="map-mas-caja">
                     <button
@@ -3599,6 +3696,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
                       onClick={() => void handleExportTerritoriesJson()}
                       disabled={territoriesWithIndex.length === 0}
                     >
+                      <Icono nombre="descargar" tamaño={18} />
                       Exportar GeoJSON
                     </button>
                     <button
@@ -3607,6 +3705,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
                       onClick={handleExportTerritoriesCsv}
                       disabled={territoriesWithIndex.length === 0}
                     >
+                      <Icono nombre="descargar" tamaño={18} />
                       Exportar CSV
                     </button>
                     <button
@@ -3615,12 +3714,15 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
                       onClick={() => void handleExportTerritoriesPdf()}
                       disabled={territoriesWithIndex.length === 0 || isExportingPdf}
                     >
+                      <Icono nombre="descargar" tamaño={18} />
                       {isExportingPdf ? 'Generando el plano…' : 'Plano PDF'}
                     </button>
                     <button type="button" className="ghost-button" onClick={() => void toggleFullscreen()}>
+                      <Icono nombre="territorios" tamaño={18} />
                       Pantalla completa
                     </button>
                     <button type="button" className="ghost-button" onClick={refreshMapOverlay}>
+                      <Icono nombre="rehacer" tamaño={18} />
                       Volver a dibujar los territorios
                     </button>
                   </div>
@@ -3660,6 +3762,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
                   onClick={handleStartDrawing}
                   disabled={!canManageTerritories}
                 >
+                  <Icono nombre="dibujar" tamaño={18} />
                   {isDrawing ? 'Dibujando…' : 'Comenzar dibujo'}
                 </button>
                 <button
@@ -3668,6 +3771,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
                   onClick={handleUndoLastPoint}
                   disabled={!canManageTerritories || !isDrawing}
                 >
+                  <Icono nombre="deshacer" tamaño={18} />
                   Deshacer punto
                 </button>
                 {/* Guardar estaba abajo a la derecha, en el panel de la
@@ -3678,6 +3782,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
                   onClick={() => void handleSaveTerritory()}
                   disabled={!canManageTerritories || isSaving || !currentGeometry}
                 >
+                  <Icono nombre="guardar" tamaño={18} />
                   {isSaving
                     ? 'Guardando…'
                     : editingTerritoryId
@@ -3690,6 +3795,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
                   onClick={resetEditor}
                   disabled={!canManageTerritories}
                 >
+                  <Icono nombre="cerrar" tamaño={18} />
                   Cancelar
                 </button>
               </div>
@@ -3759,7 +3865,9 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
                             : 'El borrador compartido todavía no está disponible.'}
                     </div>
                     {editorHistory ? (
-                      <div className="editor-selection-actions" aria-label="Herramientas del editor de manzanas">
+                      <div className="editor-selection-actions" aria-label="Herramientas del editor de manzanas"
+                        inert={isSavingEditorDraft || isPublishingEditor}
+                        aria-busy={isSavingEditorDraft || isPublishingEditor}>
                         <span>
                           {splitTargetBlockId
                             ? splitPoints.length === 0
@@ -3780,8 +3888,9 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
                             setEditorHistory((current) => current ? undoEditorChange(current) : current)
                             setSelectedEditorBlockIds([])
                           }}
-                          disabled={!editorHistory.past.length}
+                          disabled={!editorHistory.past.length || Boolean(vertexEditBlockId) || Boolean(splitTargetBlockId) || Boolean(drawingBlockVertices)}
                         >
+                          <Icono nombre="deshacer" tamaño={17} />
                           Deshacer
                         </button>
                         <button
@@ -3791,8 +3900,9 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
                             setEditorHistory((current) => current ? redoEditorChange(current) : current)
                             setSelectedEditorBlockIds([])
                           }}
-                          disabled={!editorHistory.future.length}
+                          disabled={!editorHistory.future.length || Boolean(vertexEditBlockId) || Boolean(splitTargetBlockId) || Boolean(drawingBlockVertices)}
                         >
+                          <Icono nombre="rehacer" tamaño={17} />
                           Rehacer
                         </button>
                         {drawingBlockVertices ? (
@@ -3803,6 +3913,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
                               onClick={finishDrawingEditorBlock}
                               disabled={drawingBlockVertices.length < 3}
                             >
+                              <Icono nombre="cerrar" tamaño={17} />
                               Cerrar manzana
                             </button>
                             <button
@@ -3813,6 +3924,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
                                 setMessage('Dibujo cancelado. No cambió el borrador.')
                               }}
                             >
+                              <Icono nombre="cerrar" tamaño={17} />
                               Cancelar dibujo
                             </button>
                           </>
@@ -3823,6 +3935,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
                             onClick={beginDrawingEditorBlock}
                             disabled={!selectedTerritoryId || Boolean(splitTargetBlockId) || Boolean(vertexEditBlockId)}
                           >
+                            <Icono nombre="dibujar" tamaño={17} />
                             Dibujar manzana
                           </button>
                         )}
@@ -3832,6 +3945,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
                           onClick={beginSplitSelectedBlock}
                           disabled={selectedEditorBlockIds.length !== 1 || Boolean(splitTargetBlockId) || Boolean(vertexEditBlockId) || Boolean(drawingBlockVertices)}
                         >
+                          <Icono nombre="dividir" tamaño={17} />
                           Dividir
                         </button>
                         <button
@@ -3840,6 +3954,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
                           onClick={mergeSelectedEditorBlocks}
                           disabled={selectedEditorBlockIds.length !== 2 || Boolean(splitTargetBlockId) || Boolean(vertexEditBlockId) || Boolean(drawingBlockVertices)}
                         >
+                          <Icono nombre="fusionar" tamaño={17} />
                           Fusionar
                         </button>
                         {vertexEditBlockId ? (
@@ -3849,6 +3964,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
                               className="primary-button compact-button"
                               onClick={finishVertexEditing}
                             >
+                              <Icono nombre="guardar" tamaño={17} />
                               Listo, guardar vértices
                             </button>
                             <button
@@ -3859,6 +3975,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
                                 setMessage('Edición de vértices cancelada. No cambió el borrador.')
                               }}
                             >
+                              <Icono nombre="cerrar" tamaño={17} />
                               Cancelar vértices
                             </button>
                           </>
@@ -3869,6 +3986,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
                             onClick={() => setVertexEditBlockId(selectedEditorBlockIds[0] ?? null)}
                             disabled={selectedEditorBlockIds.length !== 1 || Boolean(splitTargetBlockId) || Boolean(drawingBlockVertices)}
                           >
+                            <Icono nombre="vertices" tamaño={17} />
                             Editar vértices
                           </button>
                         )}
@@ -3876,16 +3994,18 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
                           type="button"
                           className="secondary-button compact-button"
                           onClick={() => assignSelectedEditorBlocks(selectedTerritoryId)}
-                          disabled={!selectedTerritoryId || !selectedEditorBlockIds.length || Boolean(drawingBlockVertices)}
+                          disabled={!selectedTerritoryId || !selectedEditorBlockIds.length || Boolean(vertexEditBlockId) || Boolean(splitTargetBlockId) || Boolean(drawingBlockVertices)}
                         >
+                          <Icono nombre="mover" tamaño={17} />
                           Asignar a {selectedTerritory?.name ?? 'territorio'}
                         </button>
                         <button
                           type="button"
                           className="ghost-button compact-button"
                           onClick={() => assignSelectedEditorBlocks(null)}
-                          disabled={!selectedEditorBlockIds.length || Boolean(drawingBlockVertices)}
+                          disabled={!selectedEditorBlockIds.length || Boolean(vertexEditBlockId) || Boolean(splitTargetBlockId) || Boolean(drawingBlockVertices)}
                         >
+                          <Icono nombre="territorios" tamaño={17} />
                           Dejar libre
                         </button>
                         <button
@@ -3894,6 +4014,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
                           onClick={removeSelectedEditorBlocks}
                           disabled={!selectedEditorBlockIds.length || Boolean(splitTargetBlockId) || Boolean(vertexEditBlockId) || Boolean(drawingBlockVertices)}
                         >
+                          <Icono nombre="eliminar" tamaño={17} />
                           Retirar
                         </button>
                         <button
@@ -3902,11 +4023,22 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
                           onClick={relabelSelectedTerritory}
                           disabled={!selectedTerritoryId || Boolean(splitTargetBlockId) || Boolean(vertexEditBlockId) || Boolean(drawingBlockVertices)}
                         >
+                          <Icono nombre="letras" tamaño={17} />
                           Reletrar territorio
                         </button>
+                        {selectedTerritoryId && !splitTargetBlockId && !vertexEditBlockId && !drawingBlockVertices ? (
+                          <details className="editor-side-tools">
+                            <summary><Icono nombre="letras" tamaño={17} />Letras a mano</summary>
+                            <div>
+                              <span>Quitá la selección y tocá todas las manzanas de este territorio en el orden de recorrido. Después aplicá las letras.</span>
+                              <button type="button" className="ghost-button compact-button" onClick={() => setSelectedEditorBlockIds([])}>Quitar selección</button>
+                              <button type="button" className="secondary-button compact-button" onClick={applyManualLettering} disabled={!selectedEditorBlockIds.length}>Aplicar orden de selección</button>
+                            </div>
+                          </details>
+                        ) : null}
                         {selectedEditorBlock && !splitTargetBlockId && !vertexEditBlockId && !drawingBlockVertices ? (
                           <details className="editor-side-tools">
-                            <summary>Arreglar caras ({selectedEditorBlockSides.length})</summary>
+                            <summary><Icono nombre="caras" tamaño={17} />Arreglar caras ({selectedEditorBlockSides.length})</summary>
                             <div>
                               {selectedEditorBlockSides.map((group, groupIndex) => (
                                 <span key={`${selectedEditorBlock.id}-side-${groupIndex}`}>
@@ -3916,6 +4048,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
                                       className="ghost-button compact-button"
                                       onClick={() => joinSelectedBlockSides(groupIndex)}
                                     >
+                                      <Icono nombre="fusionar" tamaño={17} />
                                       Unir {groupIndex + 1} + {(groupIndex + 1) % selectedEditorBlockSides.length + 1}
                                     </button>
                                   ) : null}
@@ -3926,6 +4059,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
                                       className="ghost-button compact-button"
                                       onClick={() => splitSelectedBlockSide(groupIndex, vertexIndex + 1)}
                                     >
+                                      <Icono nombre="dividir" tamaño={17} />
                                       Partir cara {groupIndex + 1} en punto {vertexIndex + 2}
                                     </button>
                                   ))}
@@ -3937,6 +4071,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
                                 onClick={() => updateSelectedBlockSides(null, 'Las caras volvieron al cálculo automático.')}
                                 disabled={!selectedEditorBlock.manualSideGroups}
                               >
+                                <Icono nombre="rehacer" tamaño={17} />
                                 Volver a automático
                               </button>
                             </div>
@@ -3952,6 +4087,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
                               setMessage('Corte cancelado. No cambió el borrador.')
                             }}
                           >
+                            <Icono nombre="cerrar" tamaño={17} />
                             Cancelar corte
                           </button>
                         ) : null}
@@ -3962,6 +4098,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
                           onClick={() => void saveCurrentEditorDraft()}
                           disabled={!editorHasLocalChanges || isSavingEditorDraft || isPublishingEditor || Boolean(splitTargetBlockId) || Boolean(vertexEditBlockId) || Boolean(drawingBlockVertices)}
                         >
+                          <Icono nombre="guardar" tamaño={17} />
                           {isSavingEditorDraft ? 'Guardando…' : 'Guardar borrador'}
                         </button>
                         <button
@@ -3970,6 +4107,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
                           onClick={() => void publishCurrentEditorChanges()}
                           disabled={!selectedTerritoryId || isSavingEditorDraft || isPublishingEditor || Boolean(splitTargetBlockId) || Boolean(vertexEditBlockId) || Boolean(drawingBlockVertices)}
                         >
+                          <Icono nombre="compartir" tamaño={17} />
                           {isPublishingEditor ? 'Publicando…' : 'Revisar y publicar'}
                         </button>
                       </div>
@@ -4035,6 +4173,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
                       className="secondary-button"
                       onClick={() => handleEditMetadata(selectedTerritory)}
                     >
+                      <Icono nombre="dibujar" tamaño={18} />
                       Editar datos
                     </button>
                     <button
@@ -4042,6 +4181,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
                       className="danger-button"
                       onClick={() => void handleDeleteTerritory(selectedTerritory)}
                     >
+                      <Icono nombre="eliminar" tamaño={18} />
                       Información sobre retiro
                     </button>
                   </div>
@@ -4068,6 +4208,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
                         }
                         disabled={isSavingBlock}
                       >
+                        <Icono nombre={isMarkingBlocks ? 'cerrar' : 'marcar'} tamaño={18} />
                         {isMarkingBlocks ? 'Detener' : 'Marcar manzanas'}
                       </button>
                     ) : null}
@@ -4087,6 +4228,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
                               className="ghost-button compact-button"
                               onClick={() => void handleDeleteBlock(block)}
                             >
+                              <Icono nombre="eliminar" tamaño={17} />
                               Quitar
                             </button>
                           ) : null}

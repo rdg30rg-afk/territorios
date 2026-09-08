@@ -1,5 +1,6 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 import '../styles/modal.css'
+import { Icono } from './Icono'
 
 /**
  * UNA VENTANA QUE SE ABRE ENCIMA, SIN PERDER EL LUGAR
@@ -78,7 +79,7 @@ export function Modal({
             onClick={alCerrar}
             aria-label="Cerrar"
           >
-            ×
+            <Icono nombre="cerrar" tamaño={18} />
           </button>
         </header>
 

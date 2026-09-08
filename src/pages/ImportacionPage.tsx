@@ -2,6 +2,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import { Desplegable } from '../components/Desplegable'
 import { useAuth } from '../context/useAuth'
 import { supabase } from '../lib/supabase'
+import { Icono } from '../components/Icono'
 import '../styles/importacion.css'
 
 /**
@@ -585,6 +586,7 @@ export function ImportacionPage() {
               <div className="form-feedback error" role="alert">
                 <span>No se pudieron cargar las importaciones: {corridasError}</span>
                 <button type="button" className="ghost-button" onClick={() => setCorridasReintento((value) => value + 1)}>
+                  <Icono nombre="rehacer" tamaño={18} />
                   Reintentar
                 </button>
               </div>
@@ -621,6 +623,7 @@ export function ImportacionPage() {
           <div className="form-feedback error" role="alert">
             <span>No se pudieron contar las filas: {resumenError}</span>
             <button type="button" className="ghost-button" onClick={reintentarResumen}>
+              <Icono nombre="rehacer" tamaño={18} />
               Reintentar conteos
             </button>
           </div>
@@ -694,6 +697,7 @@ export function ImportacionPage() {
           <div className="form-feedback error" role="alert">
             <span>No se pudieron cargar las filas: {listaError}</span>
             <button type="button" className="ghost-button" onClick={reintentarLista}>
+              <Icono nombre="rehacer" tamaño={18} />
               Reintentar lista
             </button>
           </div>
@@ -729,6 +733,7 @@ export function ImportacionPage() {
               disabled={!paginaInfo.canPrevious || registros === null}
               onClick={() => cambiarPagina(pagina - 1)}
             >
+              <Icono nombre="anterior" tamaño={18} />
               Anterior
             </button>
             <span>
@@ -741,6 +746,7 @@ export function ImportacionPage() {
               disabled={!paginaInfo.canNext || registros === null}
               onClick={() => cambiarPagina(pagina + 1)}
             >
+              <Icono nombre="siguiente" tamaño={18} />
               Siguiente
             </button>
           </div>
@@ -781,7 +787,7 @@ function FilaRegistro({
         <span className="imp-tipo">{NOMBRE_TIPO[r.tipo] ?? r.tipo}</span>
         <span className="imp-motivo">{r.motivo ?? 'sin observaciones'}</span>
         <span className="imp-flecha" aria-hidden="true">
-          {abierto ? '⌃' : '⌄'}
+          <Icono nombre="chevron-abajo" tamaño={18} />
         </span>
       </button>
 
@@ -853,6 +859,7 @@ function FilaRegistro({
                     disabled={guardando}
                     onClick={() => onDecidir(r, decision.campo, valor, nota)}
                   >
+                    <Icono nombre="guardar" tamaño={18} />
                     {texto}
                   </button>
                 ))}
@@ -863,6 +870,7 @@ function FilaRegistro({
                     disabled={guardando}
                     onClick={() => onDecidir(r, 'revisado', 'ok', nota)}
                   >
+                    <Icono nombre="guardar" tamaño={18} />
                     Está bien, que entre
                   </button>
                 )}
@@ -881,6 +889,7 @@ function FilaRegistro({
                     onDecidir(r, null, null, nota)
                   }}
                 >
+                  <Icono nombre="eliminar" tamaño={18} />
                   Descartar
                 </button>
               </div>

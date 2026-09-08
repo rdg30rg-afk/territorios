@@ -52,7 +52,15 @@ export function assignBlocks(
     if (!block) throw new Error(`No existe la manzana ${blockId}.`)
     if (block.territoryId === territoryId) continue
     affectedTerritories.push(block.territoryId, territoryId)
-    blocks[blockId] = { ...block, territoryId, edited: true }
+    const peers = Object.values(blocks).filter((peer) => peer.id !== blockId && peer.territoryId === territoryId)
+    const used = new Set(peers.map((peer) => peer.label?.trim().toLowerCase()))
+    let labelIndex = 0
+    while (used.has(alphabeticalLabel(labelIndex))) labelIndex++
+    blocks[blockId] = {
+      ...block, territoryId, edited: true,
+      label: territoryId ? alphabeticalLabel(labelIndex) : null,
+      order: territoryId ? Math.max(-1, ...peers.map((peer) => peer.order ?? -1)) + 1 : null,
+    }
     changed = true
   }
 
@@ -232,7 +240,8 @@ export function setManualSideGroups(
     groups.some(
       (group) =>
         group.length < 2 ||
-        group.some((index) => !Number.isInteger(index) || index < 0 || index >= vertexCount),
+        group.some((index) => !Number.isInteger(index) || index < 0 || index >= vertexCount) ||
+        group.some((index, position) => position > 0 && index !== (group[position - 1] + 1) % vertexCount),
     )
   ) {
     throw new Error('La corrección manual contiene vértices inválidos.')

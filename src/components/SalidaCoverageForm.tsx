@@ -9,6 +9,7 @@ import type { CoverageState } from '../lib/coverageSummary'
 import { ponerFondo } from '../lib/fondoMapa'
 import { Desplegable } from './Desplegable'
 import type { useCoverageOutbox } from '../lib/useCoverageOutbox'
+import { Icono } from './Icono'
 
 type Side = { id:string; manzana_id:string; territory_id:string; orden:number; geometry_version:number; vigente_hasta:null; geometry_geojson:unknown }
 type Outing = { id?:string; driverId?:string; terrId?:string }
@@ -72,12 +73,12 @@ export function SalidaCoverageForm({outing,queue}:{outing:Outing;queue:ReturnTyp
     <p>Informás como conductor de esta salida. Elegí un lado y comprobá la calle en el mapa antes de enviar. No cambia el resultado general de la salida.</p>
     {lastSent&&<p role="status">{confirmed?'Última marca confirmada por el servidor.':'Última marca conservada en este dispositivo; esperando confirmación.'}</p>}
     {pending.length>0&&<p role="status">{pending.length} marca(s) pendientes de confirmación de esta salida.
-      <button type="button" className="boton secundario" disabled={queue.sending} onClick={()=>void queue.retry()}>Reintentar pendientes</button></p>}
+      <button type="button" className="boton secundario" disabled={queue.sending} onClick={()=>void queue.retry()}><Icono nombre="rehacer" tamaño={18}/>Reintentar pendientes</button></p>}
     {(error||queue.error)&&<p role="alert">{error||queue.error}</p>}
     {pending.filter(item=>item.lastError).map(item=><p role="alert" key={item.id}>{item.lastError}</p>)}
-    <button type="button" className="boton" disabled={busy} aria-expanded={editing} onClick={()=>setEditing(!editing)}>{editing?'Listo':'Marcar lo que recorrió el grupo'}</button>
+    <button type="button" className="boton" disabled={busy} aria-expanded={editing} onClick={()=>setEditing(!editing)}><Icono nombre={editing?'completo':'marcar'} tamaño={18}/>{editing?'Listo':'Marcar lo que recorrió el grupo'}</button>
     {editing&&<div className="form-stack">
-      <button type="button" className="boton secundario" disabled={loading||busy} onClick={()=>setRevision(value=>value+1)}>Actualizar dibujo</button>
+      <button type="button" className="boton secundario" disabled={loading||busy} onClick={()=>setRevision(value=>value+1)}><Icono nombre="rehacer" tamaño={18}/>Actualizar dibujo</button>
       {loading?<p>Cargando lados…</p>:!sides.length?<p>No hay lados disponibles. No se puede informar cobertura todavía.</p>:<>
         <label>Lado de la calle<Desplegable className="vh-desplegable" etiqueta="Lado de la calle" valor={selected} deshabilitado={busy} alElegir={setSelected} opciones={[
           {valor:'',texto:'Elegí un lado'},
@@ -99,7 +100,7 @@ export function SalidaCoverageForm({outing,queue}:{outing:Outing;queue:ReturnTyp
             void queue.sync()
           }catch(failure){setError(failure instanceof Error?failure.message:'No se pudo conservar la marca.')}
           finally{running.current=false;setBusy(false)}
-        }}>{busy?'Conservando…':'Informar estado de este lado'}</button>
+        }}><Icono nombre="guardar" tamaño={18}/>{busy?'Conservando…':'Informar estado de este lado'}</button>
       </>}
     </div>}
   </section>

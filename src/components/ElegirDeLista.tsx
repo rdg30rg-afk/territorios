@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Icono } from './Icono'
 
 export type OpcionLista = {
   valor: string
@@ -51,7 +52,7 @@ export function ElegirDeLista({
           <small>{etiqueta}</small>
           <strong>{elegido?.texto ?? vacio}</strong>
         </span>
-        <span aria-hidden="true">▾</span>
+        <Icono nombre="chevron-abajo" tamaño={17} className="selector-flecha" />
       </button>
 
       {abierto ? (
@@ -59,6 +60,7 @@ export function ElegirDeLista({
           <div className="sobreBarra">
             <h2>{etiqueta}</h2>
             <button type="button" className="boton secundario" onClick={() => setAbierto(false)}>
+              <Icono nombre="cerrar" tamaño={18} />
               Cerrar
             </button>
           </div>

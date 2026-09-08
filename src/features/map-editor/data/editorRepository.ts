@@ -274,5 +274,15 @@ export async function publishEditorPublicationV2(
   if (!Array.isArray(result.data)) {
     throw new Error('La base no confirmó una publicación válida.')
   }
+  const confirmed = new Map<string, number>()
+  for (const row of result.data) {
+    if (!row || typeof row.territory_id !== 'string' || !Number.isSafeInteger(row.version) || confirmed.has(row.territory_id)) {
+      throw new Error('La confirmación del lote está incompleta o es inválida. Conservá el intento para verificarlo.')
+    }
+    confirmed.set(row.territory_id, row.version)
+  }
+  if (confirmed.size !== changes.length || changes.some((change) => confirmed.get(change.territory_id) !== change.version_esperada + 1)) {
+    throw new Error('La confirmación no coincide con los territorios y versiones enviados. Conservá el intento para verificarlo.')
+  }
   return result.data
 }

@@ -1,6 +1,7 @@
 import { useRef, useState, type FormEvent } from 'react'
 import type { CoverageState } from '../lib/coverageSummary'
 import { Desplegable } from './Desplegable'
+import { Icono } from './Icono'
 
 export function CoverageCorrectionForm({onSubmit,onCancel,disabled=false}:{
   onSubmit:(state:CoverageState,note:string)=>Promise<void>;onCancel:()=>void;disabled?:boolean
@@ -27,7 +28,7 @@ export function CoverageCorrectionForm({onSubmit,onCancel,disabled=false}:{
     ]}/></label>
     <label>Motivo de la corrección<textarea required minLength={2} rows={3} value={note} disabled={disabled||busy} onChange={e=>setNote(e.target.value)}/></label>
     {error?<p role="alert">{error}</p>:null}
-    <button type="submit" className="boton primario" disabled={disabled||busy}>{busy?'Preparando…':'Agregar corrección'}</button>
-    <button type="button" className="boton secundario" disabled={busy} onClick={onCancel}>Cancelar</button>
+    <button type="submit" className="boton primario" disabled={disabled||busy}><Icono nombre="guardar" tamaño={18}/>{busy?'Preparando…':'Agregar corrección'}</button>
+    <button type="button" className="boton secundario" disabled={busy} onClick={onCancel}><Icono nombre="cerrar" tamaño={18}/>Cancelar</button>
   </form>
 }

@@ -155,7 +155,7 @@
   overflow-wrap: anywhere;
 }
 
-.para-revisar-flecha { font-size: 1.1rem; opacity: 0.55; }
+.para-revisar-flecha { display: block; width: 20px; height: 20px; opacity: 0.55; }
 
 .para-revisar-pie {
   display: flex;

@@ -4,6 +4,7 @@ import { decirElError } from '../lib/decirElError'
 import { supabase } from '../lib/supabase'
 import { deliverResult, pendingResult } from '../lib/resultDelivery'
 import type { ResultPayload } from '../lib/resultAttempt'
+import { Icono } from './Icono'
 
 export type SalidaResultadoEstado =
   | 'realizada'
@@ -352,7 +353,10 @@ export function SalidaResultadoForm({
       {!hasLoaded ? <div className="status-card">
         <p>No se pudo verificar el resultado actual. No significa que la salida esté sin informar.</p>
         <button type="button" className="secondary-button" disabled={isSaving}
-          onClick={() => void loadCurrentResult()}>Volver a consultar</button>
+          onClick={() => void loadCurrentResult()}>
+          <Icono nombre="rehacer" tamaño={18} />
+          Volver a consultar
+        </button>
       </div> : null}
 
       {hasLoaded ? <div className="module-detail-card">
@@ -388,12 +392,14 @@ export function SalidaResultadoForm({
 
       {hasLoaded && resultado && canCorrect && !modoEdicion ? (
         <button type="button" className="secondary-button full-width" onClick={openEditor}>
+          <Icono nombre="dibujar" tamaño={18} />
           Corregir resultado
         </button>
       ) : null}
 
       {hasLoaded && !resultado && canReport && !modoEdicion ? (
         <button type="button" className="primary-button full-width" onClick={openEditor}>
+          <Icono nombre="completo" tamaño={18} />
           Informar resultado
         </button>
       ) : null}
@@ -403,6 +409,7 @@ export function SalidaResultadoForm({
           {unconfirmed && !isSaving ? <div className="form-feedback" role="status">
             <p>No se confirmó el envío. Los campos quedan bloqueados para reintentar exactamente el mismo resultado, sin duplicarlo.</p>
             <button type="button" className="secondary-button" onClick={() => void loadCurrentResult()}>
+              <Icono nombre="rehacer" tamaño={18} />
               Consultar qué quedó guardado
             </button>
           </div> : null}
@@ -481,9 +488,11 @@ export function SalidaResultadoForm({
               onClick={cancelEditor}
               disabled={isSaving || unconfirmed}
             >
+              <Icono nombre="cerrar" tamaño={18} />
               Cancelar
             </button>
             <button type="submit" className="primary-button" disabled={isSaving}>
+              <Icono nombre="guardar" tamaño={18} />
               {isSaving ? 'Guardando...' : unconfirmed ? 'Reintentar el mismo envío' : resultado ? 'Guardar corrección' : 'Guardar resultado'}
             </button>
           </div>

@@ -8,6 +8,7 @@ import { useAuth } from '../context/useAuth'
 import type { Profile } from '../context/AuthTypes'
 import { decirElError } from '../lib/decirElError'
 import { supabase } from '../lib/supabase'
+import { Icono } from '../components/Icono'
 
 type GroupAssignment = 'superintendente' | 'siervo' | 'auxiliar'
 type DriverStatus = 'activo' | 'pendiente' | 'inactivo'
@@ -113,6 +114,7 @@ function GrupoFichaExtra({ group, profile }: { group: GroupRecord; profile: Prof
         <strong>{codigo ?? 'Se crea al aplicar la migración'}</strong>
       </div>
       <button type="button" className="primary-button full-width" onClick={() => setAdministrando(true)}>
+        <Icono nombre="grupo" tamaño={18} />
         Administrar hermanos, punto y código
       </button>
       <HojaMiGrupo
@@ -458,6 +460,7 @@ export function GruposPage() {
             <div className="module-registry-actions">
               {canManageGroups ? (
                 <button type="button" className="primary-button" onClick={abrirNuevo}>
+                  <Icono nombre="grupo" tamaño={18} />
                   Nueva asignacion
                 </button>
               ) : null}
@@ -568,6 +571,7 @@ export function GruposPage() {
                                       startEditing(group)
                                     }}
                                   >
+                                    <Icono nombre="dibujar" tamaño={17} />
                                     Editar
                                   </button>
                                   <button
@@ -578,6 +582,7 @@ export function GruposPage() {
                                       void handleDelete(group)
                                     }}
                                   >
+                                    <Icono nombre="eliminar" tamaño={17} />
                                     Eliminar
                                   </button>
                                 </>
@@ -655,6 +660,7 @@ export function GruposPage() {
                 onClick={cerrarFormulario}
                 disabled={isSaving}
               >
+                <Icono nombre="cerrar" tamaño={18} />
                 Cancelar
               </button>
 
@@ -663,6 +669,7 @@ export function GruposPage() {
                 className="primary-button full-width"
                 disabled={!canManageGroups || isSaving}
               >
+                <Icono nombre="guardar" tamaño={18} />
                 {isSaving
                   ? 'Guardando...'
                   : editingGroupId

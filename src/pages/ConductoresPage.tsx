@@ -6,6 +6,7 @@ import { Modal } from '../components/Modal'
 import { useAuth } from '../context/useAuth'
 import { decirElError } from '../lib/decirElError'
 import { supabase } from '../lib/supabase'
+import { Icono } from '../components/Icono'
 
 type DriverStatus = 'activo' | 'pendiente' | 'inactivo'
 type DriverAvailabilityTurn = 'manana' | 'tarde' | 'telefonica'
@@ -448,6 +449,7 @@ export function ConductoresPage() {
             <div className="module-registry-actions">
               {canManageDrivers ? (
                 <button type="button" className="primary-button" onClick={abrirNuevo}>
+                  <Icono nombre="persona" tamaño={18} />
                   Nuevo conductor
                 </button>
               ) : null}
@@ -541,6 +543,7 @@ export function ConductoresPage() {
                               startEditing(driver)
                             }}
                           >
+                            <Icono nombre="dibujar" tamaño={17} />
                             Editar
                           </button>
                           <button
@@ -551,6 +554,7 @@ export function ConductoresPage() {
                               void handleDelete(driver)
                             }}
                           >
+                            <Icono nombre="eliminar" tamaño={17} />
                             Eliminar
                           </button>
                         </>
@@ -676,6 +680,7 @@ export function ConductoresPage() {
                 onClick={cerrarFormulario}
                 disabled={isSaving}
               >
+                <Icono nombre="cerrar" tamaño={18} />
                 Cancelar
               </button>
 
@@ -684,6 +689,7 @@ export function ConductoresPage() {
                 className="primary-button full-width"
                 disabled={!canManageDrivers || isSaving}
               >
+                <Icono nombre="guardar" tamaño={18} />
                 {isSaving
                   ? 'Guardando...'
                   : editingDriverId

@@ -38,11 +38,10 @@
 
 .desplegable-flecha {
   flex: 0 0 auto;
-  width: 10px;
-  height: 10px;
-  border-right: 1.8px solid var(--text-soft, #6a6e77);
-  border-bottom: 1.8px solid var(--text-soft, #6a6e77);
-  transform: translateY(-3px) rotate(45deg);
+  width: 18px;
+  height: 18px;
+  color: var(--text-soft, #6a6e77);
+  transform: none;
 }
 
 .desplegable[aria-expanded='true'] {
@@ -50,7 +49,7 @@
 }
 
 .desplegable[aria-expanded='true'] .desplegable-flecha {
-  transform: translateY(1px) rotate(-135deg);
+  transform: rotate(180deg);
 }
 
 /* La lista vive en el body, fuera de la tabla: la grilla del planificador

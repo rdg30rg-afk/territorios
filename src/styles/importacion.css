@@ -36,7 +36,9 @@
 .imp-donde { font-size: 12px; opacity: 0.75; }
 .imp-tipo { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.6; }
 .imp-motivo { font-size: 13px; }
-.imp-flecha { opacity: 0.5; }
+.imp-flecha { opacity: 0.5; display: inline-flex; align-items: center; justify-content: center; }
+.imp-flecha .icono { width: 18px; height: 18px; transition: transform 0.18s ease; }
+.imp-cabecera[aria-expanded='true'] .imp-flecha .icono { transform: rotate(180deg); }
 
 .imp-cuerpo { padding: 4px 12px 14px; border-top: 1px solid var(--linea, #e6eaee); }
 

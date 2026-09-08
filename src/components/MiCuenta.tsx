@@ -3,6 +3,7 @@ import { CampoCodigoGrupo } from './CampoCodigoGrupo'
 import { useAuth } from '../context/useAuth'
 import { supabase } from '../lib/supabase'
 import type { ContextoHermano } from '../lib/vistaHermano'
+import { Icono } from './Icono'
 
 type MiCuentaProps = {
   compact?: boolean
@@ -48,13 +49,14 @@ function HojaGrupoCodigo({
           <small>Te lo pasa el superintendente</small>
         </h2>
         <button type="button" className="boton secundario" onClick={onCerrar}>
+          <Icono nombre="cerrar" tamaño={18} />
           Cerrar
         </button>
       </div>
       <div className="sobreCuerpo hoja-cuerpo">
         {cambio ? (
           <p className="nota">
-            <span aria-hidden="true">◆</span>
+            <Icono nombre="grupo" tamaño={20} />
             <span>
               El código nuevo cierra tu pertenencia al grupo actual y te deja
               esperando confirmación en el otro. Vas a dejar de ver la salida
@@ -138,10 +140,7 @@ export function MiCuenta({ compact = false }: MiCuentaProps) {
     <details className={compact ? 'miCuenta compacto' : 'panel'}>
       <summary className="boton secundario cuenta-resumen" aria-label="Abrir Mi cuenta">
         {compact && <span className="cuentaIcono" aria-hidden="true">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="8" r="3.5" />
-            <path d="M5 20c.8-3.4 3.2-5 7-5s6.2 1.6 7 5" />
-          </svg>
+          <Icono nombre="persona" tamaño={20} />
         </span>}
         <span className={compact ? 'cuentaTexto' : undefined}>Mi cuenta</span>
       </summary>
@@ -185,11 +184,15 @@ export function MiCuenta({ compact = false }: MiCuentaProps) {
             setHojaGrupo(true)
           }}
         >
+          <Icono nombre="grupo" tamaño={18} />
           {contexto?.group_id ? 'Cambiar de grupo' : 'Sumarme a un grupo'}
         </button>
 
         {error && <p className="nota" role="alert">{error}</p>}
-        <button className="boton chico" disabled={busy} type="button" onClick={() => void leave()}>Cerrar sesión</button>
+        <button className="boton chico" disabled={busy} type="button" onClick={() => void leave()}>
+          <Icono nombre="cerrar" tamaño={18} />
+          Cerrar sesión
+        </button>
       </form>
     </details>
     {hojaGrupo ? (

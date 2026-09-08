@@ -1,5 +1,6 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/useAuth'
+import { Icono } from './Icono'
 
 export function AuthGuard() {
   const { isApproved, isConfigured, isLoading, isAuthenticated, profile, signOut, authError, retryAuth } = useAuth()
@@ -12,7 +13,7 @@ export function AuthGuard() {
   if (isLoading) {
     return (
       <div className="auth-guard-loading" aria-busy="true">
-        <span className="auth-guard-loading-mark" aria-hidden="true">◆</span>
+        <span className="auth-guard-loading-mark" aria-hidden="true"><Icono nombre="pendiente" tamaño={28} /></span>
       </div>
     )
   }
@@ -21,8 +22,8 @@ export function AuthGuard() {
     <div className="auth-layout"><section className="auth-card">
       <h2>No pudimos comprobar tu acceso</h2>
       <p role="alert">{authError}</p>
-      <button className="primary-button" onClick={retryAuth}>Volver a intentar</button>
-      <button className="secondary-button" onClick={() => void signOut()}>Cerrar sesión</button>
+      <button className="primary-button" onClick={retryAuth}><Icono nombre="rehacer" tamaño={18} />Volver a intentar</button>
+      <button className="secondary-button" onClick={() => void signOut()}><Icono nombre="cerrar" tamaño={18} />Cerrar sesión</button>
     </section></div>
   )
 
@@ -50,8 +51,9 @@ export function AuthGuard() {
                 : 'Tu perfil se está preparando. Si el mensaje persiste, avisá al administrador.'}
             </p>
           </div>
-          <button type="button" className="primary-button" onClick={retryAuth}>Comprobar de nuevo</button>
+          <button type="button" className="primary-button" onClick={retryAuth}><Icono nombre="rehacer" tamaño={18} />Comprobar de nuevo</button>
           <button type="button" className="secondary-button" onClick={() => void signOut()}>
+            <Icono nombre="cerrar" tamaño={18} />
             Cerrar sesión
           </button>
         </section>

@@ -1,8 +1,10 @@
+import type { IconoNombre } from '../lib/iconos'
+
 export type ModuleDefinition = {
   path: string
   title: string
   summary: string
-  icon: string
+  icon: IconoNombre
   key:
     | 'dashboard'
     | 'mapas'
@@ -18,49 +20,49 @@ export const modules: ModuleDefinition[] = [
     path: '/',
     title: 'Inicio',
     summary: 'Lo que espera una decisión tuya.',
-    icon: '01',
+    icon: 'inicio',
     key: 'dashboard',
   },
   {
     path: '/mapas',
     title: 'Mapas y Territorios',
     summary: 'El mapa, y los territorios dibujados sobre él.',
-    icon: '02',
+    icon: 'territorios',
     key: 'mapas',
   },
   {
     path: '/conductores',
     title: 'Conductores',
     summary: 'Quién conduce las salidas.',
-    icon: '03',
+    icon: 'conductor',
     key: 'conductores',
   },
   {
     path: '/grupos',
     title: 'Grupos para el Servicio',
     summary: 'Quién está a cargo de cada grupo.',
-    icon: '04',
+    icon: 'grupo',
     key: 'grupos',
   },
   {
     path: '/salidas',
     title: 'Salidas',
     summary: 'Cuándo y dónde se sale a predicar.',
-    icon: '05',
+    icon: 'salidas',
     key: 'salidas',
   },
   {
     path: '/salidas-grupo',
     title: 'Salidas Grupo de Servicio',
     summary: 'Los territorios que reserva cada grupo.',
-    icon: '06',
+    icon: 'grupo',
     key: 'salidas_grupo',
   },
   {
     path: '/territorio-personal',
     title: 'Territorio Personal',
     summary: 'Territorios de una persona o una familia.',
-    icon: '07',
+    icon: 'personal',
     key: 'territorio_personal',
   },
 ]

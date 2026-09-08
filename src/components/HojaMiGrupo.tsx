@@ -5,6 +5,7 @@ import { MeetingPointPickerMap } from './MeetingPointPickerMap'
 import { supabase } from '../lib/supabase'
 import type { PuntoEncuentro } from '../lib/puntosEncuentro'
 import { rotuloRolGrupo, type ContextoHermano, type RolEnGrupo } from '../lib/vistaHermano'
+import { Icono } from './Icono'
 
 type Miembro = {
   id: string
@@ -228,6 +229,7 @@ export function HojaMiGrupo({ contexto, abierto, onCerrar, onCambio }: HojaMiGru
           <small>{confirmados.length} hermanos</small>
         </h2>
         <button type="button" className="boton secundario" onClick={onCerrar}>
+          <Icono nombre="cerrar" tamaño={18} />
           Cerrar
         </button>
       </div>
@@ -253,6 +255,7 @@ export function HojaMiGrupo({ contexto, abierto, onCerrar, onCambio }: HojaMiGru
                   disabled={ocupado}
                   onClick={() => void decidir(m.id, 'confirmar')}
                 >
+                  <Icono nombre="completo" tamaño={18} />
                   Confirmar
                 </button>
                 <button
@@ -261,6 +264,7 @@ export function HojaMiGrupo({ contexto, abierto, onCerrar, onCambio }: HojaMiGru
                   disabled={ocupado}
                   onClick={() => void decidir(m.id, 'rechazar')}
                 >
+                  <Icono nombre="error" tamaño={18} />
                   No es del grupo
                 </button>
               </article>
@@ -303,11 +307,13 @@ export function HojaMiGrupo({ contexto, abierto, onCerrar, onCambio }: HojaMiGru
                 zoom={13}
               />
               <button type="button" className="boton principal" disabled={ocupado || puntoNombre.trim().length < 2} onClick={() => void guardarPunto()}>
+                <Icono nombre="guardar" tamaño={18} />
                 Guardar el punto
               </button>
             </>
           ) : (
             <button type="button" className="boton secundario" onClick={() => setEditandoPunto(true)}>
+              <Icono nombre="punto" tamaño={18} />
               {contexto.punto_grupo_nombre ? 'Cambiar el punto' : 'Cargar el punto'}
             </button>
           )}
@@ -317,9 +323,11 @@ export function HojaMiGrupo({ contexto, abierto, onCerrar, onCambio }: HojaMiGru
           <h2>Código para sumarse</h2>
           <p className="codigo-grande">{codigo ?? '————'}</p>
           <button type="button" className="boton principal" disabled={!codigo} onClick={compartir}>
+            <Icono nombre="compartir" tamaño={18} />
             Compartir por WhatsApp
           </button>
           <button type="button" className="boton secundario" disabled={ocupado} onClick={() => void renovar()}>
+            <Icono nombre="rehacer" tamaño={18} />
             Cambiar el código
           </button>
         </section>
@@ -342,6 +350,7 @@ export function HojaMiGrupo({ contexto, abierto, onCerrar, onCambio }: HojaMiGru
                     setTerritorioElegido('')
                   }}
                 >
+                  <Icono nombre="reservar" tamaño={18} />
                   Darle un territorio
                 </button>
                 {m.rol_en_grupo === 'publicador' ? (
@@ -351,6 +360,7 @@ export function HojaMiGrupo({ contexto, abierto, onCerrar, onCambio }: HojaMiGru
                     disabled={ocupado}
                     onClick={() => void decidir(m.id, 'cambiar_rol', 'conductor')}
                   >
+                    <Icono nombre="conductor" tamaño={18} />
                     Es conductor
                   </button>
                 ) : m.rol_en_grupo === 'conductor' ? (
@@ -360,6 +370,7 @@ export function HojaMiGrupo({ contexto, abierto, onCerrar, onCambio }: HojaMiGru
                     disabled={ocupado}
                     onClick={() => void decidir(m.id, 'cambiar_rol', 'publicador')}
                   >
+                    <Icono nombre="persona" tamaño={18} />
                     Ya no conduce
                   </button>
                 ) : null}
@@ -369,6 +380,7 @@ export function HojaMiGrupo({ contexto, abierto, onCerrar, onCambio }: HojaMiGru
                   disabled={ocupado}
                   onClick={() => void decidir(m.id, 'rechazar')}
                 >
+                  <Icono nombre="eliminar" tamaño={18} />
                   Sacarlo del grupo
                 </button>
               </article>
@@ -388,9 +400,11 @@ export function HojaMiGrupo({ contexto, abierto, onCerrar, onCambio }: HojaMiGru
               alElegir={setTerritorioElegido}
             />
             <button type="button" className="boton principal" disabled={ocupado || !territorioElegido} onClick={() => void darTerritorio()}>
+              <Icono nombre="reservar" tamaño={18} />
               Asignar territorio
             </button>
             <button type="button" className="boton secundario" disabled={ocupado} onClick={() => setMiembroParaTerritorio(null)}>
+              <Icono nombre="cerrar" tamaño={18} />
               Cancelar
             </button>
           </section>

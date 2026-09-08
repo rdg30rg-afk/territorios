@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { normalizarCodigoGrupo } from '../lib/vistaHermano'
+import { Icono } from './Icono'
 
 type CampoCodigoGrupoProps = {
   ocupado?: boolean
@@ -60,6 +61,7 @@ export function CampoCodigoGrupo({
         disabled={deshabilitado || enviando || ocupado || codigo.length !== 6}
         onClick={() => void enviar()}
       >
+        <Icono nombre="grupo" tamaño={18} />
         {enviando ? 'Entrando…' : ocupado ? 'Sin conexión' : 'Entrar al grupo'}
       </button>
     </div>

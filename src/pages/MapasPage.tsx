@@ -5,6 +5,7 @@ import { CoverageHeatmapPanel } from '../components/CoverageHeatmapPanel'
 import { useAuth } from '../context/useAuth'
 import { canOpenAdminPanel } from '../lib/access'
 import { supabase } from '../lib/supabase'
+import { Icono } from '../components/Icono'
 import '../styles/mapas-pagina.css'
 
 /** Keep the existing editor document alive while switching tabs. */
@@ -72,8 +73,14 @@ export function MapasPage() {
         <h2>Mapas y territorios</h2>
         <div className="mapas-header-controls">
           <div className="segmentado" role="tablist" aria-label="Vista del mapa">
-            <button type="button" role="tab" aria-selected={view === 'editor'} onClick={() => setView('editor')}>Territorios</button>
-            <button type="button" role="tab" aria-selected={view === 'cobertura'} onClick={() => setView('cobertura')}>Cobertura</button>
+            <button type="button" role="tab" aria-selected={view === 'editor'} onClick={() => setView('editor')}>
+              <Icono nombre="territorios" tamaño={18} />
+              Territorios
+            </button>
+            <button type="button" role="tab" aria-selected={view === 'cobertura'} onClick={() => setView('cobertura')}>
+              <Icono nombre="cobertura" tamaño={18} />
+              Cobertura
+            </button>
           </div>
         </div>
       </section>

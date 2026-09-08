@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { Icono } from './Icono'
 import '../styles/desplegable.css'
 
 export type Opcion = { valor: string; texto: string; deshabilitada?: boolean }
@@ -217,7 +218,7 @@ export function Desplegable({
         onKeyDown={porTeclado}
       >
         <span className="desplegable-texto">{elegida?.texto ?? etiqueta}</span>
-        <span className="desplegable-flecha" aria-hidden="true" />
+        <Icono nombre="chevron-abajo" tamaño={18} className="desplegable-flecha" />
       </button>
 
       {abierto && caja && donde

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import { supabase } from '../lib/supabase'
 import { ponerFondo } from '../lib/fondoMapa'
+import { Icono } from './Icono'
 import { loadCoverageHeatmap } from '../lib/loadCoverageHeatmap'
 import { coverageLegend } from '../lib/coverageHeatmap'
 import { linePoints } from '../lib/heatmapGeometry'
@@ -129,13 +130,14 @@ export function CoverageHeatmapPanel({initialTerritoryId=null}:{initialTerritory
         <div className="coverage-elegido">
           <strong>Territorio {elegido.name}</strong>
           <button type="button" className="ghost-button" onClick={()=>{setSelected('');setVerTodo(false);setBusqueda('')}}>
+            <Icono nombre="cerrar" tamaño={18}/>
             Cambiar
           </button>
         </div>
       ) : verTodo ? (
         <div className="coverage-elegido">
           <strong>Los {lista.length} juntos</strong>
-          <button type="button" className="ghost-button" onClick={()=>setVerTodo(false)}>Elegir uno</button>
+          <button type="button" className="ghost-button" onClick={()=>setVerTodo(false)}><Icono nombre="territorios" tamaño={18}/>Elegir uno</button>
         </div>
       ) : (
         <div className="coverage-elector">
@@ -151,6 +153,7 @@ export function CoverageHeatmapPanel({initialTerritoryId=null}:{initialTerritory
           </div>
           ) : null}
           {lista.length>0?<button type="button" className="ghost-button coverage-todos" onClick={()=>setVerTodo(true)}>
+            <Icono nombre="territorios" tamaño={18}/>
             Ver los {lista.length} juntos
           </button>:null}
         </div>
@@ -167,7 +170,7 @@ export function CoverageHeatmapPanel({initialTerritoryId=null}:{initialTerritory
         <button className="ghost-button" disabled={loading} type="button" onClick={()=>{
           const now=new Date();const valor=localDateValue(now)
           setDateInput(valor);setInstant(now.toISOString());setValidation(null)
-        }}>Ahora</button>
+        }}><Icono nombre="rehacer" tamaño={18}/>Ahora</button>
       </div>
     </div>
 
@@ -180,7 +183,7 @@ export function CoverageHeatmapPanel({initialTerritoryId=null}:{initialTerritory
       {loading?<p className="coverage-map-aviso" role="status">Cargando cobertura…</p>:null}
     </div>
 
-    {error?<div role="alert"><p>{error}</p><button className="secondary-button" onClick={()=>setRetry(n=>n+1)}>Volver a intentar</button></div>:null}
+    {error?<div role="alert"><p>{error}</p><button className="secondary-button" onClick={()=>setRetry(n=>n+1)}><Icono nombre="rehacer" tamaño={18}/>Volver a intentar</button></div>:null}
     {snapshot?<p className="coverage-cifra">{sides.length} lados · {new Date(snapshot.instant).toLocaleString('es-AR')}</p>:null}
     {!!snapshot?.inconsistentSides||invalid>0?<p role="alert">No se dibujaron {snapshot?.inconsistentSides??0} lados con referencias incoherentes y {invalid} con geometría inválida.</p>:null}
     {hayPedido&&!loading&&!error&&sides.length===0?<p>No hay lados para este territorio y fecha.</p>:null}
@@ -188,7 +191,7 @@ export function CoverageHeatmapPanel({initialTerritoryId=null}:{initialTerritory
     {snapshot&&!error?<div className="coverage-table-wrap"><table>
       <caption>Porcentaje por metros recorridos. La última marca no define una ronda.</caption>
       <thead><tr><th>Territorio</th><th>Recorrido</th><th>Revisitar</th><th>No accesible</th><th>Sin dato</th><th>Metros</th></tr></thead>
-      <tbody>{summaries.map(t=><tr key={t.id}><th scope="row"><button type="button" className="ghost-button" onClick={()=>elegirTerritorio(t.id)}>{t.name}</button></th>
+      <tbody>{summaries.map(t=><tr key={t.id}><th scope="row"><button type="button" className="ghost-button" onClick={()=>elegirTerritorio(t.id)}><Icono nombre="territorios" tamaño={18}/>{t.name}</button></th>
         <td>{t.counts.recorrido}</td><td>{t.counts.revisitar}</td><td>{t.counts.no_accesible}</td><td>{t.counts.sin_dato}</td>
         <td>{t.percent===null?'—' :`${t.percent}%`}{t.complete?' · completo':''}</td>
       </tr>)}</tbody>

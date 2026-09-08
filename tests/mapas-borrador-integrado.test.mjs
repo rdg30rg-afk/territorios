@@ -51,8 +51,8 @@ test('salir o cambiar dependencias aborta la carga y evita resultados obsoletos'
   assertSource(mapSource, /const abortController = new AbortController\(\)\s*let active = true/)
   assertSource(
     mapSource,
-    /loadEditorWorkspace\([\s\S]*?abortController\.signal,[\s\S]*?\)\s*\.then\(\(workspace\) => \{\s*if \(active\) \{[\s\S]*?setEditorWorkspace\(workspace\)/,
-    'un resultado solo puede instalarse si el efecto sigue activo',
+    /loadEditorWorkspace\([\s\S]*?abortController\.signal,[\s\S]*?\)\s*\.then\(\(workspace\) => \{\s*if \(active && loadingActor === liveEditorActor\.current\) \{[\s\S]*?setEditorWorkspace\(workspace\)/,
+    'un resultado solo puede instalarse si el efecto sigue activo y pertenece al actor autenticado actual',
   )
   assertSource(
     mapSource,
@@ -61,8 +61,8 @@ test('salir o cambiar dependencias aborta la carga y evita resultados obsoletos'
   )
   assertSource(
     mapSource,
-    /\}, \[canManageTerritories, client, isLoading, territories\]\)/,
-    'el cambio de permiso, cliente, carga o dataset debe reiniciar la carga',
+    /\}, \[canManageTerritories, client, isLoading, territories, recoveryStore\]\)/,
+    'el cambio de permiso, cliente, carga, dataset o recuperación debe reiniciar la carga',
   )
   assertSource(
     workspaceSource,
@@ -100,7 +100,9 @@ test('la pantalla muestra carga, error, revisión, cantidad y legacy protegido',
 })
 
 test('la edición local selecciona, asigna y conserva deshacer y rehacer', () => {
-  assertSource(mapSource, /createEditorHistory\(workspace\.draft\.document\)/)
+  assertSource(mapSource, /const recovery = recoveryStore\?\.read\(\)/)
+  assertSource(mapSource, /createEditorHistory\(recovery\?\.document \?\? workspace\.draft\.document\)/)
+  assert.doesNotMatch(mapSource, /setEditorHistory\(createEditorHistory\(editorHistory\.present\)\)/)
   assertSource(mapSource, /candidatePolygon\.on\('click',[\s\S]*?toggleEditorBlock\(draftBlock\.id\)/)
   assertSource(
     mapSource,

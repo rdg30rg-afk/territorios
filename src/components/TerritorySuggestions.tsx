@@ -4,6 +4,7 @@ import { Desplegable } from './Desplegable'
 import { supabase } from '../lib/supabase'
 import { readAllRows } from '../lib/readAllRows'
 import { suggestTerritories, type TerritoryCoverage } from '../lib/territorySuggestions'
+import { Icono } from './Icono'
 
 export function TerritorySuggestions() {
   const [rows,setRows] = useState<ReturnType<typeof suggestTerritories> | null>(null)
@@ -42,6 +43,7 @@ export function TerritorySuggestions() {
       {/* La consulta no corre sola al entrar mas de una vez: este boton la
           fuerza, y por eso es secundario y no la accion de la pantalla. */}
       <button type="button" className="secondary-button" onClick={()=>setReload(n=>n+1)}>
+        <Icono nombre="rehacer" tamaño={18} />
         Actualizar cobertura
       </button>
     </div>
@@ -76,7 +78,7 @@ export function TerritorySuggestions() {
             <small>{row.age===null ? 'Sin fecha de última marca'
               : row.age===0 ? 'Última marca hoy'
               : `Hace ${row.age} ${row.age===1 ? 'día' : 'días'}`}</small>
-            <span className="para-revisar-flecha" aria-hidden="true">→</span>
+            <Icono nombre="territorios" tamaño={20} className="para-revisar-flecha" />
           </Link>
         </li>)}</ul>}
 

@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { Falta } from '../components/Falta'
 import { Vacio } from '../components/Vacio'
 import { SalidaResultadoForm } from '../components/SalidaResultadoForm'
+import { Icono } from '../components/Icono'
 import '../styles/importacion.css'
 import { Desplegable } from '../components/Desplegable'
 import { Modal } from '../components/Modal'
@@ -2173,6 +2174,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                 className="secondary-button"
                 onClick={() => setArmarPrograma(false)}
               >
+                <Icono nombre="anterior" tamaño={18} />
                 Volver a la agenda
               </button>
               <button
@@ -2181,6 +2183,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                 onClick={handleSavePlannerDrafts}
                 disabled={!canManageOutings || isSaving}
               >
+                <Icono nombre="guardar" tamaño={18} />
                 {isSaving ? 'Guardando...' : 'Guardar tildadas'}
               </button>
             </div>
@@ -2258,6 +2261,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                     className="secondary-button"
                     onClick={() => void persistirGpsEnPunto(gps)}
                   >
+                    <Icono nombre="guardar" tamaño={18} />
                     Guardar este GPS en el punto {gps.codigo}
                   </button>
                 ))}
@@ -2285,8 +2289,9 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
               <button
                 type="button"
                 className="secondary-button"
-                onClick={repetirSemanaEnElResto}
-              >
+                  onClick={repetirSemanaEnElResto}
+                >
+                <Icono nombre="rehacer" tamaño={18} />
                 Repetir la primera semana en las demás
               </button>
             ) : null}
@@ -2422,6 +2427,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                         onClick={() => handleTogglePlannerMap(row)}
                         disabled={!canManageOutings}
                       >
+                        <Icono nombre="punto" tamaño={18} />
                         {draft?.meetingCoords ? 'GPS listo' : 'Abrir mapa'}
                       </button>
                       <span
@@ -2465,6 +2471,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                                 if (pendiente) void persistirGpsEnPunto(pendiente)
                               }}
                             >
+                              <Icono nombre="guardar" tamaño={18} />
                               Guardar este GPS en el punto{' '}
                               {meetingPoints.find((punto) => punto.id === draft.meetingPointId)
                                 ?.codigo ?? draft.meetingPointName}
@@ -2594,6 +2601,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                         setScheduleFilter('todos')
                       }}
                     >
+                      <Icono nombre="cerrar" tamaño={17} />
                       Quitar los filtros
                     </button>
                   ) : null}
@@ -2602,6 +2610,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
 
               {canManageOutings ? (
                 <button type="button" className="secondary-button" onClick={abrirNueva}>
+                  <Icono nombre="salidas" tamaño={18} />
                   Nueva salida
                 </button>
               ) : null}
@@ -2614,6 +2623,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                   aria-expanded={armarPrograma}
                   onClick={() => setArmarPrograma(true)}
                 >
+                  <Icono nombre="salidas" tamaño={18} />
                   Armar programa
                 </button>
               ) : null}
@@ -2631,6 +2641,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                   className="secondary-button"
                   onClick={() => void persistirGpsEnPunto(gps)}
                 >
+                  <Icono nombre="guardar" tamaño={18} />
                   Guardar este GPS en el punto {gps.codigo}
                 </button>
               ))}
@@ -2735,6 +2746,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                                 openResultFor(outing)
                               }}
                             >
+                              <Icono nombre="completo" tamaño={18} />
                               Resultado
                             </button>
                           ) : (
@@ -2746,6 +2758,10 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                                 startEditing(outing)
                               }}
                             >
+                              <Icono
+                                nombre={faltaConductor ? 'conductor' : historica ? 'guardar' : 'dibujar'}
+                                tamaño={18}
+                              />
                               {faltaConductor
                                 ? 'Asignar conductor'
                                 : historica
@@ -2759,7 +2775,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                             onClick={(event) => event.stopPropagation()}
                           >
                             <summary aria-label={`Más acciones de ${outing.title}`}>
-                              <span aria-hidden="true">⋯</span>
+                              <Icono nombre="menu" tamaño={20} />
                             </summary>
                             <div className="agenda-mas-caja">
                               <button
@@ -2767,6 +2783,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                                 className="ghost-button"
                                 onClick={() => handleDownloadSavedPdf(outing)}
                               >
+                                <Icono nombre="descargar" tamaño={18} />
                                 Descargar PDF
                               </button>
                               <button
@@ -2774,6 +2791,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                                 className="ghost-button"
                                 onClick={() => openResultFor(outing)}
                               >
+                                <Icono nombre="completo" tamaño={18} />
                                 Resultado
                               </button>
                               {canManageOutings ? (
@@ -2782,6 +2800,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                                   className="ghost-button"
                                   onClick={() => startEditing(outing)}
                                 >
+                                  <Icono nombre={historica ? 'guardar' : 'dibujar'} tamaño={18} />
                                   {historica ? 'Completar' : 'Editar'}
                                 </button>
                               ) : null}
@@ -2796,6 +2815,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                                     className="danger-button"
                                     onClick={() => void handleDelete(outing)}
                                   >
+                                    <Icono nombre="eliminar" tamaño={18} />
                                     Eliminar
                                   </button>
                                 )
@@ -2817,6 +2837,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                   className="secondary-button agenda-ver-mas"
                   onClick={() => setPagina((p) => p + 1)}
                 >
+                  <Icono nombre="anterior" tamaño={18} />
                   {anterioresAMostrar === 0
                     ? `Ver anteriores (${anteriores.length})`
                     : `Ver ${Math.min(SALIDAS_POR_PAGINA, anterioresQueFaltan)} anteriores más (quedan ${anterioresQueFaltan})`}
@@ -3127,6 +3148,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                         if (pendiente) void persistirGpsEnPunto(pendiente)
                       }}
                     >
+                      <Icono nombre="guardar" tamaño={18} />
                       Guardar este GPS en el punto{' '}
                       {meetingPoints.find((punto) => punto.id === meetingPointId)?.codigo ??
                         meetingPointName}
@@ -3169,6 +3191,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                 onClick={handleDownloadDraftPdf}
                 disabled={!canManageOutings}
               >
+                <Icono nombre="descargar" tamaño={18} />
                 Descargar PDF
               </button>
 
@@ -3178,6 +3201,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                 onClick={cerrarFormulario}
                 disabled={isSaving}
               >
+                <Icono nombre="cerrar" tamaño={18} />
                 Cancelar
               </button>
 
@@ -3186,6 +3210,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                 className="primary-button full-width"
                 disabled={!canManageOutings || isSaving}
               >
+                <Icono nombre="guardar" tamaño={18} />
                 {isSaving
                   ? 'Guardando...'
                   : editingOutingId

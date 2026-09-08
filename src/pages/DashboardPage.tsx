@@ -7,6 +7,7 @@ import { useAuth } from '../context/useAuth'
 import { decirElError } from '../lib/decirElError'
 import { supabase } from '../lib/supabase'
 import '../styles/inicio-admin.css'
+import { Icono } from '../components/Icono'
 
 const moduleLabels: Record<ModuleKey, string> = {
   mapas: 'Mapas y Territorios',
@@ -43,8 +44,14 @@ export function DashboardPage() {
       <Saludo />
       {profile?.role === 'admin' ? (
         <div className="segmentado dashboard-sections" role="tablist" aria-label="Sección de Inicio">
-          <button type="button" role="tab" aria-selected={section === 'resumen'} onClick={() => setSearchParams({ seccion: 'resumen' })}>Resumen</button>
-          <button type="button" role="tab" aria-selected={section === 'usuarios'} onClick={() => setSearchParams({ seccion: 'usuarios' })}>Usuarios</button>
+          <button type="button" role="tab" aria-selected={section === 'resumen'} onClick={() => setSearchParams({ seccion: 'resumen' })}>
+            <Icono nombre="inicio" tamaño={18} />
+            Resumen
+          </button>
+          <button type="button" role="tab" aria-selected={section === 'usuarios'} onClick={() => setSearchParams({ seccion: 'usuarios' })}>
+            <Icono nombre="persona" tamaño={18} />
+            Usuarios
+          </button>
         </div>
       ) : null}
       {section === 'resumen' ? (
@@ -263,7 +270,7 @@ function QueNecesitaAtencion() {
     <button type="button" className="secondary-button" onClick={() => {
       setReload(value => value + 1)
       if (managedUsersError) void loadManagedUsers().catch(() => setUnavailable(current => [...current, 'accesos']))
-    }}>Volver a consultar pendientes</button>
+    }}><Icono nombre="rehacer" tamaño={18} />Volver a consultar pendientes</button>
   </div> : null
 
   if (!items.length && !missing.length) {
@@ -292,7 +299,7 @@ function QueNecesitaAtencion() {
               <small>{p.detalle}</small>
             </span>
             <Link to={p.a} className="inicio-accion">
-              {p.accion} →
+              {p.accion} <Icono nombre="siguiente" tamaño={17} />
             </Link>
           </li>
         ))}
@@ -547,6 +554,7 @@ function UserAccessPanel() {
             aria-expanded={isEditing}
             onClick={() => setEditingUserId(isEditing ? null : user.id)}
           >
+            <Icono nombre={isEditing ? 'cerrar' : 'dibujar'} tamaño={18} />
             {isEditing ? 'Cerrar edición' : variant === 'pending' ? 'Revisar solicitud' : 'Editar acceso'}
           </button>
         </div>
@@ -619,6 +627,7 @@ function UserAccessPanel() {
             }
             disabled={isDisabled}
           >
+            <Icono nombre="guardar" tamaño={18} />
             {isSavingUserId === user.id
               ? 'Guardando...'
               : variant === 'pending'
@@ -634,6 +643,7 @@ function UserAccessPanel() {
             onClick={() => void disableUser(user.id)}
             disabled={isDisabled}
           >
+            <Icono nombre="eliminar" tamaño={18} />
             Dar de baja
           </button>
           ) : null}
@@ -656,6 +666,7 @@ function UserAccessPanel() {
           onClick={() => void refreshAccessPanel()}
           disabled={isRefreshing}
         >
+          <Icono nombre="rehacer" tamaño={18} />
           {isRefreshing ? 'Actualizando...' : 'Actualizar'}
         </button>
       </div>

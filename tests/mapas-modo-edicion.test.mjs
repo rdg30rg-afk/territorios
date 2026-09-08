@@ -9,26 +9,28 @@ const [app, page, map, css] = await Promise.all([
   readFile(new URL('../src/styles/mapas-pagina.css', import.meta.url), 'utf8'),
 ])
 
-test('/mapas inicia en consulta y entrega el modo explícito a SanJuanMap', () => {
+test('/mapas inicia en el editor completo y conserva SanJuanMap como consulta sin escritura', () => {
   assert.match(app, /<Route\s+path="mapas"\s+element=\{loadRoute\(<MapasPage\s*\/>\)\}\s*\/>/)
-  assert.match(page, /const \[editingEnabled,\s*setEditingEnabled\]\s*=\s*useState\(false\)/)
-  assert.match(page, /<SanJuanMap[\s\S]*?editingEnabled=\{editingEnabled\}[\s\S]*?\/>/)
+  assert.match(page, /const \[view,\s*setView\]\s*=\s*useState<'editor' \| 'cobertura'>\('editor'\)/)
+  assert.match(page, /<SanJuanMap[\s\S]*?editingEnabled=\{false\}[\s\S]*?\/>/)
 })
 
-test('el botón de edición requiere permiso administrativo', () => {
+test('el editor completo requiere permiso administrativo', () => {
   assert.match(page, /import \{ canOpenAdminPanel \} from '\.\.\/lib\/access'/)
   assert.match(page, /const canEditMap\s*=\s*canOpenAdminPanel\(profile,\s*contexto\)/)
-  assert.match(page, /\{canEditMap\s*&&\s*view\s*===\s*'editor'\s*\?\s*\([\s\S]*?className=\{editingEnabled\s*\?\s*'map-mode-button is-active'\s*:\s*'map-mode-button'\}/)
+  assert.match(page, /\{canEditMap\s*\?\s*\([\s\S]*?<iframe[\s\S]*?srcDoc=\{editorHtml\}/)
 })
 
-test('al pasar a Cobertura se desactiva la edición', () => {
-  assert.match(page, /const selectView\s*=\s*\(nextView:[\s\S]*?setView\(nextView\)[\s\S]*?if \(nextView === 'cobertura'\) setEditingEnabled\(false\)[\s\S]*?\}/)
-  assert.match(page, /onClick=\{\(\) => selectView\('cobertura'\)\}[\s\S]*?>\s*Cobertura\s*<\/button>/)
+test('al pasar a Cobertura el editor se oculta sin desmontarse', () => {
+  assert.match(page, /<div hidden=\{view !== 'editor'\} className="editor-integrado-container">/)
+  assert.match(page, /onClick=\{\(\) => setView\('cobertura'\)\}/)
+  assert.match(page, /\{view === 'cobertura' \? <CoverageHeatmapPanel/)
 })
 
 test('SanJuanMap sólo habilita escritura con modo y permiso', () => {
   assert.match(map, /editingEnabled\?: boolean/)
-  assert.match(map, /export function SanJuanMap\(\{\s*initialTerritoryId\s*=\s*null,\s*editingEnabled\s*=\s*false\s*\}: SanJuanMapProps\)/)
+  assert.match(map, /export function SanJuanMap\(\{\s*initialTerritoryId\s*=\s*null,\s*editingEnabled\s*=\s*false,\s*onPendingChange\s*\}: SanJuanMapProps\)/)
+  assert.match(map, /useEffect\(\(\) => \{ onPendingChange\?\.\(editorPending\) \}, \[editorPending, onPendingChange\]\)/)
   assert.match(map, /const canManageTerritories\s*=\s*editingEnabled\s*&&\s*canOpenAdminPanel\(profile,\s*contexto\)/)
 })
 

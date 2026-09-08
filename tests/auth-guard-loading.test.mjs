@@ -28,6 +28,7 @@ function harness(auth) {
         }
       }
       if (name.endsWith('/useAuth')) return { useAuth: () => auth }
+      if (name.endsWith('/Icono')) return { Icono: () => null }
       if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx }
       throw new Error(`Dependencia inesperada: ${name}`)
     },

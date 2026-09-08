@@ -35,16 +35,16 @@ test('el DOM conserva todas las herramientas críticas del editor legado', () =>
     )
   }
 
-  assert.match(body, /data-h="ver"[^>]*>[^<]*Solo mirar/)
-  assert.match(body, /data-h="dibujar"[^>]*>[^<]*Dibujar manzana/)
-  assert.match(body, /data-h="dividir"[^>]*>[^<]*Dividir manzana/)
-  assert.match(body, /data-h="fusionar"[^>]*>[^<]*Fusionar manzanas/)
-  assert.match(body, /data-h="mover"[^>]*>[^<]*Mover a territorio/)
-  assert.match(body, /data-h="editar"[^>]*>[^<]*Editar vértices/)
-  assert.match(body, /data-h="marcar"[^>]*>[^<]*Marcar manzanas/)
-  assert.match(body, /data-h="borrar"[^>]*>[^<]*Borrar manzana/)
-  assert.match(body, /data-h="caras"[^>]*>[^<]*Arreglar caras/)
-  assert.match(body, /data-h="letras"[^>]*>[^<]*Poner las letras/)
+  assert.match(body, /data-h="ver"[^>]*>[\s\S]*?Solo mirar/)
+  assert.match(body, /data-h="dibujar"[^>]*>[\s\S]*?Dibujar manzana/)
+  assert.match(body, /data-h="dividir"[^>]*>[\s\S]*?Dividir manzana/)
+  assert.match(body, /data-h="fusionar"[^>]*>[\s\S]*?Fusionar manzanas/)
+  assert.match(body, /data-h="mover"[^>]*>[\s\S]*?Mover a territorio/)
+  assert.match(body, /data-h="editar"[^>]*>[\s\S]*?Editar vértices/)
+  assert.match(body, /data-h="marcar"[^>]*>[\s\S]*?Marcar manzanas/)
+  assert.match(body, /data-h="borrar"[^>]*>[\s\S]*?Borrar manzana/)
+  assert.match(body, /data-h="caras"[^>]*>[\s\S]*?Arreglar caras/)
+  assert.match(body, /data-h="letras"[^>]*>[\s\S]*?Poner las letras/)
 
   assertSource(/function dividir\s*\(/, 'falta dividir manzanas')
   assertSource(/function fusionar\s*\(/, 'falta fusionar manzanas')
@@ -62,15 +62,15 @@ test('undo y redo siguen disponibles por estado, teclado y barra móvil', () => 
   assertSource(/if \(e\.shiftKey\) rehacer\(\); else deshacer\(\)/, 'falta Cmd/Ctrl+Shift+Z para rehacer')
   assertSource(/document\.getElementById\('mDeshacer'\)\.onclick/, 'falta el control móvil de deshacer')
   assertDomId('mDeshacer')
-  assert.match(body, /id="mDeshacer"[^>]*>[^<]*Deshacer/)
+  assert.match(body, /id="mDeshacer"[^>]*>[\s\S]*?Deshacer/)
 })
 
 test('importar y exportar conservan controles, JSON y restauración de estado', () => {
   assertDomId('bExport')
   assertDomId('bImport')
   assertDomId('fImport')
-  assert.match(body, /id="bExport"[^>]*>Exportar/)
-  assert.match(body, /id="bImport"[^>]*>Importar/)
+  assert.match(body, /id="bExport"[^>]*>[\s\S]*?Exportar/)
+  assert.match(body, /id="bImport"[^>]*>[\s\S]*?Importar/)
   assert.match(body, /id="fImport"[^>]*accept="application\/json"/)
 
   assertSource(/document\.getElementById\('bExport'\)\.onclick\s*=/)
@@ -135,7 +135,7 @@ test('la revisión del dibujo conserva diagnóstico, lista y acciones de revisi�
 
 test('la publicación revisa versiones y envía un lote atómico completo', () => {
   assertDomId('bGuardarBD')
-  assert.match(body, /id="bGuardarBD"[^>]*>Guardar este territorio/)
+  assert.match(body, /id="bGuardarBD"[^>]*>[\s\S]*?Guardar este territorio/)
 
   const revisionAt = source.indexOf("rpcEditor('revisar_publicacion_editor'")
   const publishAt = source.indexOf("rpcEditor('publicar_territorios_atomico'")

@@ -50,6 +50,7 @@ import { ElegirDeLista } from '../components/ElegirDeLista'
 import { ElegirTerritorio } from '../components/ElegirTerritorio'
 import { CampoCodigoGrupo } from '../components/CampoCodigoGrupo'
 import { HojaMiGrupo } from '../components/HojaMiGrupo'
+import { Icono } from '../components/Icono'
 import '../styles/vista-hermano.css'
 
 // Los tres mapas de la pantalla se arman igual.
@@ -388,27 +389,11 @@ function abrirComoLlegar(s: Salida, modo: ModoLlegar) {
 }
 
 function IconoAuto() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M5 13 7 7h10l2 6" />
-      <rect x="3" y="13" width="18" height="6" rx="1.5" />
-      <circle cx="7.5" cy="19" r="1.6" />
-      <circle cx="16.5" cy="19" r="1.6" />
-    </svg>
-  )
+  return <Icono nombre="auto" tamaño={22} />
 }
 
 function IconoBondi() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <rect x="4" y="3" width="16" height="14" rx="2" />
-      <path d="M4 11h16" />
-      <path d="M8 17v3" />
-      <path d="M16 17v3" />
-      <circle cx="8" cy="7.5" r=".8" fill="currentColor" />
-      <circle cx="12" cy="7.5" r=".8" fill="currentColor" />
-    </svg>
-  )
+  return <Icono nombre="colectivo" tamaño={22} />
 }
 
 function BotonesComoLlegar({ salida }: { salida: Salida }) {
@@ -1083,7 +1068,7 @@ export function PredicacionPage() {
       <header className="barra">
         <span className="marca">
           <span className="logo" aria-hidden="true">
-            ◆
+            <Icono nombre="territorios" tamaño={21} />
           </span>
           Territorios
         </span>
@@ -1111,7 +1096,7 @@ export function PredicacionPage() {
           aparece junto con su texto no lo anuncia, porque no habia nada que
           cambiara. Vacia no ocupa lugar. */}
       <p className="hoja nota" role="status" hidden={!aviso}>
-        <span aria-hidden="true">◆</span>
+        <Icono nombre="pendiente" tamaño={20} />
         <span>{aviso}</span>
       </p>
       <div className="hoja">
@@ -1120,12 +1105,12 @@ export function PredicacionPage() {
           {cola.sending ? 'Enviando marcas… ' : ''}
           {cola.events.length ? `${cola.events.length} marcas conservadas en este dispositivo, pendientes de confirmar.` : 'Marcas confirmadas por el servidor.'}
         </p>
-        {cola.events.length > 0 && <>
+            {cola.events.length > 0 && <>
           <p className="sub">El mapa puede incluir avance pendiente. No borres los datos del navegador hasta que termine el envío.</p>
           {cola.events.filter(event => event.status === 'error').map(event => <p className="nota" role="alert" key={event.id}>
             Cuadra {event.lado_id.slice(0, 8)}: {event.lastError}
           </p>)}
-          <button className="boton secundario" disabled={cola.sending} onClick={() => void cola.retry()}>Reintentar marcas pendientes</button>
+          <button className="boton secundario" disabled={cola.sending} onClick={() => void cola.retry()}><Icono nombre="rehacer" tamaño={18} />Reintentar marcas pendientes</button>
         </>}
       </div>
 
@@ -1156,6 +1141,7 @@ export function PredicacionPage() {
                   <p>{tituloSalida(s, contexto)}</p>
                   {yaEmpezo(s) ? (
                     <button className="boton principal" onClick={() => { setVista('salidas'); setCierreId(s.id ?? '') }}>
+                      <Icono nombre="completo" tamaño={18} />
                       Informar resultado
                     </button>
                   ) : null}
@@ -1197,6 +1183,7 @@ export function PredicacionPage() {
               confirmar hermanos y el punto de encuentro.
             </p>
             <button type="button" className="boton principal" onClick={() => setHojaGrupo(true)}>
+              <Icono nombre="grupo" tamaño={18} />
               Abrir mi grupo
             </button>
           </section>
@@ -1250,7 +1237,8 @@ export function PredicacionPage() {
                     {avance.completas} de {manzanas.length} recorridas · {avance.pct === null ? 'Sin información suficiente' : `${avance.pct}% de los metros`}
                   </p>
                   <button className="boton principal" style={{ background: 'var(--ink)', color: '#fff' }} onClick={() => setVista('territorio')}>
-                    Ver mi territorio →
+                    <Icono nombre="personal" tamaño={18} />
+                    Ver mi territorio
                   </button>
                 </>
               )}
@@ -1291,7 +1279,7 @@ export function PredicacionPage() {
         </div>
         {recorte && (
           <p className="nota">
-            <span aria-hidden="true">◆</span>
+            <Icono nombre="pendiente" tamaño={20} />
             <span>
               Se muestran las {recorte.trajo} más próximas de {recorte.hay}.
             </span>
@@ -1435,7 +1423,7 @@ export function PredicacionPage() {
             {miTerritorio &&
               (solicitado ? (
                 <p className="nota" style={{ marginTop: 16 }}>
-                  <span aria-hidden="true">✓</span>
+                  <Icono nombre="completo" tamaño={20} />
                   <span>
                     Pediste el territorio {miTerritorio.name}. Cuando el superintendente de tu grupo
                     o el siervo de territorios lo confirme, lo vas a ver acá.
@@ -1455,6 +1443,7 @@ export function PredicacionPage() {
                   disabled={solicitando || !puedePedirTerritorio(contexto)}
                   onClick={() => void solicitarTerritorio()}
                 >
+                  <Icono nombre="reservar" tamaño={18} />
                   {solicitando ? 'Enviando…' : `Pedir este territorio`}
                 </button>
               ))}
@@ -1464,7 +1453,7 @@ export function PredicacionPage() {
         {miTerritorio && sinDibujo && (
           <div className="vacio">
             <span className="marcoVacio" aria-hidden="true">
-              ◆
+              <Icono nombre="territorios" tamaño={28} />
             </span>
             <h2>El territorio {miTerritorio.name} todavía no está en el mapa</h2>
             <p>
@@ -1509,7 +1498,8 @@ export function PredicacionPage() {
                 <p className="sub">Así está hoy: {avance.completas} de {manzanas.length} manzanas recorridas.</p>
               ) : null}
               <button className="boton principal" onClick={() => setHoja({ propio: true })}>
-                Abrir el mapa en grande →
+                <Icono nombre="territorios" tamaño={18} />
+                Abrir el mapa en grande
               </button>
               {puedeMarcar && (
                 <button
@@ -1519,15 +1509,18 @@ export function PredicacionPage() {
                     setMarcando((v) => !v)
                   }}
                 >
-                  {marcando ? '✓ Listo, terminé de marcar' : 'Marcar lo que recorrí'}
+                  <Icono nombre={marcando ? 'completo' : 'marcar'} tamaño={18} />
+                  {marcando ? 'Listo, terminé de marcar' : 'Marcar lo que recorrí'}
                 </button>
               )}
               {asignado ? (
                 <button className="boton secundario" onClick={() => setHistorial(true)}>
+                  <Icono nombre="historial" tamaño={18} />
                   Historial
                 </button>
               ) : null}
               {asignado && <button className="boton secundario" disabled={devolviendo || cola.sending} onClick={() => void devolverTerritorio()}>
+                <Icono nombre="mover" tamaño={18} />
                 {devolviendo ? 'Devolviendo…' : 'Devolver territorio'}
               </button>}
             </section>
@@ -1618,7 +1611,7 @@ export function PredicacionPage() {
                       onClick={() => marcarManzana(mz)}
                     >
                       {mz.label}
-                      <small>{completa ? '✓ hecha' : media ? `${n} de ${total} cuadras` : 'te falta'}</small>
+                      <small>{completa ? <><Icono nombre="completo" tamaño={15} /> hecha</> : media ? `${n} de ${total} cuadras` : 'te falta'}</small>
                     </button>
                   )
                 })}
@@ -1631,9 +1624,9 @@ export function PredicacionPage() {
       {/* ------------------------------------------------------- pestañas */}
       <nav className="pestanias" aria-label="Secciones">
         {([
-          ['hoy', 'Hoy', '⌂'],
-          ['salidas', 'Salidas', '◷'],
-          ['territorio', 'Mi territorio', '◇'],
+          ['hoy', 'Hoy', 'inicio'],
+          ['salidas', 'Salidas', 'salidas'],
+          ['territorio', 'Mi territorio', 'personal'],
         ] as const).map(([id, texto, icono]) => (
           <button
             key={id}
@@ -1643,7 +1636,7 @@ export function PredicacionPage() {
             }}
             {...(vista === id ? { 'aria-current': 'page' as const } : {})}
           >
-            <span aria-hidden="true" className="pestaniaIcono">{icono}</span>
+            <Icono nombre={icono} tamaño={24} className="pestaniaIcono" />
             <span>{texto}</span>
             <i className="marcaActiva" />
           </button>
@@ -1682,7 +1675,7 @@ export function PredicacionPage() {
 // =====================================================================
 function ChipsDeSalida({ salida }: { salida: Salida }) {
   if (salida.tipo === 'telefonica') return <span className="marca-chip tel">☎ Por teléfono</span>
-  if (salida.tipo === 'grupos') return <span className="marca-chip tel">◆ Cada grupo por su lado</span>
+  if (salida.tipo === 'grupos') return <span className="marca-chip tel"><Icono nombre="grupo" tamaño={17} /> Cada grupo por su lado</span>
   // El mismo criterio que usa el mapa. Con dos lecturas distintas, la misma
   // salida decia una cosa en el chip y pintaba otra abajo.
   const { letras: mz, frase } = leerPriorizar(salida.priorizar)
@@ -1787,7 +1780,7 @@ function MapaMini({ salida, onAbrir }: { salida: Salida; onAbrir: () => void }) 
         {leyenda.llave ? (
           <span className="llave" aria-hidden="true" />
         ) : (
-          <span aria-hidden="true">◆</span>
+          <Icono nombre="territorios" tamaño={20} />
         )}
         <span>{leyenda.texto}</span>
       </p>
@@ -1857,10 +1850,7 @@ function TarjetaDestacada({
       </p>
       <div className="frase">
         <span className="marco" aria-hidden="true">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 21s7-5.5 7-11a7 7 0 1 0-14 0c0 5.5 7 11 7 11Z" />
-            <circle cx="12" cy="10" r="2.6" />
-          </svg>
+          <Icono nombre="punto" tamaño={24} />
         </span>
         <span>
           <strong>{tituloSalida(salida, contexto)}</strong>
@@ -1885,6 +1875,7 @@ function TarjetaDestacada({
           error. */}
       {salida.terrId && (
         <button className="boton chico" onClick={onMapa}>
+          <Icono nombre="territorios" tamaño={18} />
           Ver el mapa del territorio
         </button>
       )}
@@ -1928,7 +1919,7 @@ function FilaSalida({
         </span>
         {salida.lugar && (
           <span className="flecha" aria-hidden="true">
-            ⌄
+            <Icono nombre="chevron-abajo" tamaño={18} />
           </span>
         )}
       </button>
@@ -1938,6 +1929,7 @@ function FilaSalida({
           <BotonesComoLlegar salida={salida} />
           {salida.terrId && (
             <button className="boton chico" onClick={onMapa}>
+              <Icono nombre="territorios" tamaño={18} />
               Ver el mapa del territorio
             </button>
           )}
@@ -1973,7 +1965,7 @@ function ListaSalidas({
     return (
       <div className="vacio">
         <span className="marcoVacio" aria-hidden="true">
-          ◆
+          <Icono nombre="salidas" tamaño={28} />
         </span>
         <h2>Todavía no hay salidas</h2>
         <p>
@@ -1988,7 +1980,7 @@ function ListaSalidas({
     <>
       {!futuras.length && salidas.length > 0 && (
         <p className="nota">
-          <span aria-hidden="true">◆</span>
+          <Icono nombre="pendiente" tamaño={20} />
           <span>Estas salidas ya pasaron. Cuando llegue el programa nuevo lo vas a ver acá.</span>
         </p>
       )}
@@ -2267,12 +2259,15 @@ function HojaHistorial({
       {correctionNotice?<p role="status">{correctionNotice}</p>:null}
       {cola.events.some(e=>e.origen==='correccion'&&e.territory_id===territorio.id)?<div role="status">
         <p>Hay correcciones pendientes o con error. Todavía no forman parte del historial confirmado.</p>
-        <button className="boton secundario" disabled={cola.sending} onClick={()=>void cola.retry()}>Reintentar envíos</button>
+        <button className="boton secundario" disabled={cola.sending} onClick={()=>void cola.retry()}>
+          <Icono nombre="rehacer" tamaño={18} />
+          Reintentar envíos
+        </button>
       </div>:null}
       {cola.error?<p role="alert">{cola.error}</p>:null}
       <div className="sobreBarra">
         <button ref={cerrarRef} className="btnIcono" aria-label="Cerrar el historial" onClick={onCerrar}>
-          ✕
+          <Icono nombre="cerrar" tamaño={20} />
         </button>
         <h2>
           Historial
@@ -2282,12 +2277,12 @@ function HojaHistorial({
 
       {historyError ? <p className="sobrePie" role="alert">{historyError}</p> : eventos === null ? (
         <p className="sobrePie">
-          <span aria-hidden="true">◆</span>
+          <Icono nombre="pendiente" tamaño={20} />
           <span>Cargando…</span>
         </p>
       ) : !dias.length ? (
         <p className="sobrePie">
-          <span aria-hidden="true">◆</span>
+          <Icono nombre="historial" tamaño={20} />
           <span>Todavía no hay nada informado en este territorio.</span>
         </p>
       ) : (
@@ -2299,7 +2294,7 @@ function HojaHistorial({
               disabled={indice <= 0}
               onClick={() => { setInstante(null); setDia(dias[indice - 1]) }}
             >
-              ‹
+              <Icono nombre="anterior" tamaño={22} />
             </button>
             <span className="histDia">
               <strong>{comoSeLlamaElDia(dia!) ?? fechaLarga(dia!)}</strong>
@@ -2313,7 +2308,7 @@ function HojaHistorial({
               disabled={indice >= dias.length - 1}
               onClick={() => { setInstante(null); setDia(dias[indice + 1]) }}
             >
-              ›
+              <Icono nombre="siguiente" tamaño={22} />
             </button>
           </div>
 
@@ -2351,7 +2346,7 @@ function HojaHistorial({
                 ))}
                 {deshechos > 0 && (
                   <li className="histDeshecho">
-                    <b>↺</b>
+                    <b><Icono nombre="deshacer" tamaño={18} /></b>
                     <span>
                       {deshechos === 1
                         ? '1 cuadra que se había marcado y quedó sin recorrer'
@@ -2364,16 +2359,25 @@ function HojaHistorial({
           </div>
           <details className="histPie">
             <summary>Ver los {delDia.length} movimientos del día</summary>
-            <button className="boton secundario" onClick={() => setInstante(null)}>Ver el cierre del día</button>
+            <button className="boton secundario" onClick={() => setInstante(null)}>
+              <Icono nombre="historial" tamaño={18} />
+              Ver el cierre del día
+            </button>
             <ol>{delDia.map((e) => (
               <li key={e.id}>
                 {e.corrige_evento_id && <strong>Corrección · </strong>}
                 {new Date(e.informado_at).toLocaleTimeString('es-AR')} · Manzana {manzanas.find((m) => m.id === e.manzana_id)?.label ?? 'sin rótulo'} · {e.estado === 'recorrido' ? 'Recorrido' : e.estado === 'no_accesible' ? 'No accesible' : e.estado === 'revisitar' ? 'Revisitar' : 'Sin dato'} · {e.informado_por ? nombres[e.informado_por] ?? 'un hermano' : 'sin autor disponible'}
                 {e.nota && <p>{e.nota}</p>}
-                <button className="boton secundario" onClick={() => setInstante(e.informado_at)}>Ver el mapa en ese momento</button>
+                <button className="boton secundario" onClick={() => setInstante(e.informado_at)}>
+                  <Icono nombre="territorios" tamaño={18} />
+                  Ver el mapa en ese momento
+                </button>
                 {canCorrect&&correcting!==e.id?<button className="boton secundario"
                   disabled={cola.events.some(item=>item.corrige_evento_id===e.id)}
-                  onClick={()=>setCorrecting(e.id)}>Corregir esta marca</button>:null}
+                  onClick={()=>setCorrecting(e.id)}>
+                  <Icono nombre="dibujar" tamaño={18} />
+                  Corregir esta marca
+                </button>:null}
                 {canCorrect&&correcting===e.id?<CoverageCorrectionForm onCancel={()=>setCorrecting(null)}
                   disabled={!!cola.error} onSubmit={async(state,note)=>{
                     if(!profile)throw Error('Falta la sesión.')
@@ -2506,7 +2510,7 @@ function HojaMapa({
     >
       <div className="sobreBarra">
         <button ref={cerrarRef} className="btnIcono" aria-label="Cerrar el mapa" onClick={onCerrar}>
-          ✕
+          <Icono nombre="cerrar" tamaño={20} />
         </button>
         <h2>
           Territorio {propio ? territorio?.name : salida?.terr}
@@ -2539,7 +2543,7 @@ function HojaMapa({
         {leyenda.llave ? (
           <span className={propio ? 'llave hecha' : 'llave'} aria-hidden="true" />
         ) : (
-          <span aria-hidden="true">◆</span>
+          <Icono nombre="territorios" tamaño={20} />
         )}
         <span>{leyenda.texto}</span>
       </p>

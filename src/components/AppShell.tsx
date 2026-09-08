@@ -5,6 +5,7 @@ import { modules } from '../data/modules'
 import { usePwaInstall } from '../hooks/usePwaInstall'
 import { isDevelopmentEnvironment } from '../lib/supabase'
 import { canOpenAdminPanel } from '../lib/access'
+import { Icono } from './Icono'
 
 const moduloNombre: Record<string, string> = {
   mapas: 'Mapas',
@@ -39,6 +40,7 @@ export function AppShell() {
           <button ref={menuButton} type="button" aria-expanded={menuOpen}
             aria-controls="admin-navigation" onClick={() => setOpenAt(menuOpen ? null : location.key)}
             onKeyDown={event => { if (event.key === 'Escape') setOpenAt(null) }}>
+            <Icono nombre={menuOpen ? 'cerrar' : 'menu'} tamaño={18} />
             {menuOpen ? 'Cerrar menú' : 'Abrir menú'}
           </button>
         </div>
@@ -71,8 +73,8 @@ export function AppShell() {
               }
               end={module.path === '/'}
             >
-              <span className="module-icon" aria-hidden="true">
-                {module.icon}
+            <span className="module-icon" aria-hidden="true">
+                <Icono nombre={module.icon} tamaño={25} />
               </span>
               <span>
                 <strong>{module.title}</strong>
@@ -84,7 +86,7 @@ export function AppShell() {
 
         <NavLink to="/predicacion" className="module-link vista-hermano-link">
           <span className="module-icon" aria-hidden="true">
-            ◆
+            <Icono nombre="persona" tamaño={25} />
           </span>
           <span>
             <strong>Vista del hermano</strong>
@@ -104,6 +106,7 @@ export function AppShell() {
                 : 'sin acceso asignado'}
           </small>
           <button type="button" className="ghost-button" onClick={() => void signOut()}>
+            <Icono nombre="cerrar" tamaño={18} />
             Cerrar sesión
           </button>
         </section>
@@ -132,6 +135,7 @@ export function AppShell() {
                 disabled={isInstalling}
                 onClick={() => void promptInstall()}
               >
+                <Icono nombre="descargar" tamaño={18} />
                 {isInstalling ? 'Abriendo instalación…' : 'Instalar como aplicación'}
               </button>
             ) : null}

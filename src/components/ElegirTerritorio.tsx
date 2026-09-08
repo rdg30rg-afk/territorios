@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Icono } from './Icono'
 
 export type TerritorioOpcion = {
   id: string
@@ -59,7 +60,7 @@ export function ElegirTerritorio({
           <small>{etiqueta}</small>
           <strong>{elegido ? `Territorio ${elegido.name}` : 'Elegí uno…'}</strong>
         </span>
-        <span aria-hidden="true">▾</span>
+        <Icono nombre="chevron-abajo" tamaño={17} className="selector-flecha" />
       </button>
 
       {abierto ? (
@@ -70,6 +71,7 @@ export function ElegirTerritorio({
               <small>Escribí el número o tocá uno</small>
             </h2>
             <button type="button" className="boton secundario" onClick={() => setAbierto(false)}>
+              <Icono nombre="cerrar" tamaño={18} />
               Cerrar
             </button>
           </div>

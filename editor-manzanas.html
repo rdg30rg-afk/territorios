@@ -19,6 +19,7 @@
   html,body{height:100%}
   body{margin:0;font:300 14px 'Plus Jakarta Sans',system-ui,sans-serif;color:var(--texto);background:var(--canvas);height:100dvh;overflow:hidden}
   .app{display:grid;grid-template-columns:clamp(310px,28vw,360px) minmax(0,1fr);height:100dvh;min-height:0}
+  .icono-inline{display:inline-block;width:1.1em;height:1.1em;vertical-align:-.18em;flex:0 0 auto}
 
   /* ---- panel lateral ---- */
   .lateral{border-right:1px solid var(--linea);display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--canvas)}
@@ -251,7 +252,7 @@
   <aside class="lateral">
     <div class="cabecera">
       <h1>Editor de manzanas</h1>
-      <p><a href="/mapas" style="color:inherit">← Volver a la app</a></p>
+      <p><a href="/mapas" style="color:inherit"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#anterior"></use></svg> Volver a la app</a></p>
     </div>
 
     <div class="lateral-cuerpo">
@@ -262,19 +263,19 @@
         <div><label>Sector</label>
           <select id="nSec"><option>I</option><option>II</option><option>III</option></select></div>
       </div>
-      <button class="b pri" id="bCrear" style="width:100%">Crear y empezar a marcar</button>
+      <button class="b pri" id="bCrear" style="width:100%"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#dibujar"></use></svg> Crear y empezar a marcar</button>
     </div>
 
     <div class="seccion" id="panelSel" style="display:none">
       <div class="panel-titulo">
         <p class="eyebrow">Seleccionado</p>
-        <button class="mini" id="bSalirTerr">← Volver a territorios</button>
+        <button class="mini" id="bSalirTerr"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#anterior"></use></svg> Volver a territorios</button>
       </div>
       <div id="infoSel" style="font-size:13px;line-height:1.5;margin-bottom:10px"></div>
       <div class="fila">
-        <button class="b sec" id="bRenom">Renumerar</button>
-        <button class="b sec" id="bDividirT">Dividir</button>
-        <button class="b dan" id="bBorrar">Borrar</button>
+        <button class="b sec" id="bRenom"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#dibujar"></use></svg> Renumerar</button>
+        <button class="b sec" id="bDividirT"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#dividir"></use></svg> Dividir</button>
+        <button class="b dan" id="bBorrar"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#eliminar"></use></svg> Borrar</button>
       </div>
       <div class="chips" id="chipsLetras" style="display:flex;gap:4px;align-items:center;margin-top:9px">
         <span style="font-size:11.5px;color:var(--suave);margin-right:2px">Letras</span>
@@ -282,10 +283,10 @@
         <button data-l="proximidad">por cercanía</button>
         <button data-l="mano">a mano</button>
       </div>
-      <button class="b sec" id="bTraerTerr" style="width:100%;margin-top:6px">↓ Traer este territorio de la base</button>
-      <button class="b sec" id="bManzanas" style="width:100%;margin-top:6px">☰ Ver y depurar sus manzanas</button>
-      <button class="b sec" id="bDerivar" style="width:100%;margin-top:6px">+ Nuevo territorio después de este</button>
-      <button class="b dan" id="bRedibujar" style="width:100%;margin-top:6px">↺ Redibujar desde cero</button>
+      <button class="b sec" id="bTraerTerr" style="width:100%;margin-top:6px"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#territorios"></use></svg> Traer este territorio de la base</button>
+      <button class="b sec" id="bManzanas" style="width:100%;margin-top:6px"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#territorios"></use></svg> Ver y depurar sus manzanas</button>
+      <button class="b sec" id="bDerivar" style="width:100%;margin-top:6px"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#dibujar"></use></svg> Nuevo territorio después de este</button>
+      <button class="b dan" id="bRedibujar" style="width:100%;margin-top:6px"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#rehacer"></use></svg> Redibujar desde cero</button>
     </div>
 
     <div class="lista">
@@ -301,7 +302,7 @@
       <div id="panelMz" style="display:none">
         <p class="eyebrow" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
           <span>Manzanas del <span id="mzTerr"></span> <span id="mzCont" style="color:var(--suave)"></span></span>
-          <button class="mini" id="bVolverT">← territorio</button>
+          <button class="mini" id="bVolverT"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#anterior"></use></svg> territorio</button>
         </p>
         <div class="mzbarra">
           <label><input type="checkbox" id="mzTodas"> todas</label>
@@ -309,8 +310,8 @@
         </div>
         <div id="listaMz"></div>
         <div class="mzacc" id="mzAcciones" style="display:none">
-          <button class="b sec" id="bMzQuitar">✕ Quitar</button>
-          <button class="b dan" id="bMzBorrar">🗑 Borrar</button>
+          <button class="b sec" id="bMzQuitar"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#mover"></use></svg> Quitar</button>
+          <button class="b dan" id="bMzBorrar"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#eliminar"></use></svg> Borrar</button>
         </div>
       </div>
 
@@ -332,11 +333,11 @@
           <span id="estadoArchivo">Conectando con la base…</span>
           <button class="mini" id="bVincular">copia en disco</button>
         </div>
-        <button class="b pri" id="bGuardarBD" style="width:100%;margin-bottom:8px">Guardar este territorio</button>
-        <button class="b sec" id="bComparar" style="width:100%;margin-bottom:8px">Ver qué falta guardar</button>
-        <button class="b sec" id="bExport">Exportar</button>
-        <button class="b sec" id="bImport">Importar</button>
-        <button class="b dan" id="bReset">Vaciar</button>
+        <button class="b pri" id="bGuardarBD" style="width:100%;margin-bottom:8px"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#guardar"></use></svg> Guardar este territorio</button>
+        <button class="b sec" id="bComparar" style="width:100%;margin-bottom:8px"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#buscar"></use></svg> Ver qué falta guardar</button>
+        <button class="b sec" id="bExport"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#descargar"></use></svg> Exportar</button>
+        <button class="b sec" id="bImport"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#guardar"></use></svg> Importar</button>
+        <button class="b dan" id="bReset"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#eliminar"></use></svg> Vaciar</button>
       </div>
       <input type="file" id="fImport" accept="application/json" class="oculto">
     </div>
@@ -348,24 +349,24 @@
     <div class="flot aviso" id="aviso">Cargando manzanas de San Juan…</div>
 
     <div class="flot herr">
-      <button data-h="ver" class="neutro on">👆 Solo mirar <span class="k">esc</span></button>
-      <button data-h="dibujar">✎ Dibujar manzana <span class="k">1</span></button>
-      <button data-h="dividir">✂ Dividir manzana <span class="k">2</span></button>
-      <button data-h="fusionar">⧉ Fusionar manzanas <span class="k">3</span></button>
-      <button data-h="mover">→ Mover a territorio <span class="k">4</span></button>
-      <button data-h="editar">◇ Editar vértices <span class="k">5</span></button>
-      <button data-h="marcar">✛ Marcar manzanas <span class="k">6</span></button>
-      <button data-h="borrar" class="quita">🗑 Borrar manzana <span class="k">7</span></button>
-      <button data-h="caras">▤ Arreglar caras <span class="k">8</span></button>
-      <button data-h="letras">A Poner las letras <span class="k">9</span></button>
+      <button data-h="ver" class="neutro on"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#territorios"></use></svg> Solo mirar <span class="k">esc</span></button>
+      <button data-h="dibujar"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#dibujar"></use></svg> Dibujar manzana <span class="k">1</span></button>
+      <button data-h="dividir"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#dividir"></use></svg> Dividir manzana <span class="k">2</span></button>
+      <button data-h="fusionar"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#fusionar"></use></svg> Fusionar manzanas <span class="k">3</span></button>
+      <button data-h="mover"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#mover"></use></svg> Mover a territorio <span class="k">4</span></button>
+      <button data-h="editar"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#vertices"></use></svg> Editar vértices <span class="k">5</span></button>
+      <button data-h="marcar"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#marcar"></use></svg> Marcar manzanas <span class="k">6</span></button>
+      <button data-h="borrar" class="quita"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#eliminar"></use></svg> Borrar manzana <span class="k">7</span></button>
+      <button data-h="caras"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#caras"></use></svg> Arreglar caras <span class="k">8</span></button>
+      <button data-h="letras"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#letras"></use></svg> Poner las letras <span class="k">9</span></button>
     </div>
 
     <div id="barraMovil">
-      <button class="normal" id="mUbicar" title="Dónde estoy">◎</button>
-      <button class="normal" id="mPanel">☰ Territorios</button>
-      <button class="normal" id="mDeshacer">↶ Deshacer</button>
-      <button class="gesto" id="mCancelar">✕ Cancelar</button>
-      <button class="gesto principal" id="mListo">✓ Listo</button>
+      <button class="normal" id="mUbicar" title="Dónde estoy"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#punto"></use></svg></button>
+      <button class="normal" id="mPanel"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#menu"></use></svg> Territorios</button>
+      <button class="normal" id="mDeshacer"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#deshacer"></use></svg> Deshacer</button>
+      <button class="gesto" id="mCancelar"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#cerrar"></use></svg> Cancelar</button>
+      <button class="gesto principal" id="mListo"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#completo"></use></svg> Listo</button>
     </div>
 
     <div class="flot ctx">
@@ -402,6 +403,10 @@ import { booleanPointInPolygon } from 'https://esm.sh/@turf/boolean-point-in-pol
 import { centerOfMass } from 'https://esm.sh/@turf/center-of-mass@7'
 import { pointOnFeature } from 'https://esm.sh/@turf/point-on-feature@7'
 import { ponerFondo } from '/src/lib/fondoMapa.ts'
+
+function icono (id, clase = '') {
+  return `<svg class="icono-inline ${clase}" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#${id}"></use></svg>`
+}
 
 // ---------------------------------------------------------------- estado
 const CLAVE = 'territorios:prototipo'
@@ -600,7 +605,7 @@ function pintarEstadoArchivo () {
   // El texto de esta barra lo escribe pintarEstadoBorrador: lo que importa
   // saber de un vistazo es si el trabajo esta en la BASE. El archivo en
   // disco paso a ser una copia extra y opcional.
-  document.getElementById('bVincular').textContent = manejadorArchivo ? 'cambiar copia' : 'copia en disco'
+  document.getElementById('bVincular').innerHTML = `${icono('guardar')} ${manejadorArchivo ? 'cambiar copia' : 'copia en disco'}`
   if (typeof pintarEstadoBorrador === 'function') pintarEstadoBorrador()
   void txt
 }
@@ -854,10 +859,10 @@ function abrirBurbuja (idManzana, latlng, conDatos = false) {
   cont.innerHTML = `
     <div class="tit">${t ? `Manzana <b>${(m.letra || '?').toUpperCase()}</b> <small>· territorio ${t.numero}</small>` : '<small>Manzana sin territorio</small>'}</div>
     <div class="acc">
-      <button data-a="editar" title="Editar los vértices">✏️</button>
-      ${t ? '<button data-a="quitar" title="Sacarla del territorio">✕</button>' : ''}
-      <button data-a="ver" title="Ver los datos">👁</button>
-      <button data-a="borrar" class="rojo" title="Borrar la manzana del todo">🗑</button>
+      <button data-a="editar" title="Editar los vértices">${icono('vertices')}</button>
+      ${t ? `<button data-a="quitar" title="Sacarla del territorio">${icono('mover')}</button>` : ''}
+      <button data-a="ver" title="Ver los datos">${icono('buscar')}</button>
+      <button data-a="borrar" class="rojo" title="Borrar la manzana del todo">${icono('eliminar')}</button>
     </div>
     <div class="datos" style="display:${conDatos ? '' : 'none'}"></div>`
 
@@ -1126,7 +1131,7 @@ function refrescarRevision () {
   const plazas = malas.filter(x => x.d.tipo === 'sinviviendas')
   const bLimpiar = document.getElementById('bLimpiar')
   bLimpiar.style.display = plazas.length ? '' : 'none'
-  bLimpiar.textContent = `\u{1F5D1} Borrar las ${plazas.length} sin viviendas`
+  bLimpiar.innerHTML = `${icono('eliminar')} Borrar las ${plazas.length} sin viviendas`
   bLimpiar.onclick = async () => {
     const porTipo = {}
     plazas.forEach(x => { const k = x.d.txt.split(' · ')[0]; porTipo[k] = (porTipo[k] || 0) + 1 })
@@ -1164,7 +1169,7 @@ function refrescarRevision () {
     b.innerHTML = `<span class="num" style="background:#FA5D27;font-size:11px">${t.numero}</span>
       <span><strong>Manzana ${m.letra || '—'}</strong><small>${d.txt}</small></span>
       <span class="revacc">
-        <button class="tilde" title="Está bien así, sacala de la lista">✓</button>
+        <button class="tilde" title="Está bien así, sacala de la lista">${icono('completo')}</button>
       </span>`
     b.querySelector('.tilde').onclick = (ev) => {
       ev.stopPropagation()
@@ -1199,7 +1204,9 @@ function refrescarListaMz () {
   document.querySelector('.app').classList.toggle('viendo-manzanas', Boolean(hay))
   document.getElementById('panelMz').style.display = hay ? '' : 'none'
   document.getElementById('panelTerr').style.display = hay ? 'none' : ''
-  document.getElementById('bManzanas').textContent = hay ? '← Volver al territorio' : '☰ Ver y depurar sus manzanas'
+  document.getElementById('bManzanas').innerHTML = hay
+    ? `${icono('anterior')} Volver al territorio`
+    : `${icono('territorios')} Ver y depurar sus manzanas`
   if (!hay) { capaFoco.clearLayers(); return }
 
   const t = territorios.get(activo)
@@ -1229,9 +1236,9 @@ function refrescarListaMz () {
       <span class="let" style="background:${t.color}">${m.letra || '?'}</span>
       <span class="txt">
         <strong>${a < 10000 ? Math.round(a) + ' m²' : (a / 10000).toFixed(2) + ' ha'}</strong>
-        <small class="${d ? 'mal' : ''}">${d ? '⚠ ' + d.txt : m.geom.coordinates[0].length - 1 + ' vértices'}</small>
+        <small class="${d ? 'mal' : ''}">${d ? icono('error') + d.txt : m.geom.coordinates[0].length - 1 + ' vértices'}</small>
       </span>
-      <span style="color:var(--suave);font-size:11px">ir</span>`
+      <span style="color:var(--suave);font-size:11px">${icono('siguiente')} ir</span>`
 
     const tilde = fila.querySelector('input')
     tilde.onclick = (e) => {
@@ -1250,8 +1257,8 @@ function refrescarListaMz () {
   document.getElementById('mzSoloMal').checked = soloMal
   const acc = document.getElementById('mzAcciones')
   acc.style.display = mzSel.size ? '' : 'none'
-  document.getElementById('bMzQuitar').textContent = `✕ Quitar ${mzSel.size}`
-  document.getElementById('bMzBorrar').textContent = `🗑 Borrar ${mzSel.size}`
+  document.getElementById('bMzQuitar').innerHTML = `${icono('mover')} Quitar ${mzSel.size}`
+  document.getElementById('bMzBorrar').innerHTML = `${icono('eliminar')} Borrar ${mzSel.size}`
 }
 
 function refrescarPanel () {
@@ -1276,7 +1283,7 @@ function refrescarPanel () {
     if (enLaBase && n) {
       if (enBase === undefined || enBase === 0) { estado = 'sin cargar'; color = '#b45309' }
       else if (enBase !== n) { estado = `base: ${enBase}`; color = '#b45309' }
-      else { estado = '✓ guardado'; color = '#0f6b47' }
+      else { estado = 'guardado'; color = '#0f6b47' }
     }
     // Una mudanza de manzana no siempre cambia la cuenta: si el 12 le paso una
     // al 61 y el 61 otra al 12, los dos siguen teniendo las mismas de antes y
@@ -1284,7 +1291,7 @@ function refrescarPanel () {
     if (tocados.has(t.id)) { estado = 'movida sin guardar'; color = '#b45309' }
     b.innerHTML = `<span class="num" style="background:${t.color}">${t.numero}</span>
       <span><strong>Territorio ${t.numero}</strong><small>Sector ${t.sector} · ${n} manzana${n === 1 ? '' : 's'}</small></span>
-      <span style="color:${color};font-size:11px">${estado}</span>`
+      <span style="color:${color};font-size:11px">${estado === 'guardado' ? icono('completo') + ' guardado' : estado}</span>`
     b.onclick = () => {
       activo = t.id
       mzSel.clear()
@@ -1308,13 +1315,13 @@ function refrescarPanel () {
     sel.style.display = ''
     document.querySelectorAll('#chipsLetras button').forEach(b =>
       b.classList.toggle('on', b.dataset.l === (t.letras || 'orden')))
-    document.getElementById('bGuardarBD').textContent = `Guardar el territorio ${t.numero}`
+    document.getElementById('bGuardarBD').innerHTML = `${icono('guardar')} Guardar el territorio ${t.numero}`
     document.getElementById('infoSel').innerHTML =
       `<strong style="font-weight:500">Territorio ${t.numero}</strong> · Sector ${t.sector}<br>
        <span style="color:var(--suave)">${propias.length} manzanas · ${(m2 / 10000).toFixed(1)} ha</span>`
   } else {
     sel.style.display = 'none'
-    document.getElementById('bGuardarBD').textContent = 'Guardar este territorio'
+    document.getElementById('bGuardarBD').innerHTML = `${icono('guardar')} Guardar este territorio`
   }
 }
 
@@ -1354,8 +1361,8 @@ function dialogo ({ titulo, cuerpo, campo, aceptar = 'Aceptar', peligro = false 
       <p>${cuerpo}</p>
       ${campo !== undefined ? `<input id="dlgCampo" value="${String(campo).replace(/"/g, '&quot;')}">` : ''}
       <div class="acc" style="margin-top:14px">
-        <button class="b sec" data-r="0">Cancelar</button>
-        <button class="b ${peligro ? 'dan' : 'pri'}" data-r="1">${aceptar}</button>
+        <button class="b sec" data-r="0">${icono('cerrar')} Cancelar</button>
+        <button class="b ${peligro ? 'dan' : 'pri'}" data-r="1">${icono(peligro ? 'eliminar' : 'completo')} ${aceptar}</button>
       </div></div>`
     document.body.appendChild(velo)
     const entrada = velo.querySelector('#dlgCampo')
@@ -1795,9 +1802,9 @@ function traerDelSistema (respaldo) {
 
   const conf = informe.conflictos.length
   avisar(`Traídos <b>${informe.territorios} territorios</b> y <b>${informe.asignadas} manzanas</b>.` +
-    (informe.letrasPerdidas.length ? `<br>⚠ ${informe.letrasPerdidas.length} manzanas tuyas no caen en ninguna manzana de OSM.` : '') +
-    (conf ? `<br>⚠ ${conf} solapamientos entre territorios dibujados.` : '') +
-    (informe.letrasAjenas.length ? `<br>⚠ ${informe.letrasAjenas.length} manzanas tuyas caen en el territorio de al lado (diferencia de borde).` : '') +
+    (informe.letrasPerdidas.length ? `<br>${icono('error')} ${informe.letrasPerdidas.length} manzanas tuyas no caen en ninguna manzana de OSM.` : '') +
+    (conf ? `<br>${icono('error')} ${conf} solapamientos entre territorios dibujados.` : '') +
+    (informe.letrasAjenas.length ? `<br>${icono('error')} ${informe.letrasAjenas.length} manzanas tuyas caen en el territorio de al lado (diferencia de borde).` : '') +
     (informe.sinLetra ? `<br>${informe.sinLetra} manzanas de OSM dentro de tus territorios que vos no tenías cargadas.` : ''))
   console.log('Informe de importación:', informe)
 }
@@ -3225,12 +3232,12 @@ function pintarBarraMovil () {
   deshacer.disabled = !historial.length
   if (!g) return
   listo.disabled = false
-  listo.textContent =
-    g.que === 'dibujo' ? `✓ Cerrar la manzana (${g.n})`
-    : g.que === 'letras' ? `✓ Aplicar las letras (${g.n})`
-    : g.que === 'vertices' ? '✓ Terminar de mover'
-    : g.que === 'fusion' ? 'Elegí la segunda'
-    : 'Marcá el segundo punto'
+  listo.innerHTML =
+    g.que === 'dibujo' ? `${icono('completo')} Cerrar la manzana (${g.n})`
+    : g.que === 'letras' ? `${icono('completo')} Aplicar las letras (${g.n})`
+    : g.que === 'vertices' ? `${icono('completo')} Terminar de mover`
+    : g.que === 'fusion' ? `${icono('fusionar')} Elegí la segunda`
+    : `${icono('marcar')} Marcá el segundo punto`
   listo.disabled = g.que === 'fusion' || g.que === 'corte'
 }
 

@@ -84,6 +84,7 @@ function harness({profile=driverProfile,sides=[validSide],blocks=validBlocks,enq
     if(name.endsWith('heatmapGeometry'))return {linePoints}
     if(name.endsWith('fondoMapa'))return {ponerFondo(){}}
     if(name.endsWith('Desplegable'))return {Desplegable:DesplegableMock}
+    if(name.endsWith('Icono'))return {Icono:()=>null}
     throw Error(`Dependencia inesperada: ${name}`)
   },Error,Promise,setTimeout,clearTimeout})
   function render(){cursor=0;tree=exports.SalidaCoverageForm({outing,queue});return tree}

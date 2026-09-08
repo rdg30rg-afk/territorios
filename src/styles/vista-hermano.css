@@ -137,6 +137,17 @@
   background: var(--surface); color: var(--fg); border: 1px solid var(--line);
   border-radius: 18px; box-shadow: 0 12px 28px rgba(22, 25, 29, .16);
 }
+
+@media (max-width: 390px) {
+  .vh .miCuenta.compacto .auth-form {
+    position: fixed;
+    top: 72px;
+    right: 12px;
+    left: 12px;
+    width: auto;
+    max-width: none;
+  }
+}
 .vh .miCuenta.compacto .auth-form label { color: var(--fg); }
 
 /* Mi cuenta es un panel de ajustes de 360 px, no la tarjeta de Hoy. Con el
@@ -450,7 +461,7 @@
   color: var(--fg-3); font: 600 var(--t-label)/1.1 Urbanist, sans-serif;
 }
 .vh .pestanias button svg { width: 26px; height: 26px; }
-.vh .pestaniaIcono { font-size: 22px; line-height: 1; }
+.vh .pestaniaIcono { display: block; width: 26px; height: 26px; }
 /* Activo: color + peso + subrayado + superficie. El color no viaja solo, y
    la rayita de 3px sola era mucho pedirle a un pulgar con sol de frente. */
 .vh .pestanias button[aria-current='page'] { color: var(--olive-ink); font-weight: 700; background: var(--olive-bg); }

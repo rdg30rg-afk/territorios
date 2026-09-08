@@ -14,6 +14,7 @@ import { useAuth } from '../context/useAuth'
 import { decirElError } from '../lib/decirElError'
 import { rotuloTerritorio } from '../lib/salidaEtiquetas'
 import { supabase } from '../lib/supabase'
+import { Icono } from '../components/Icono'
 
 type ReservationStatus = 'solicitada' | 'activa' | 'liberada' | 'rechazada'
 
@@ -892,9 +893,18 @@ export function TerritorioPersonalPage() {
         />
 
         <div className="module-table-actions personal-tabs" role="tablist" aria-label="Territorios personales">
-          <button type="button" className="secondary-button" role="tab" aria-selected={view === 'pendientes'} onClick={() => setView('pendientes')}>Pendientes ({pendingReservations.length})</button>
-          <button type="button" className="secondary-button" role="tab" aria-selected={view === 'activos'} onClick={() => setView('activos')}>Activos ({activeReservations.length})</button>
-          <button type="button" className="secondary-button" role="tab" aria-selected={view === 'historial'} onClick={() => setView('historial')}>Historial</button>
+          <button type="button" className="secondary-button" role="tab" aria-selected={view === 'pendientes'} onClick={() => setView('pendientes')}>
+            <Icono nombre="pendiente" tamaño={18} />
+            Pendientes ({pendingReservations.length})
+          </button>
+          <button type="button" className="secondary-button" role="tab" aria-selected={view === 'activos'} onClick={() => setView('activos')}>
+            <Icono nombre="completo" tamaño={18} />
+            Activos ({activeReservations.length})
+          </button>
+          <button type="button" className="secondary-button" role="tab" aria-selected={view === 'historial'} onClick={() => setView('historial')}>
+            <Icono nombre="historial" tamaño={18} />
+            Historial
+          </button>
         </div>
 
         <section className="panel module-registry-panel">
@@ -1015,6 +1025,7 @@ export function TerritorioPersonalPage() {
                                 onClick={() => void handleReservationAction(reservation, 'aprobar')}
                                 disabled={isSaving}
                               >
+                                <Icono nombre="completo" tamaño={18} />
                                 {isSaving ? 'Procesando...' : 'Aprobar'}
                               </button>
                               <button
@@ -1023,6 +1034,7 @@ export function TerritorioPersonalPage() {
                                 onClick={() => void handleReservationAction(reservation, 'rechazar')}
                                 disabled={isSaving}
                               >
+                                <Icono nombre="error" tamaño={18} />
                                 {isSaving ? 'Procesando...' : 'Rechazar'}
                               </button>
                             </div>
@@ -1082,7 +1094,10 @@ export function TerritorioPersonalPage() {
                 <span className="status-pill status-activo">
                   {activeReservations.length} activos
                 </span>
-                <button type="button" className="primary-button" onClick={() => setAssignmentOpen(true)}>Asignar territorio</button>
+                <button type="button" className="primary-button" onClick={() => setAssignmentOpen(true)}>
+                  <Icono nombre="reservar" tamaño={18} />
+                  Asignar territorio
+                </button>
               </div>
 
               {filteredActiveReservations.length === 0 ? (
@@ -1161,6 +1176,7 @@ export function TerritorioPersonalPage() {
                                 onClick={() => void handleLinkLegacy(reservation)}
                                 disabled={isSaving}
                               >
+                                <Icono nombre="persona" tamaño={18} />
                                 {isSaving ? 'Procesando...' : 'Vincular persona'}
                               </button>
                             </div>
@@ -1174,6 +1190,7 @@ export function TerritorioPersonalPage() {
                             onClick={() => void handleReservationAction(reservation, 'devolver')}
                             disabled={isSaving}
                           >
+                            <Icono nombre="mover" tamaño={18} />
                             {isSaving ? 'Procesando...' : 'Devolver'}
                           </button>
                         </div>
@@ -1238,6 +1255,7 @@ export function TerritorioPersonalPage() {
                       activeProfiles.length === 0
                     }
                   >
+                    <Icono nombre="guardar" tamaño={18} />
                     {isSaving ? 'Procesando...' : 'Crear asignación'}
                   </button>
                 </form>

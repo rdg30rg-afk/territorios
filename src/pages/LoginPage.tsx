@@ -3,6 +3,7 @@ import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/useAuth'
 import { accessLanding } from '../lib/access'
 import { normalizarCodigoGrupo } from '../lib/vistaHermano'
+import { Icono } from '../components/Icono'
 
 const getFriendlyAuthError = (error: string | null) => {
   if (!error) {
@@ -114,6 +115,7 @@ export function LoginPage() {
                   setError(null)
                 }}
               >
+                <Icono nombre="persona" tamaño={18} />
                 Ingresar
               </button>
               <button
@@ -126,6 +128,7 @@ export function LoginPage() {
                   setError(null)
                 }}
               >
+                <Icono nombre="reservar" tamaño={18} />
                 Solicitar acceso
               </button>
             </div>
@@ -161,6 +164,7 @@ export function LoginPage() {
                 {message ? <div className="form-feedback success" role="status">{message}</div> : null}
 
                 <button type="submit" className="primary-button" disabled={isSubmitting || isLoading}>
+                  <Icono nombre="persona" tamaño={18} />
                   {isSubmitting ? 'Procesando...' : 'Ingresar'}
                 </button>
               </form>
@@ -230,6 +234,7 @@ export function LoginPage() {
                 {error ? <div className="form-feedback error" role="alert">{error}</div> : null}
 
                 <button type="submit" className="primary-button" disabled={isSubmitting || isLoading}>
+                  <Icono nombre="reservar" tamaño={18} />
                   {isSubmitting ? 'Enviando...' : 'Enviar solicitud'}
                 </button>
               </form>

@@ -28,6 +28,7 @@ function harness({loadError=false,saveError=false,refreshError=false,pending=nul
     if(name==='react') return hooks
     if(name==='react/jsx-runtime') return {jsx,jsxs:jsx}
     if(name.endsWith('Desplegable')) return {Desplegable:'Desplegable'}
+    if(name.endsWith('Icono')) return {Icono:()=>null}
     if(name.endsWith('supabase')) return {supabase:client}
     if(name.endsWith('resultDelivery')) return {
       async pendingResult(){return {userId:'user',payload:pending}},
