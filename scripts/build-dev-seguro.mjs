@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { readFile, readdir, rm, stat, mkdtemp } from 'node:fs/promises'
+import { copyFile, readFile, readdir, rm, stat, mkdtemp } from 'node:fs/promises'
 import { dirname, extname, join, resolve, sep } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -27,6 +27,7 @@ const TEXT_EXTENSIONS = new Set([
 ])
 
 const PUBLISH_ONLY_DIRS = ['backups', 'respaldos']
+const EMBEDDED_EDITOR_FILE = 'editor-manzanas-embedded.html'
 export const PUBLISHABLE_RUNTIME_DATA_FILES = [
   'manzanas-congregacion.geojson',
   'manzanas-territorios.json',
@@ -407,13 +408,21 @@ export async function assertRuntimeDataPresent(outputDir) {
 export async function assertAppEditorEntries(outputDir, expectedSupabaseUrl = DEV_SUPABASE_URL) {
   const appPath = outputPath(outputDir, 'index.html')
   const editorPath = outputPath(outputDir, 'editor-manzanas.html')
+  const embeddedEditorPath = outputPath(outputDir, EMBEDDED_EDITOR_FILE)
   if (!(await pathExists(appPath))) throw new BuildSafetyError('El paquete no genera la app en /index.html.')
   if (!(await pathExists(editorPath))) {
     throw new BuildSafetyError('El paquete no genera el editor en /editor-manzanas.html.')
   }
+  if (!(await pathExists(embeddedEditorPath))) {
+    throw new BuildSafetyError(`El paquete no genera el editor embebido en /${EMBEDDED_EDITOR_FILE}.`)
+  }
 
   const appHtml = await readFile(appPath, 'utf8')
   const editorHtml = await readFile(editorPath, 'utf8')
+  const embeddedEditorHtml = await readFile(embeddedEditorPath, 'utf8')
+  if (embeddedEditorHtml !== editorHtml) {
+    throw new BuildSafetyError('El editor embebido no coincide con /editor-manzanas.html.')
+  }
   const appReferences = htmlLocalReferences(appHtml)
   const editorReferences = htmlLocalReferences(editorHtml)
 
@@ -585,6 +594,10 @@ export async function buildDevSeguro({ rootDir = PROJECT_ROOT } = {}) {
       npmCommand,
       ['run', 'build:development', '--', '--outDir', outputDir],
       { cwd: rootDir, env: childEnv },
+    )
+    await copyFile(
+      outputPath(outputDir, 'editor-manzanas.html'),
+      outputPath(outputDir, EMBEDDED_EDITOR_FILE),
     )
     const pruned = await prunePublishableOutput(outputDir)
     const data = await assertRuntimeDataPresent(outputDir)

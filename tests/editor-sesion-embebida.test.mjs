@@ -14,5 +14,6 @@ test('el editor srcDoc deriva el origen confiable desde la app contenedora', () 
 })
 
 test('la app versiona el editor embebido para no reutilizar una copia PWA anterior', () => {
-  assert.match(mapasPage, /editor-manzanas\.html\?embed-session-bridge=2/)
+  assert.match(mapasPage, /import\.meta\.env\.DEV \? 'editor-manzanas\.html' : 'editor-manzanas-embedded\.html'/)
+  assert.match(mapasPage, /editorPath\}\?embed-session-bridge=2/)
 })

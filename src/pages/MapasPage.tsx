@@ -39,7 +39,8 @@ export function MapasPage() {
   useEffect(() => {
     if (!canEditMap || editorHtml) return
     const abortController = new AbortController()
-    fetch('/editor-manzanas.html?embed-session-bridge=2', { cache: 'no-store', signal: abortController.signal })
+    const editorPath = import.meta.env.DEV ? 'editor-manzanas.html' : 'editor-manzanas-embedded.html'
+    fetch(`/${editorPath}?embed-session-bridge=2`, { cache: 'no-store', signal: abortController.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`)
         const html = await response.text()
