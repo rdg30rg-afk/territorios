@@ -28,7 +28,7 @@ export function MapasPage() {
         {canEditMap ? (
           <iframe
             className="editor-integrado-frame"
-            src="/editor-manzanas.html?embedded=1"
+            src="/editor-manzanas.html"
             title="Editor completo de manzanas y territorios"
             allow="geolocation; screen-wake-lock"
           />
