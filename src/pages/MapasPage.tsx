@@ -39,7 +39,12 @@ export function MapasPage() {
   useEffect(() => {
     if (!canEditMap || editorHtml) return
     const abortController = new AbortController()
-    const editorPath = import.meta.env.DEV ? 'editor-manzanas.html' : 'editor-manzanas-embedded.html'
+    // El paquete de Estracom se construye con modo `development` para apuntar
+    // a Supabase DEV, pero sigue siendo una app publicada. La decisión debe
+    // depender del host que la está sirviendo, no del modo de Vite: la ruta
+    // versionada evita que una PWA anterior reutilice el HTML del editor.
+    const hostLocal = ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname)
+    const editorPath = hostLocal ? 'editor-manzanas.html' : 'editor-manzanas-embedded.html'
     fetch(`/${editorPath}?embed-session-bridge=2`, { cache: 'no-store', signal: abortController.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`)
