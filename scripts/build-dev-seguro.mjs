@@ -12,7 +12,7 @@ export const BUILD_MODE = 'development'
 
 const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const SERVICE_WORKER_CONTRACT =
-  'Contrato requerido: vite.config.ts debe generar sw.js, precachear solo archivos presentes y mantener la exclusión de public/datos y banco-ato.html; no se modificó ese archivo.'
+  'Contrato requerido: vite.config.ts debe generar sw.js, precachear solo archivos presentes y mantener fuera del precache los respaldos y prototipos; no se modificó ese archivo.'
 
 const TEXT_EXTENSIONS = new Set([
   '.css',
@@ -26,7 +26,13 @@ const TEXT_EXTENSIONS = new Set([
   '.webmanifest',
 ])
 
-const PUBLISH_ONLY_DIRS = ['backups', 'respaldos', 'datos']
+const PUBLISH_ONLY_DIRS = ['backups', 'respaldos']
+export const PUBLISHABLE_RUNTIME_DATA_FILES = [
+  'manzanas-congregacion.geojson',
+  'manzanas-territorios.json',
+  'sectores.json',
+  'sin-viviendas.json',
+]
 const PROTOTYPE_OUTPUT_FILES = [
   'banco-ato.html',
   'banco-tema.html',
@@ -314,6 +320,22 @@ async function removeEmptyDirectories(directory) {
   if (remaining.length === 0) await rm(directory, { recursive: true, force: true })
 }
 
+async function pruneDataDirectory(outputDir) {
+  const dataDirectory = outputPath(outputDir, 'datos')
+  if (!(await pathExists(dataDirectory))) return []
+
+  const allowed = new Set(PUBLISHABLE_RUNTIME_DATA_FILES)
+  const removed = []
+  for (const file of await listFiles(dataDirectory)) {
+    const relativePath = file.relativePath.split(sep).join('/')
+    if (allowed.has(relativePath)) continue
+    await rm(file.absolutePath, { force: true })
+    removed.push(`datos/${relativePath}`)
+  }
+  await removeEmptyDirectories(dataDirectory)
+  return removed
+}
+
 export async function prunePublishableOutput(outputDir) {
   const removed = []
 
@@ -325,6 +347,8 @@ export async function prunePublishableOutput(outputDir) {
       removed.push(relativePath)
     }
   }
+
+  removed.push(...(await pruneDataDirectory(outputDir)))
 
   for (const file of PROTOTYPE_OUTPUT_FILES) {
     const absolutePath = outputPath(outputDir, file)
@@ -358,6 +382,26 @@ export async function prunePublishableOutput(outputDir) {
   }
 
   return { removed, referencedAtoFiles: [...referencedAtoFiles].sort() }
+}
+
+export async function assertRuntimeDataPresent(outputDir) {
+  for (const relativePath of PUBLISHABLE_RUNTIME_DATA_FILES) {
+    const absolutePath = outputPath(outputDir, `datos/${relativePath}`)
+    if (!(await pathExists(absolutePath))) {
+      throw new BuildSafetyError(`Falta el dato runtime requerido: /datos/${relativePath}.`)
+    }
+
+    try {
+      const parsed = JSON.parse(await readFile(absolutePath, 'utf8'))
+      if (relativePath === 'manzanas-congregacion.geojson' && !Array.isArray(parsed?.features)) {
+        throw new Error('GeoJSON sin features')
+      }
+    } catch {
+      throw new BuildSafetyError(`El dato runtime no es JSON válido: /datos/${relativePath}.`)
+    }
+  }
+
+  return { files: [...PUBLISHABLE_RUNTIME_DATA_FILES] }
 }
 
 export async function assertAppEditorEntries(outputDir, expectedSupabaseUrl = DEV_SUPABASE_URL) {
@@ -543,6 +587,7 @@ export async function buildDevSeguro({ rootDir = PROJECT_ROOT } = {}) {
       { cwd: rootDir, env: childEnv },
     )
     const pruned = await prunePublishableOutput(outputDir)
+    const data = await assertRuntimeDataPresent(outputDir)
     const entries = await assertAppEditorEntries(outputDir, environment.supabaseUrl)
     const runtime = await assertRuntimeSecretsAbsent(outputDir, env)
     const serviceWorker = await assertServiceWorkerConsistent(outputDir)
@@ -550,6 +595,7 @@ export async function buildDevSeguro({ rootDir = PROJECT_ROOT } = {}) {
     return {
       outputDir,
       environment,
+      data,
       entries,
       pruned,
       runtime,
@@ -568,6 +614,7 @@ async function main() {
   console.log('Build DEV seguro OK.')
   console.log(`Supabase efectivo: ${result.environment.supabaseUrl} (${result.environment.jwtRole})`)
   console.log('Entradas verificadas: / y /editor-manzanas.html.')
+  console.log(`Datos runtime verificados: ${result.data.files.length} archivos JSON.`)
   console.log(`Service worker consistente: ${result.serviceWorker.precacheCount} archivos precacheados.`)
   console.log(`Salida temporal publicable: ${result.outputDir}`)
   if (result.pruned.removed.length > 0) {

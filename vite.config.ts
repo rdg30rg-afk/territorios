@@ -85,9 +85,9 @@ export default defineConfig({
         navigateFallbackDenylist: [/^\/editor-manzanas\.html$/],
         skipWaiting: true,
         globPatterns: ['**/*.{js,css,html,svg,png,ico,json}'],
-        // Los JSON de public/datos son respaldos y semillas del editor, no
-        // la app. Si el service worker los precachea y el deploy no los
-        // sube, la PWA no instala. banco-ato es un prototipo, no se publica.
+        // Los datos runtime se sirven online pero no se precachean: el build
+        // seguro conserva una lista explícita de archivos públicos permitidos
+        // y elimina respaldos locales. banco-ato es un prototipo, no se publica.
         globIgnores: ['**/datos/**', 'banco-ato.html'],
       },
       devOptions: {

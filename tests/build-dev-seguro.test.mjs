@@ -9,6 +9,7 @@ import {
   assertAppEditorEntries,
   assertRuntimeSecretsAbsent,
   assertServiceWorkerConsistent,
+  assertRuntimeDataPresent,
   DEV_SUPABASE_REF,
   DEV_SUPABASE_URL,
   decodeJwtPayload,
@@ -148,22 +149,32 @@ test('comprueba que app y editor resuelvan URL DEV y assets locales', async () =
   }
 })
 
-test('retira datos y prototipos solo del paquete y poda Ato no referenciado', async () => {
+test('conserva datos runtime permitidos, retira respaldos y poda Ato no referenciado', async () => {
   const outputDir = await mkdtemp(join(tmpdir(), 'build-dev-prune-test-'))
   try {
     await mkdir(join(outputDir, 'datos'))
     await mkdir(join(outputDir, 'ato', 'fonts'), { recursive: true })
     await writeFile(join(outputDir, 'datos', 'privado.json'), '{}')
+    await writeFile(join(outputDir, 'datos', 'manzanas-congregacion.geojson'), '{"features":[]}')
+    await writeFile(join(outputDir, 'datos', 'manzanas-territorios.json'), '{}')
+    await writeFile(join(outputDir, 'datos', 'sectores.json'), '{}')
+    await writeFile(join(outputDir, 'datos', 'sin-viviendas.json'), '{}')
     await writeFile(join(outputDir, 'banco-ato.html'), '<!doctype html>')
     await writeFile(join(outputDir, 'ato', 'fonts', 'keep.woff'), 'font')
     await writeFile(join(outputDir, 'ato', 'unused.txt'), 'unused')
     await writeFile(join(outputDir, 'index.html'), `<style>@font-face{src:url('/ato/fonts/keep.woff')}</style>`)
 
     const result = await prunePublishableOutput(outputDir)
-    assert.ok(result.removed.includes('datos'))
+    assert.ok(result.removed.includes('datos/privado.json'))
     assert.ok(result.removed.includes('banco-ato.html'))
     assert.ok(result.removed.includes('ato/unused.txt'))
     await assert.rejects(() => readFile(join(outputDir, 'datos', 'privado.json')))
+    assert.deepEqual((await assertRuntimeDataPresent(outputDir)).files, [
+      'manzanas-congregacion.geojson',
+      'manzanas-territorios.json',
+      'sectores.json',
+      'sin-viviendas.json',
+    ])
     await assert.rejects(() => readFile(join(outputDir, 'banco-ato.html')))
     assert.equal(await readFile(join(outputDir, 'ato', 'fonts', 'keep.woff'), 'utf8'), 'font')
   } finally {
