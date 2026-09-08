@@ -2,13 +2,17 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  addBlock,
   assignBlocks,
   commitEditorChange,
   createEditorDocument,
   createEditorHistory,
+  mergeBlocks,
   redoEditorChange,
+  relabelTerritoryBlocks,
   removeBlock,
   setManualSideGroups,
+  splitBlock,
   undoEditorChange,
   updateBlockGeometry,
 } from '../src/features/map-editor/model/editorDocument.ts'
@@ -79,4 +83,42 @@ test('deshacer y rehacer recorren documentos completos', () => {
 test('rechaza referencias inexistentes antes de modificar el estado', () => {
   assert.throws(() => assignBlocks(fixture(), ['b1'], 't9'), /No existe el territorio/)
   assert.throws(() => assignBlocks(fixture(), ['b9'], 't2'), /No existe la manzana/)
+})
+
+test('agregar, fusionar y dividir son comandos inmutables y auditables por territorio', () => {
+  const original = fixture()
+  const withSecond = addBlock(original, {
+    id: 'b2',
+    geometry: triangle,
+    territoryId: 't1',
+    label: 'b',
+    order: 1,
+  })
+  assert.equal(original.blocks.b2, undefined)
+  assert.equal(withSecond.blocks.b2.edited, true)
+
+  const merged = mergeBlocks(withSecond, 'b1', 'b2', square)
+  assert.equal(merged.blocks.b2, undefined)
+  assert.equal(merged.blocks.b1.manualSideGroups, null)
+  assert.deepEqual(merged.touchedTerritoryIds, ['t1'])
+
+  const divided = splitBlock(merged, 'b1', 'b3', [triangle, square])
+  assert.equal(divided.blocks.b3.sourceKey, null)
+  assert.equal(divided.blocks.b3.territoryId, 't1')
+  assert.equal(divided.blocks.b3.label, null)
+  assert.equal(merged.blocks.b3, undefined)
+})
+
+test('reletrar exige el conjunto completo y conserva el orden elegido', () => {
+  const document = addBlock(fixture(), {
+    id: 'b2',
+    geometry: triangle,
+    territoryId: 't1',
+  })
+  const relabeled = relabelTerritoryBlocks(document, 't1', ['b2', 'b1'])
+  assert.equal(relabeled.blocks.b2.label, 'a')
+  assert.equal(relabeled.blocks.b2.order, 0)
+  assert.equal(relabeled.blocks.b1.label, 'b')
+  assert.equal(relabeled.blocks.b1.order, 1)
+  assert.throws(() => relabelTerritoryBlocks(document, 't1', ['b1']), /cada manzana/)
 })

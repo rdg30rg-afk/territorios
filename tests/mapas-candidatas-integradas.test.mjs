@@ -44,7 +44,7 @@ test('el umbral de zoom gobierna tanto la consulta como el dibujo', () => {
   assertSource(mapSource, /const EDITOR_CANDIDATE_ZOOM\s*=\s*14\b/)
   assertSource(
     mapSource,
-    /layer\?\.clearLayers\(\)[\s\S]*?if \(!layer \|\| !editingEnabled \|\| mapZoom < EDITOR_CANDIDATE_ZOOM\) return[\s\S]*?for \(const candidate of editorCandidates\)/,
+    /layer\?\.clearLayers\(\)[\s\S]*?if \(!layer \|\| !editingEnabled \|\| mapZoom < EDITOR_CANDIDATE_ZOOM\) return[\s\S]*?for \(const draftBlock of Object\.values\(editorDocument\.blocks\)\)/,
     'la capa no debe dibujar candidatas por debajo del umbral',
   )
   assertSource(
@@ -98,7 +98,7 @@ test('cerrar edición limpia candidatas, capa, errores y herramientas activas', 
   )
   assertSource(
     mapSource,
-    /const layer\s*=\s*candidateLayerRef\.current\s*layer\?\.clearLayers\(\)\s*if \(!layer \|\| !editingEnabled/,
+    /const layer\s*=\s*candidateLayerRef\.current[\s\S]*?layer\?\.clearLayers\(\)[\s\S]*?if \(!layer \|\| !editingEnabled/,
     'salir de edición debe vaciar la capa de candidatas',
   )
   assertSource(

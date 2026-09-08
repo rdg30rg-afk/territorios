@@ -18,6 +18,9 @@ import { ponerFondo } from '../lib/fondoMapa'
 import {
   createSupabaseEditorTransport,
   loadEditorCandidates,
+  publishEditorPublicationV2,
+  reviewEditorPublicationV2,
+  saveEditorDraft,
   type EditorCandidate,
 } from '../features/map-editor/data/editorRepository.ts'
 import {
@@ -25,13 +28,31 @@ import {
   type LoadedEditorWorkspace,
 } from '../features/map-editor/data/loadEditorWorkspace.ts'
 import {
+  addBlock,
   assignBlocks,
   commitEditorChange,
   createEditorHistory,
+  mergeBlocks,
   redoEditorChange,
+  relabelTerritoryBlocks,
+  removeBlock,
+  setManualSideGroups,
+  splitBlock,
   undoEditorChange,
+  updateBlockGeometry,
 } from '../features/map-editor/model/editorDocument.ts'
-import type { EditorHistory } from '../features/map-editor/model/types.ts'
+import { encodeEditorDraftState } from '../features/map-editor/model/draftCodec.ts'
+import {
+  buildAtomicPublicationV2,
+  createPublicationSnapshot,
+  publicationStillMatches,
+} from '../features/map-editor/model/publication.ts'
+import {
+  mergeAdjacentPolygons,
+  splitPolygonByLine,
+} from '../features/map-editor/geometry/polygonOperations.ts'
+import { groupsForBlock, polygonCenter } from '../features/map-editor/geometry/blockGeometry.ts'
+import type { EditorHistory, EditorPolygon } from '../features/map-editor/model/types.ts'
 
 L.drawLocal.draw.toolbar.buttons.polygon = 'Polígono'
 L.drawLocal.draw.toolbar.buttons.rectangle = 'Rectángulo'
@@ -950,6 +971,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
   const editableGroupRef = useRef<L.FeatureGroup | null>(null)
   const vertexLayerRef = useRef<L.LayerGroup | null>(null)
   const candidateLayerRef = useRef<L.LayerGroup | null>(null)
+  const editorBlockLayersRef = useRef(new Map<string, L.Polygon>())
   const blockLayerRef = useRef<L.LayerGroup | null>(null)
   const snapGuideLayerRef = useRef<L.LayerGroup | null>(null)
   const overlapLayerRef = useRef<L.LayerGroup | null>(null)
@@ -998,6 +1020,12 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
   const [editorWorkspace, setEditorWorkspace] = useState<LoadedEditorWorkspace | null>(null)
   const [editorHistory, setEditorHistory] = useState<EditorHistory | null>(null)
   const [selectedEditorBlockIds, setSelectedEditorBlockIds] = useState<string[]>([])
+  const [splitTargetBlockId, setSplitTargetBlockId] = useState<string | null>(null)
+  const [splitPoints, setSplitPoints] = useState<Array<readonly [number, number]>>([])
+  const [drawingBlockVertices, setDrawingBlockVertices] = useState<Array<readonly [number, number]> | null>(null)
+  const [vertexEditBlockId, setVertexEditBlockId] = useState<string | null>(null)
+  const [isSavingEditorDraft, setIsSavingEditorDraft] = useState(false)
+  const [isPublishingEditor, setIsPublishingEditor] = useState(false)
   const [isLoadingEditorWorkspace, setIsLoadingEditorWorkspace] = useState(false)
   const [editorWorkspaceError, setEditorWorkspaceError] = useState<string | null>(null)
   const [isMarkingBlocks, setIsMarkingBlocks] = useState(false)
@@ -1022,6 +1050,17 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
   const selectedTerritory = useMemo(
     () => territories.find((item) => item.id === selectedTerritoryId) ?? null,
     [selectedTerritoryId, territories],
+  )
+
+  const selectedEditorBlock = useMemo(
+    () => selectedEditorBlockIds.length === 1
+      ? editorDocument?.blocks[selectedEditorBlockIds[0]] ?? null
+      : null,
+    [editorDocument, selectedEditorBlockIds],
+  )
+  const selectedEditorBlockSides = useMemo(
+    () => selectedEditorBlock ? groupsForBlock(selectedEditorBlock) : [],
+    [selectedEditorBlock],
   )
 
   const selectedTerritoryBlocks = useMemo(
@@ -1053,6 +1092,269 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
     )
     setSelectedEditorBlockIds([])
   }, [selectedEditorBlockIds])
+
+  const mergeSelectedEditorBlocks = useCallback(() => {
+    if (selectedEditorBlockIds.length !== 2 || !editorHistory) return
+    setError(null)
+    try {
+      const [keptId, removedId] = selectedEditorBlockIds
+      const kept = editorHistory.present.blocks[keptId]
+      const removed = editorHistory.present.blocks[removedId]
+      if (!kept || !removed) throw new Error('Una de las manzanas elegidas ya no existe.')
+      const geometry = mergeAdjacentPolygons(kept.geometry, removed.geometry)
+      setEditorHistory(commitEditorChange(editorHistory, (document) =>
+        mergeBlocks(document, keptId, removedId, geometry),
+      ))
+      setSelectedEditorBlockIds([])
+      setMessage('Las dos manzanas quedaron fusionadas en el borrador. Todavía no se publicó nada.')
+    } catch (mergeError) {
+      setError(mergeError instanceof Error ? mergeError.message : 'No se pudieron fusionar las manzanas.')
+    }
+  }, [editorHistory, selectedEditorBlockIds])
+
+  const beginSplitSelectedBlock = useCallback(() => {
+    if (selectedEditorBlockIds.length !== 1) return
+    setVertexEditBlockId(null)
+    setSplitTargetBlockId(selectedEditorBlockIds[0])
+    setSplitPoints([])
+    setMessage('Marcá dos puntos que atraviesen la manzana completa.')
+    setError(null)
+  }, [selectedEditorBlockIds])
+
+  const applyEditorSplitPoint = useCallback((point: readonly [number, number]) => {
+    if (!splitTargetBlockId || !editorHistory) return false
+    if (splitPoints.length === 0) {
+      setSplitPoints([point])
+      setMessage('Ahora marcá el segundo punto, del otro lado de la manzana.')
+      return true
+    }
+    try {
+      const block = editorHistory.present.blocks[splitTargetBlockId]
+      if (!block) throw new Error('La manzana que ibas a dividir ya no existe.')
+      const geometries = splitPolygonByLine(block.geometry, splitPoints[0], point)
+      const next = commitEditorChange(editorHistory, (document) =>
+        splitBlock(document, splitTargetBlockId, crypto.randomUUID(), geometries),
+      )
+      setEditorHistory(next)
+      setSelectedEditorBlockIds([])
+      setSplitTargetBlockId(null)
+      setSplitPoints([])
+      setDrawingBlockVertices(null)
+      setMessage('La manzana quedó dividida en dos dentro del borrador. Reletrá el territorio antes de publicar.')
+      setError(null)
+    } catch (splitError) {
+      setSplitPoints([])
+      setError(splitError instanceof Error ? splitError.message : 'No se pudo dividir la manzana.')
+    }
+    return true
+  }, [editorHistory, splitPoints, splitTargetBlockId])
+
+  const beginDrawingEditorBlock = useCallback(() => {
+    if (!selectedTerritoryId) {
+      setError('Elegí primero el territorio al que va a pertenecer la manzana.')
+      return
+    }
+    setSplitTargetBlockId(null)
+    setSplitPoints([])
+    setVertexEditBlockId(null)
+    setSelectedEditorBlockIds([])
+    setDrawingBlockVertices([])
+    setMessage('Dibujá la manzana punto por punto y después tocá “Cerrar manzana”.')
+    setError(null)
+  }, [selectedTerritoryId])
+
+  const finishDrawingEditorBlock = useCallback(() => {
+    if (!editorHistory || !selectedTerritoryId || !drawingBlockVertices || drawingBlockVertices.length < 3) return
+    try {
+      const geometry: EditorPolygon = {
+        type: 'Polygon',
+        coordinates: [[...drawingBlockVertices, drawingBlockVertices[0]]],
+      }
+      const nextBlockId = crypto.randomUUID()
+      setEditorHistory(commitEditorChange(editorHistory, (document) =>
+        addBlock(document, {
+          id: nextBlockId,
+          sourceKey: null,
+          geometry,
+          territoryId: selectedTerritoryId,
+          label: null,
+        }),
+      ))
+      setDrawingBlockVertices(null)
+      setSelectedEditorBlockIds([nextBlockId])
+      setMessage('La manzana quedó dibujada en el borrador. Reletrá el territorio antes de publicar.')
+      setError(null)
+    } catch (drawError) {
+      setError(drawError instanceof Error ? drawError.message : 'No se pudo cerrar la manzana.')
+    }
+  }, [drawingBlockVertices, editorHistory, selectedTerritoryId])
+
+  const updateSelectedBlockSides = useCallback((groups: number[][] | null, successMessage: string) => {
+    if (!editorHistory || !selectedEditorBlock) return
+    try {
+      setEditorHistory(commitEditorChange(editorHistory, (document) =>
+        setManualSideGroups(document, selectedEditorBlock.id, groups),
+      ))
+      setMessage(successMessage)
+      setError(null)
+    } catch (sideError) {
+      setError(sideError instanceof Error ? sideError.message : 'No se pudieron corregir las caras.')
+    }
+  }, [editorHistory, selectedEditorBlock])
+
+  const joinSelectedBlockSides = useCallback((index: number) => {
+    if (!selectedEditorBlock || selectedEditorBlockSides.length < 2) return
+    const nextIndex = (index + 1) % selectedEditorBlockSides.length
+    const joined = selectedEditorBlockSides[index].concat(selectedEditorBlockSides[nextIndex].slice(1))
+    const nextGroups = selectedEditorBlockSides
+      .map((group, groupIndex) => groupIndex === index ? joined : [...group])
+      .filter((_, groupIndex) => groupIndex !== nextIndex)
+    updateSelectedBlockSides(nextGroups, `Caras unidas: la manzana queda con ${nextGroups.length}.`)
+  }, [selectedEditorBlock, selectedEditorBlockSides, updateSelectedBlockSides])
+
+  const splitSelectedBlockSide = useCallback((groupIndex: number, vertexIndex: number) => {
+    const group = selectedEditorBlockSides[groupIndex]
+    if (!group || vertexIndex <= 0 || vertexIndex >= group.length - 1) return
+    const nextGroups = selectedEditorBlockSides.flatMap((candidate, index) =>
+      index === groupIndex
+        ? [candidate.slice(0, vertexIndex + 1), candidate.slice(vertexIndex)]
+        : [[...candidate]],
+    )
+    updateSelectedBlockSides(nextGroups, `Cara partida: la manzana queda con ${nextGroups.length}.`)
+  }, [selectedEditorBlockSides, updateSelectedBlockSides])
+
+  const removeSelectedEditorBlocks = useCallback(() => {
+    if (!selectedEditorBlockIds.length || !editorHistory) return
+    if (!window.confirm(`¿Retirar ${selectedEditorBlockIds.length} manzana${selectedEditorBlockIds.length === 1 ? '' : 's'} del borrador?`)) return
+    try {
+      setEditorHistory(commitEditorChange(editorHistory, (document) =>
+        selectedEditorBlockIds.reduce(
+          (next, blockId) => removeBlock(next, blockId),
+          document,
+        ),
+      ))
+      setSelectedEditorBlockIds([])
+      setMessage('Las manzanas se retiraron del borrador. Podés deshacer antes de guardar.')
+      setError(null)
+    } catch (removeError) {
+      setError(removeError instanceof Error ? removeError.message : 'No se pudieron retirar las manzanas.')
+    }
+  }, [editorHistory, selectedEditorBlockIds])
+
+  const relabelSelectedTerritory = useCallback(() => {
+    if (!selectedTerritoryId || !editorHistory) return
+    const ordered = Object.values(editorHistory.present.blocks)
+      .filter((block) => block.territoryId === selectedTerritoryId)
+      .sort((first, second) => {
+        const [firstLat, firstLng] = polygonCenter(first.geometry)
+        const [secondLat, secondLng] = polygonCenter(second.geometry)
+        return secondLat - firstLat || firstLng - secondLng || first.id.localeCompare(second.id)
+      })
+      .map((block) => block.id)
+    if (!ordered.length) {
+      setError('El territorio elegido todavía no tiene manzanas para reletrar.')
+      return
+    }
+    setEditorHistory(commitEditorChange(editorHistory, (document) =>
+      relabelTerritoryBlocks(document, selectedTerritoryId, ordered),
+    ))
+    setMessage(`Las ${ordered.length} manzanas del territorio se ordenaron de norte a sur y oeste a este.`)
+    setError(null)
+  }, [editorHistory, selectedTerritoryId])
+
+  const finishVertexEditing = useCallback(() => {
+    if (!vertexEditBlockId) return
+    const layer = editorBlockLayersRef.current.get(vertexEditBlockId)
+    const rawGeometry = layer?.toGeoJSON().geometry
+    if (!rawGeometry || rawGeometry.type !== 'Polygon') {
+      setError('No se pudo leer el dibujo editado de la manzana.')
+      return
+    }
+    try {
+      if (!editorHistory) throw new Error('El borrador ya no está abierto.')
+      setEditorHistory(commitEditorChange(editorHistory, (document) =>
+        updateBlockGeometry(document, vertexEditBlockId, rawGeometry as unknown as EditorPolygon),
+      ))
+      setVertexEditBlockId(null)
+      setMessage('Los vértices quedaron actualizados en el borrador.')
+      setError(null)
+    } catch (vertexError) {
+      setError(vertexError instanceof Error ? vertexError.message : 'No se pudieron actualizar los vértices.')
+    }
+  }, [editorHistory, vertexEditBlockId])
+
+  const saveCurrentEditorDraft = useCallback(async () => {
+    if (!client || !editorWorkspace || !editorHistory) return false
+    setIsSavingEditorDraft(true)
+    setError(null)
+    try {
+      const removedSourceKeys = Object.values(editorWorkspace.draft.document.blocks)
+        .filter((block) => block.sourceKey && !editorHistory.present.blocks[block.id])
+        .map((block) => block.sourceKey as string)
+      const nextDraft = {
+        ...editorWorkspace.draft,
+        document: editorHistory.present,
+        discardedSourceKeys: [...new Set([
+          ...editorWorkspace.draft.discardedSourceKeys,
+          ...removedSourceKeys,
+        ])],
+        migratedFromLegacy: false,
+      }
+      const saved = await saveEditorDraft(
+        createSupabaseEditorTransport(client),
+        editorWorkspace.revision,
+        encodeEditorDraftState(nextDraft),
+      )
+      const nextWorkspace: LoadedEditorWorkspace = {
+        revision: saved.revision,
+        updatedBy: saved.updatedBy,
+        updatedAt: saved.updatedAt,
+        draft: nextDraft,
+      }
+      setEditorWorkspace(nextWorkspace)
+      setEditorHistory(createEditorHistory(editorHistory.present))
+      setMessage(`Borrador guardado en la revisión ${saved.revision}. Nada se publicó todavía.`)
+      return true
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'No se pudo guardar el borrador.')
+      return false
+    } finally {
+      setIsSavingEditorDraft(false)
+    }
+  }, [client, editorHistory, editorWorkspace])
+
+  const publishCurrentEditorChanges = useCallback(async () => {
+    if (!client || !editorHistory || !selectedTerritoryId || isPublishingEditor) return
+    let snapshots
+    try {
+      snapshots = createPublicationSnapshot(editorHistory.present, selectedTerritoryId)
+    } catch (snapshotError) {
+      setError(snapshotError instanceof Error ? snapshotError.message : 'No se pudo preparar la revisión.')
+      return
+    }
+    const summary = snapshots.map((snapshot) => `${snapshot.name}: ${snapshot.blocks.length} manzanas`).join('\n')
+    if (!window.confirm(`Vas a publicar este lote atómico:\n\n${summary}\n\n¿Continuar?`)) return
+    setIsPublishingEditor(true)
+    setError(null)
+    try {
+      if (editorHasLocalChanges && !(await saveCurrentEditorDraft())) return
+      const transport = createSupabaseEditorTransport(client)
+      const revisions = await reviewEditorPublicationV2(
+        transport,
+        snapshots.map((snapshot) => snapshot.territoryId),
+      )
+      if (snapshots.some((snapshot) => !publicationStillMatches(editorHistory.present, snapshot))) {
+        throw new Error('El borrador cambió durante la revisión. Volvé a revisar antes de publicar.')
+      }
+      const changes = buildAtomicPublicationV2(snapshots, revisions)
+      await publishEditorPublicationV2(transport, crypto.randomUUID(), changes)
+      setMessage(`Publicación confirmada: ${summary.replaceAll('\n', ' · ')}.`)
+    } catch (publishError) {
+      setError(publishError instanceof Error ? publishError.message : 'La respuesta de publicación es desconocida. No reintentes automáticamente.')
+    } finally {
+      setIsPublishingEditor(false)
+    }
+  }, [client, editorHasLocalChanges, editorHistory, isPublishingEditor, saveCurrentEditorDraft, selectedTerritoryId])
 
   const territoriesWithIndex = useMemo<TerritoryListItem[]>(
     () =>
@@ -2006,8 +2308,12 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
   }, [renderTerritoriesOnMap])
 
   useEffect(() => {
-    renderVertexMarkers(draftVertices)
-  }, [draftVertices, renderVertexMarkers])
+    renderVertexMarkers(
+      drawingBlockVertices
+        ? drawingBlockVertices.map(([lng, lat]) => [lng, lat])
+        : draftVertices,
+    )
+  }, [draftVertices, drawingBlockVertices, renderVertexMarkers])
 
   useEffect(() => {
     renderBlockMarkers()
@@ -2016,17 +2322,20 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
   useEffect(() => {
     const layer = candidateLayerRef.current
     layer?.clearLayers()
+    editorBlockLayersRef.current.clear()
     if (!layer || !editingEnabled || mapZoom < EDITOR_CANDIDATE_ZOOM) return
 
-    for (const candidate of editorCandidates) {
-      if (editorWorkspace?.draft.discardedSourceKeys.includes(candidate.sourceKey)) continue
-      const draftBlock = editorDocument?.blocks[candidate.id]
-      const selected = selectedEditorBlockIds.includes(candidate.id)
-      const assignedTerritory = draftBlock?.territoryId
+    if (!editorDocument) return
+    const visibleBounds = mapRef.current?.getBounds()
+    for (const draftBlock of Object.values(editorDocument.blocks)) {
+      const [blockLat, blockLng] = polygonCenter(draftBlock.geometry)
+      if (visibleBounds && !visibleBounds.pad(0.15).contains([blockLat, blockLng])) continue
+      const selected = selectedEditorBlockIds.includes(draftBlock.id)
+      const assignedTerritory = draftBlock.territoryId
         ? territoriesWithIndex.find((territory) => territory.id === draftBlock.territoryId)
         : null
       const candidatePolygon = L.polygon(
-        (draftBlock?.geometry ?? candidate.geometry).coordinates[0].map(
+        draftBlock.geometry.coordinates[0].map(
           ([lng, lat]) => [lat, lng] as [number, number],
         ),
         {
@@ -2039,20 +2348,31 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
           dashArray: assignedTerritory ? undefined : '4 4',
         },
       ).addTo(layer)
+      editorBlockLayersRef.current.set(draftBlock.id, candidatePolygon)
+      if (vertexEditBlockId === draftBlock.id) {
+        ;(candidatePolygon as L.Polygon & { editing: { enable: () => void } }).editing.enable()
+      }
       if (editorDocument && canManageTerritories) {
-        candidatePolygon.on('click', () => toggleEditorBlock(candidate.id))
+        candidatePolygon.on('click', (event) => {
+          if (drawingBlockVertices) return
+          L.DomEvent.stopPropagation(event)
+          if (applyEditorSplitPoint([event.latlng.lng, event.latlng.lat])) return
+          toggleEditorBlock(draftBlock.id)
+        })
       }
     }
   }, [
     canManageTerritories,
+    applyEditorSplitPoint,
     editingEnabled,
-    editorCandidates,
     editorDocument,
-    editorWorkspace,
+    drawingBlockVertices,
     mapZoom,
     selectedEditorBlockIds,
     territoriesWithIndex,
     toggleEditorBlock,
+    vertexEditBlockId,
+    vistaMovida,
   ])
 
   useEffect(() => {
@@ -2149,6 +2469,9 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
     if (!editingEnabled) {
       setEditorHistory(null)
       setSelectedEditorBlockIds([])
+      setSplitTargetBlockId(null)
+      setSplitPoints([])
+      setVertexEditBlockId(null)
     }
   }, [editingEnabled])
 
@@ -2263,6 +2586,16 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
     }
 
     const handleManualPolygonClick = (event: L.LeafletMouseEvent) => {
+      if (drawingBlockVertices) {
+        const snapped = snapLngLat(event.latlng).latLng
+        setDrawingBlockVertices((current) => current
+          ? [...current, [snapped.lng, snapped.lat] as const]
+          : current)
+        setMessage(`Manzana en dibujo: ${drawingBlockVertices.length + 1} punto${drawingBlockVertices.length === 0 ? '' : 's'}.`)
+        return
+      }
+      if (applyEditorSplitPoint([event.latlng.lng, event.latlng.lat])) return
+
       if (isMarkingBlocks) {
         void handleAddBlock(event.latlng)
         return
@@ -2332,6 +2665,8 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
       map.off('click', handleManualPolygonClick)
     }
   }, [
+    applyEditorSplitPoint,
+    drawingBlockVertices,
     editingTerritoryId,
     handleAddBlock,
     isDrawing,
@@ -3424,9 +3759,17 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
                             : 'El borrador compartido todavía no está disponible.'}
                     </div>
                     {editorHistory ? (
-                      <div className="editor-selection-actions" aria-label="Edición local de manzanas">
+                      <div className="editor-selection-actions" aria-label="Herramientas del editor de manzanas">
                         <span>
-                          {selectedEditorBlockIds.length > 0
+                          {splitTargetBlockId
+                            ? splitPoints.length === 0
+                              ? 'Dividir: marcá el primer extremo del corte.'
+                              : 'Dividir: marcá el segundo extremo del corte.'
+                            : drawingBlockVertices
+                              ? `Dibujando manzana: ${drawingBlockVertices.length} punto${drawingBlockVertices.length === 1 ? '' : 's'}.`
+                            : vertexEditBlockId
+                              ? 'Mové los vértices y tocá “Listo”.'
+                              : selectedEditorBlockIds.length > 0
                             ? `${selectedEditorBlockIds.length} seleccionada${selectedEditorBlockIds.length === 1 ? '' : 's'}`
                             : 'Tocá una manzana para seleccionarla.'}
                         </span>
@@ -3452,11 +3795,88 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
                         >
                           Rehacer
                         </button>
+                        {drawingBlockVertices ? (
+                          <>
+                            <button
+                              type="button"
+                              className="primary-button compact-button"
+                              onClick={finishDrawingEditorBlock}
+                              disabled={drawingBlockVertices.length < 3}
+                            >
+                              Cerrar manzana
+                            </button>
+                            <button
+                              type="button"
+                              className="ghost-button compact-button"
+                              onClick={() => {
+                                setDrawingBlockVertices(null)
+                                setMessage('Dibujo cancelado. No cambió el borrador.')
+                              }}
+                            >
+                              Cancelar dibujo
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            className="secondary-button compact-button"
+                            onClick={beginDrawingEditorBlock}
+                            disabled={!selectedTerritoryId || Boolean(splitTargetBlockId) || Boolean(vertexEditBlockId)}
+                          >
+                            Dibujar manzana
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="secondary-button compact-button"
+                          onClick={beginSplitSelectedBlock}
+                          disabled={selectedEditorBlockIds.length !== 1 || Boolean(splitTargetBlockId) || Boolean(vertexEditBlockId) || Boolean(drawingBlockVertices)}
+                        >
+                          Dividir
+                        </button>
+                        <button
+                          type="button"
+                          className="secondary-button compact-button"
+                          onClick={mergeSelectedEditorBlocks}
+                          disabled={selectedEditorBlockIds.length !== 2 || Boolean(splitTargetBlockId) || Boolean(vertexEditBlockId) || Boolean(drawingBlockVertices)}
+                        >
+                          Fusionar
+                        </button>
+                        {vertexEditBlockId ? (
+                          <>
+                            <button
+                              type="button"
+                              className="primary-button compact-button"
+                              onClick={finishVertexEditing}
+                            >
+                              Listo, guardar vértices
+                            </button>
+                            <button
+                              type="button"
+                              className="ghost-button compact-button"
+                              onClick={() => {
+                                setVertexEditBlockId(null)
+                                setMessage('Edición de vértices cancelada. No cambió el borrador.')
+                              }}
+                            >
+                              Cancelar vértices
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            className="secondary-button compact-button"
+                            onClick={() => setVertexEditBlockId(selectedEditorBlockIds[0] ?? null)}
+                            disabled={selectedEditorBlockIds.length !== 1 || Boolean(splitTargetBlockId) || Boolean(drawingBlockVertices)}
+                          >
+                            Editar vértices
+                          </button>
+                        )}
                         <button
                           type="button"
                           className="secondary-button compact-button"
                           onClick={() => assignSelectedEditorBlocks(selectedTerritoryId)}
-                          disabled={!selectedTerritoryId || !selectedEditorBlockIds.length}
+                          disabled={!selectedTerritoryId || !selectedEditorBlockIds.length || Boolean(drawingBlockVertices)}
                         >
                           Asignar a {selectedTerritory?.name ?? 'territorio'}
                         </button>
@@ -3464,9 +3884,93 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
                           type="button"
                           className="ghost-button compact-button"
                           onClick={() => assignSelectedEditorBlocks(null)}
-                          disabled={!selectedEditorBlockIds.length}
+                          disabled={!selectedEditorBlockIds.length || Boolean(drawingBlockVertices)}
                         >
                           Dejar libre
+                        </button>
+                        <button
+                          type="button"
+                          className="ghost-button compact-button danger-action"
+                          onClick={removeSelectedEditorBlocks}
+                          disabled={!selectedEditorBlockIds.length || Boolean(splitTargetBlockId) || Boolean(vertexEditBlockId) || Boolean(drawingBlockVertices)}
+                        >
+                          Retirar
+                        </button>
+                        <button
+                          type="button"
+                          className="ghost-button compact-button"
+                          onClick={relabelSelectedTerritory}
+                          disabled={!selectedTerritoryId || Boolean(splitTargetBlockId) || Boolean(vertexEditBlockId) || Boolean(drawingBlockVertices)}
+                        >
+                          Reletrar territorio
+                        </button>
+                        {selectedEditorBlock && !splitTargetBlockId && !vertexEditBlockId && !drawingBlockVertices ? (
+                          <details className="editor-side-tools">
+                            <summary>Arreglar caras ({selectedEditorBlockSides.length})</summary>
+                            <div>
+                              {selectedEditorBlockSides.map((group, groupIndex) => (
+                                <span key={`${selectedEditorBlock.id}-side-${groupIndex}`}>
+                                  {selectedEditorBlockSides.length > 1 ? (
+                                    <button
+                                      type="button"
+                                      className="ghost-button compact-button"
+                                      onClick={() => joinSelectedBlockSides(groupIndex)}
+                                    >
+                                      Unir {groupIndex + 1} + {(groupIndex + 1) % selectedEditorBlockSides.length + 1}
+                                    </button>
+                                  ) : null}
+                                  {group.slice(1, -1).map((_, vertexIndex) => (
+                                    <button
+                                      key={`${groupIndex}-${vertexIndex}`}
+                                      type="button"
+                                      className="ghost-button compact-button"
+                                      onClick={() => splitSelectedBlockSide(groupIndex, vertexIndex + 1)}
+                                    >
+                                      Partir cara {groupIndex + 1} en punto {vertexIndex + 2}
+                                    </button>
+                                  ))}
+                                </span>
+                              ))}
+                              <button
+                                type="button"
+                                className="ghost-button compact-button"
+                                onClick={() => updateSelectedBlockSides(null, 'Las caras volvieron al cálculo automático.')}
+                                disabled={!selectedEditorBlock.manualSideGroups}
+                              >
+                                Volver a automático
+                              </button>
+                            </div>
+                          </details>
+                        ) : null}
+                        {splitTargetBlockId ? (
+                          <button
+                            type="button"
+                            className="ghost-button compact-button"
+                            onClick={() => {
+                              setSplitTargetBlockId(null)
+                              setSplitPoints([])
+                              setMessage('Corte cancelado. No cambió el borrador.')
+                            }}
+                          >
+                            Cancelar corte
+                          </button>
+                        ) : null}
+                        <span className="editor-persistence-spacer" aria-hidden="true" />
+                        <button
+                          type="button"
+                          className="secondary-button compact-button"
+                          onClick={() => void saveCurrentEditorDraft()}
+                          disabled={!editorHasLocalChanges || isSavingEditorDraft || isPublishingEditor || Boolean(splitTargetBlockId) || Boolean(vertexEditBlockId) || Boolean(drawingBlockVertices)}
+                        >
+                          {isSavingEditorDraft ? 'Guardando…' : 'Guardar borrador'}
+                        </button>
+                        <button
+                          type="button"
+                          className="primary-button compact-button"
+                          onClick={() => void publishCurrentEditorChanges()}
+                          disabled={!selectedTerritoryId || isSavingEditorDraft || isPublishingEditor || Boolean(splitTargetBlockId) || Boolean(vertexEditBlockId) || Boolean(drawingBlockVertices)}
+                        >
+                          {isPublishingEditor ? 'Publicando…' : 'Revisar y publicar'}
                         </button>
                       </div>
                     ) : null}

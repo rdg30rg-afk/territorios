@@ -101,7 +101,7 @@ test('la pantalla muestra carga, error, revisión, cantidad y legacy protegido',
 
 test('la edición local selecciona, asigna y conserva deshacer y rehacer', () => {
   assertSource(mapSource, /createEditorHistory\(workspace\.draft\.document\)/)
-  assertSource(mapSource, /candidatePolygon\.on\('click', \(\) => toggleEditorBlock\(candidate\.id\)\)/)
+  assertSource(mapSource, /candidatePolygon\.on\('click',[\s\S]*?toggleEditorBlock\(draftBlock\.id\)/)
   assertSource(
     mapSource,
     /commitEditorChange\(current, \(document\) =>\s*assignBlocks\(document, selectedEditorBlockIds, territoryId\)/,
@@ -112,7 +112,7 @@ test('la edición local selecciona, asigna y conserva deshacer y rehacer', () =>
   assertSource(mapSource, /cambios locales sin guardar/)
   assertSource(
     mapSource,
-    /editorWorkspace\?\.draft\.discardedSourceKeys\.includes\(candidate\.sourceKey\)/,
-    'las manzanas descartadas no deben reaparecer en el mapa',
+    /removedSourceKeys[\s\S]*?discardedSourceKeys: \[\.\.\.new Set/,
+    'las manzanas retiradas deben guardarse como descartadas y no reaparecer',
   )
 })

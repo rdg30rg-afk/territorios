@@ -211,6 +211,71 @@
   min-height: 40px;
 }
 
+.editor-selection-actions .editor-persistence-spacer {
+  flex: 1 0 100%;
+  min-width: 0;
+  height: 0;
+  margin: 0;
+}
+
+.editor-selection-actions .danger-action {
+  border-color: color-mix(in srgb, var(--danger, #b42318) 38%, var(--panel-border));
+  color: var(--danger, #9f1c14);
+}
+
+.editor-side-tools {
+  position: relative;
+}
+
+.editor-side-tools > summary {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 0.75rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 700;
+  list-style: none;
+}
+
+.editor-side-tools > summary::-webkit-details-marker {
+  display: none;
+}
+
+.editor-side-tools > div {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 0.4rem);
+  z-index: 900;
+  display: grid;
+  gap: 0.35rem;
+  width: min(360px, 80vw);
+  max-height: 44vh;
+  padding: 0.6rem;
+  overflow: auto;
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  background: var(--panel-solid);
+  box-shadow: 0 18px 50px rgb(15 23 42 / 18%);
+}
+
+.editor-side-tools > div > span {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+  margin: 0;
+}
+
+@media (min-width: 1281px) {
+  .editor-selection-actions {
+    padding: 0.55rem 0.65rem;
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--panel-solid) 94%, transparent);
+  }
+}
+
 /* En telefono el mapa es la pantalla. La lista era otra pagina completa
    debajo: 70 filas despues de un mapa de 70dvh. Queda cerrada, un renglon. */
 @media (max-width: 1280px) {

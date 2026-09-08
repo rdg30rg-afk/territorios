@@ -91,6 +91,134 @@ export function updateBlockGeometry(
   }
 }
 
+export function addBlock(document: EditorDocument, block: EditorBlock): EditorDocument {
+  if (document.blocks[block.id]) throw new Error(`Ya existe la manzana ${block.id}.`)
+  if (block.territoryId && !document.territories[block.territoryId]) {
+    throw new Error(`No existe el territorio ${block.territoryId}.`)
+  }
+  polygonRingLatLng(block.geometry)
+  return {
+    ...document,
+    blocks: {
+      ...document.blocks,
+      [block.id]: { ...block, edited: true },
+    },
+    touchedTerritoryIds: markTouched(document, [block.territoryId]),
+  }
+}
+
+export function mergeBlocks(
+  document: EditorDocument,
+  keptBlockId: string,
+  removedBlockId: string,
+  geometry: EditorPolygon,
+): EditorDocument {
+  if (keptBlockId === removedBlockId) throw new Error('Elegí dos manzanas distintas para fusionar.')
+  const kept = document.blocks[keptBlockId]
+  const removed = document.blocks[removedBlockId]
+  if (!kept || !removed) throw new Error('Una de las manzanas elegidas ya no existe.')
+  if (kept.territoryId && removed.territoryId && kept.territoryId !== removed.territoryId) {
+    throw new Error('Mové primero las manzanas al mismo territorio antes de fusionarlas.')
+  }
+  polygonRingLatLng(geometry)
+  const blocks = { ...document.blocks }
+  delete blocks[removedBlockId]
+  blocks[keptBlockId] = {
+    ...kept,
+    geometry,
+    territoryId: kept.territoryId ?? removed.territoryId,
+    manualSideGroups: null,
+    manualVertexCount: null,
+    edited: true,
+  }
+  return {
+    ...document,
+    blocks,
+    touchedTerritoryIds: markTouched(document, [kept.territoryId, removed.territoryId]),
+  }
+}
+
+export function splitBlock(
+  document: EditorDocument,
+  blockId: string,
+  newBlockId: string,
+  geometries: readonly [EditorPolygon, EditorPolygon],
+): EditorDocument {
+  const block = document.blocks[blockId]
+  if (!block) throw new Error(`No existe la manzana ${blockId}.`)
+  if (document.blocks[newBlockId]) throw new Error(`Ya existe la manzana ${newBlockId}.`)
+  geometries.forEach(polygonRingLatLng)
+  const baseOrder = block.order ?? Object.values(document.blocks)
+    .filter((candidate) => candidate.territoryId === block.territoryId)
+    .length
+  return {
+    ...document,
+    blocks: {
+      ...document.blocks,
+      [blockId]: {
+        ...block,
+        geometry: geometries[0],
+        manualSideGroups: null,
+        manualVertexCount: null,
+        edited: true,
+      },
+      [newBlockId]: {
+        ...block,
+        id: newBlockId,
+        sourceKey: null,
+        geometry: geometries[1],
+        label: null,
+        order: baseOrder + 0.5,
+        manualSideGroups: null,
+        manualVertexCount: null,
+        edited: true,
+      },
+    },
+    touchedTerritoryIds: markTouched(document, [block.territoryId]),
+  }
+}
+
+function alphabeticalLabel(index: number) {
+  const alphabet = 'abcdefghijklmnopqrstuvwxyz'
+  let value = index
+  let label = ''
+  do {
+    label = alphabet[value % alphabet.length] + label
+    value = Math.floor(value / alphabet.length) - 1
+  } while (value >= 0)
+  return label
+}
+
+export function relabelTerritoryBlocks(
+  document: EditorDocument,
+  territoryId: string,
+  orderedBlockIds: readonly string[],
+): EditorDocument {
+  if (!document.territories[territoryId]) throw new Error(`No existe el territorio ${territoryId}.`)
+  const expected = Object.values(document.blocks)
+    .filter((block) => block.territoryId === territoryId)
+    .map((block) => block.id)
+  if (expected.length !== orderedBlockIds.length ||
+    new Set(orderedBlockIds).size !== orderedBlockIds.length ||
+    expected.some((id) => !orderedBlockIds.includes(id))) {
+    throw new Error('El orden debe incluir una vez cada manzana del territorio.')
+  }
+  const blocks = { ...document.blocks }
+  orderedBlockIds.forEach((id, index) => {
+    blocks[id] = {
+      ...document.blocks[id],
+      label: alphabeticalLabel(index),
+      order: index,
+      edited: true,
+    }
+  })
+  return {
+    ...document,
+    blocks,
+    touchedTerritoryIds: markTouched(document, [territoryId]),
+  }
+}
+
 export function setManualSideGroups(
   document: EditorDocument,
   blockId: string,
