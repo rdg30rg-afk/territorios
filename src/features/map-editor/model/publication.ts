@@ -35,8 +35,19 @@ export type TerritoryRevision = {
   version: number
 }
 
+export type TerritoryRevisionV2 = {
+  territory_id: string
+  version: number
+}
+
 export type AtomicPublicationItem = {
   nombre: string
+  version_esperada: number
+  manzanas: PublishableBlock[]
+}
+
+export type AtomicPublicationItemV2 = {
+  territory_id: string
   version_esperada: number
   manzanas: PublishableBlock[]
 }
@@ -121,6 +132,34 @@ export function buildAtomicPublication(
     }
     return {
       nombre: snapshot.name,
+      version_esperada: version,
+      manzanas: structuredClone(snapshot.blocks),
+    }
+  })
+}
+
+export function buildAtomicPublicationV2(
+  snapshots: readonly PublicationSnapshot[],
+  revisions: readonly TerritoryRevisionV2[],
+): AtomicPublicationItemV2[] {
+  const versionById = new Map<string, number>()
+  for (const revision of revisions) {
+    if (!revision.territory_id || !Number.isSafeInteger(revision.version) || revision.version < 0) {
+      continue
+    }
+    if (versionById.has(revision.territory_id)) {
+      throw new Error(`La revisión del territorio UUID ${revision.territory_id} está repetida.`)
+    }
+    versionById.set(revision.territory_id, revision.version)
+  }
+
+  return snapshots.map((snapshot) => {
+    const version = versionById.get(snapshot.territoryId)
+    if (version === undefined) {
+      throw new Error(`No se pudo verificar la versión del territorio UUID ${snapshot.territoryId}.`)
+    }
+    return {
+      territory_id: snapshot.territoryId,
       version_esperada: version,
       manzanas: structuredClone(snapshot.blocks),
     }

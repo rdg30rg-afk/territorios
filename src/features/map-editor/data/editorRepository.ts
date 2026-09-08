@@ -1,5 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { polygonRingLatLng } from '../geometry/blockGeometry.ts'
+import type {
+  AtomicPublicationItemV2,
+  TerritoryRevisionV2,
+} from '../model/publication.ts'
 import type { EditorPolygon } from '../model/types.ts'
 
 export type EditorViewport = {
@@ -232,4 +236,43 @@ export async function discardEditorDraft(transport: EditorDataTransport, revisio
   const result = await transport.callRpc('descartar_borrador_editor', { p_revision: revision })
   throwRpcError(result.error)
   return parseDraft(result.data)
+}
+
+export async function reviewEditorPublicationV2(
+  transport: EditorDataTransport,
+  territoryIds: readonly string[],
+): Promise<TerritoryRevisionV2[]> {
+  if (!territoryIds.length || territoryIds.some((id) => !id)) {
+    throw new Error('Elegí al menos un territorio válido para revisar la publicación.')
+  }
+  const result = await transport.callRpc('revisar_publicacion_editor_v2', {
+    p_territory_ids: [...territoryIds],
+  })
+  throwRpcError(result.error)
+  if (!Array.isArray(result.data)) {
+    throw new Error('La base no devolvió una revisión de publicación válida.')
+  }
+  return result.data as TerritoryRevisionV2[]
+}
+
+export async function publishEditorPublicationV2(
+  transport: EditorDataTransport,
+  operationId: string,
+  changes: readonly AtomicPublicationItemV2[],
+) {
+  if (!operationId || !changes.length) {
+    throw new Error('La publicación necesita una operación y al menos un territorio.')
+  }
+  const result = await transport.callRpc('publicar_territorios_atomico_v2', {
+    p_operation_id: operationId,
+    p_cambios: structuredClone(changes),
+  })
+  if (result.error?.code === '40001') {
+    throw new Error('Un territorio cambió mientras revisabas la publicación. Recargá y revisá el lote antes de volver a publicar.')
+  }
+  throwRpcError(result.error)
+  if (!Array.isArray(result.data)) {
+    throw new Error('La base no confirmó una publicación válida.')
+  }
+  return result.data
 }
