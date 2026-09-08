@@ -192,6 +192,25 @@
   gap: 0.35rem;
 }
 
+.editor-selection-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  padding-top: 0.2rem;
+}
+
+.editor-selection-actions > span {
+  min-width: 13rem;
+  margin-right: auto;
+  color: var(--text-soft);
+  font-size: 0.88rem;
+}
+
+.editor-selection-actions button {
+  min-height: 40px;
+}
+
 /* En telefono el mapa es la pantalla. La lista era otra pagina completa
    debajo: 70 filas despues de un mapa de 70dvh. Queda cerrada, un renglon. */
 @media (max-width: 1280px) {
@@ -259,6 +278,10 @@
   }
 
   .map-mode-button {
+    display: none;
+  }
+
+  .editor-selection-actions {
     display: none;
   }
 }

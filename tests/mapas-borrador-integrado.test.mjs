@@ -51,7 +51,7 @@ test('salir o cambiar dependencias aborta la carga y evita resultados obsoletos'
   assertSource(mapSource, /const abortController = new AbortController\(\)\s*let active = true/)
   assertSource(
     mapSource,
-    /loadEditorWorkspace\([\s\S]*?abortController\.signal,[\s\S]*?\)\s*\.then\(\(workspace\) => \{\s*if \(active\) setEditorWorkspace\(workspace\)/,
+    /loadEditorWorkspace\([\s\S]*?abortController\.signal,[\s\S]*?\)\s*\.then\(\(workspace\) => \{\s*if \(active\) \{[\s\S]*?setEditorWorkspace\(workspace\)/,
     'un resultado solo puede instalarse si el efecto sigue activo',
   )
   assertSource(
@@ -92,9 +92,27 @@ test('la pantalla muestra carga, error, revisión, cantidad y legacy protegido',
   assertSource(mapSource, /Abriendo el borrador compartido…/)
   assertSource(
     mapSource,
-    /Object\.values\(editorWorkspace\.draft\.document\.blocks\)\.filter\(\(block\) => block\.territoryId\)\.length/,
+    /Object\.values\(editorDocument\?\.blocks \?\? \{\}\)\.filter\(\(block\) => block\.territoryId\)\.length/,
     'debe mostrar la cantidad de manzanas asignadas',
   )
   assertSource(mapSource, /editorWorkspace\.revision/)
   assertSource(mapSource, /editorWorkspace\.draft\.migratedFromLegacy \? ' · formato anterior protegido' : ''/)
+})
+
+test('la edición local selecciona, asigna y conserva deshacer y rehacer', () => {
+  assertSource(mapSource, /createEditorHistory\(workspace\.draft\.document\)/)
+  assertSource(mapSource, /candidatePolygon\.on\('click', \(\) => toggleEditorBlock\(candidate\.id\)\)/)
+  assertSource(
+    mapSource,
+    /commitEditorChange\(current, \(document\) =>\s*assignBlocks\(document, selectedEditorBlockIds, territoryId\)/,
+    'asignar o liberar debe pasar por el historial puro del editor',
+  )
+  assertSource(mapSource, /undoEditorChange\(current\)/)
+  assertSource(mapSource, /redoEditorChange\(current\)/)
+  assertSource(mapSource, /cambios locales sin guardar/)
+  assertSource(
+    mapSource,
+    /editorWorkspace\?\.draft\.discardedSourceKeys\.includes\(candidate\.sourceKey\)/,
+    'las manzanas descartadas no deben reaparecer en el mapa',
+  )
 })

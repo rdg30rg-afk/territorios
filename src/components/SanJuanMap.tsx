@@ -24,6 +24,14 @@ import {
   loadEditorWorkspace,
   type LoadedEditorWorkspace,
 } from '../features/map-editor/data/loadEditorWorkspace.ts'
+import {
+  assignBlocks,
+  commitEditorChange,
+  createEditorHistory,
+  redoEditorChange,
+  undoEditorChange,
+} from '../features/map-editor/model/editorDocument.ts'
+import type { EditorHistory } from '../features/map-editor/model/types.ts'
 
 L.drawLocal.draw.toolbar.buttons.polygon = 'Polígono'
 L.drawLocal.draw.toolbar.buttons.rectangle = 'Rectángulo'
@@ -988,6 +996,8 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
   const [isLoadingCandidates, setIsLoadingCandidates] = useState(false)
   const [candidateError, setCandidateError] = useState<string | null>(null)
   const [editorWorkspace, setEditorWorkspace] = useState<LoadedEditorWorkspace | null>(null)
+  const [editorHistory, setEditorHistory] = useState<EditorHistory | null>(null)
+  const [selectedEditorBlockIds, setSelectedEditorBlockIds] = useState<string[]>([])
   const [isLoadingEditorWorkspace, setIsLoadingEditorWorkspace] = useState(false)
   const [editorWorkspaceError, setEditorWorkspaceError] = useState<string | null>(null)
   const [isMarkingBlocks, setIsMarkingBlocks] = useState(false)
@@ -1006,6 +1016,8 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
   const selectedVertexCount = getPolygonVertexCount(currentGeometry)
   const territoryCount = territories.length
   const modoEdicion = isDrawing || Boolean(editingTerritoryId) || modoCrear
+  const editorDocument = editorHistory?.present ?? editorWorkspace?.draft.document ?? null
+  const editorHasLocalChanges = Boolean(editorHistory?.past.length)
 
   const selectedTerritory = useMemo(
     () => territories.find((item) => item.id === selectedTerritoryId) ?? null,
@@ -1021,6 +1033,26 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
         : [],
     [selectedTerritoryId, territoryBlocks],
   )
+
+  const toggleEditorBlock = useCallback((blockId: string) => {
+    setSelectedEditorBlockIds((current) =>
+      current.includes(blockId)
+        ? current.filter((id) => id !== blockId)
+        : [...current, blockId],
+    )
+  }, [])
+
+  const assignSelectedEditorBlocks = useCallback((territoryId: string | null) => {
+    if (!selectedEditorBlockIds.length) return
+    setEditorHistory((current) =>
+      current
+        ? commitEditorChange(current, (document) =>
+            assignBlocks(document, selectedEditorBlockIds, territoryId),
+          )
+        : current,
+    )
+    setSelectedEditorBlockIds([])
+  }, [selectedEditorBlockIds])
 
   const territoriesWithIndex = useMemo<TerritoryListItem[]>(
     () =>
@@ -1987,20 +2019,41 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
     if (!layer || !editingEnabled || mapZoom < EDITOR_CANDIDATE_ZOOM) return
 
     for (const candidate of editorCandidates) {
-      L.polygon(
-        candidate.geometry.coordinates[0].map(([lng, lat]) => [lat, lng] as [number, number]),
+      if (editorWorkspace?.draft.discardedSourceKeys.includes(candidate.sourceKey)) continue
+      const draftBlock = editorDocument?.blocks[candidate.id]
+      const selected = selectedEditorBlockIds.includes(candidate.id)
+      const assignedTerritory = draftBlock?.territoryId
+        ? territoriesWithIndex.find((territory) => territory.id === draftBlock.territoryId)
+        : null
+      const candidatePolygon = L.polygon(
+        (draftBlock?.geometry ?? candidate.geometry).coordinates[0].map(
+          ([lng, lat]) => [lat, lng] as [number, number],
+        ),
         {
-          color: '#2563eb',
-          weight: 1,
-          opacity: 0.55,
-          fillColor: '#60a5fa',
-          fillOpacity: 0.07,
-          interactive: false,
-          dashArray: '4 4',
+          color: selected ? '#111827' : assignedTerritory?.color ?? '#2563eb',
+          weight: selected ? 4 : assignedTerritory ? 2 : 1,
+          opacity: selected ? 1 : 0.65,
+          fillColor: assignedTerritory?.color ?? '#60a5fa',
+          fillOpacity: selected ? 0.32 : assignedTerritory ? 0.18 : 0.07,
+          interactive: Boolean(editorDocument && canManageTerritories),
+          dashArray: assignedTerritory ? undefined : '4 4',
         },
       ).addTo(layer)
+      if (editorDocument && canManageTerritories) {
+        candidatePolygon.on('click', () => toggleEditorBlock(candidate.id))
+      }
     }
-  }, [editingEnabled, editorCandidates, mapZoom])
+  }, [
+    canManageTerritories,
+    editingEnabled,
+    editorCandidates,
+    editorDocument,
+    editorWorkspace,
+    mapZoom,
+    selectedEditorBlockIds,
+    territoriesWithIndex,
+    toggleEditorBlock,
+  ])
 
   useEffect(() => {
     const map = mapRef.current
@@ -2064,12 +2117,18 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
       abortController.signal,
     )
       .then((workspace) => {
-        if (active) setEditorWorkspace(workspace)
+        if (active) {
+          setEditorWorkspace(workspace)
+          setEditorHistory(createEditorHistory(workspace.draft.document))
+          setSelectedEditorBlockIds([])
+        }
       })
       .catch((workspaceError: unknown) => {
         if (workspaceError instanceof DOMException && workspaceError.name === 'AbortError') return
         if (!active) return
         setEditorWorkspace(null)
+        setEditorHistory(null)
+        setSelectedEditorBlockIds([])
         setEditorWorkspaceError(
           workspaceError instanceof Error
             ? workspaceError.message
@@ -2085,6 +2144,33 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
       abortController.abort()
     }
   }, [canManageTerritories, client, isLoading, territories])
+
+  useEffect(() => {
+    if (!editingEnabled) {
+      setEditorHistory(null)
+      setSelectedEditorBlockIds([])
+    }
+  }, [editingEnabled])
+
+  useEffect(() => {
+    if (!canManageTerritories || !editorHistory) return
+    const handleEditorHistoryKey = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'z') return
+      const target = event.target as HTMLElement | null
+      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
+      event.preventDefault()
+      setEditorHistory((current) =>
+        current
+          ? event.shiftKey
+            ? redoEditorChange(current)
+            : undoEditorChange(current)
+          : current,
+      )
+      setSelectedEditorBlockIds([])
+    }
+    window.addEventListener('keydown', handleEditorHistoryKey)
+    return () => window.removeEventListener('keydown', handleEditorHistoryKey)
+  }, [canManageTerritories, editorHistory])
 
   useEffect(() => {
     renderSnapGuide(snapPreviewPoint)
@@ -3334,9 +3420,56 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false }
                         : isLoadingEditorWorkspace
                           ? 'Abriendo el borrador compartido…'
                           : editorWorkspace
-                            ? `${Object.values(editorWorkspace.draft.document.blocks).filter((block) => block.territoryId).length} manzanas asignadas · revisión ${editorWorkspace.revision}${editorWorkspace.draft.migratedFromLegacy ? ' · formato anterior protegido' : ''}.`
+                            ? `${Object.values(editorDocument?.blocks ?? {}).filter((block) => block.territoryId).length} manzanas asignadas · revisión ${editorWorkspace.revision}${editorWorkspace.draft.migratedFromLegacy ? ' · formato anterior protegido' : ''}${editorHasLocalChanges ? ' · cambios locales sin guardar' : ''}.`
                             : 'El borrador compartido todavía no está disponible.'}
                     </div>
+                    {editorHistory ? (
+                      <div className="editor-selection-actions" aria-label="Edición local de manzanas">
+                        <span>
+                          {selectedEditorBlockIds.length > 0
+                            ? `${selectedEditorBlockIds.length} seleccionada${selectedEditorBlockIds.length === 1 ? '' : 's'}`
+                            : 'Tocá una manzana para seleccionarla.'}
+                        </span>
+                        <button
+                          type="button"
+                          className="ghost-button compact-button"
+                          onClick={() => {
+                            setEditorHistory((current) => current ? undoEditorChange(current) : current)
+                            setSelectedEditorBlockIds([])
+                          }}
+                          disabled={!editorHistory.past.length}
+                        >
+                          Deshacer
+                        </button>
+                        <button
+                          type="button"
+                          className="ghost-button compact-button"
+                          onClick={() => {
+                            setEditorHistory((current) => current ? redoEditorChange(current) : current)
+                            setSelectedEditorBlockIds([])
+                          }}
+                          disabled={!editorHistory.future.length}
+                        >
+                          Rehacer
+                        </button>
+                        <button
+                          type="button"
+                          className="secondary-button compact-button"
+                          onClick={() => assignSelectedEditorBlocks(selectedTerritoryId)}
+                          disabled={!selectedTerritoryId || !selectedEditorBlockIds.length}
+                        >
+                          Asignar a {selectedTerritory?.name ?? 'territorio'}
+                        </button>
+                        <button
+                          type="button"
+                          className="ghost-button compact-button"
+                          onClick={() => assignSelectedEditorBlocks(null)}
+                          disabled={!selectedEditorBlockIds.length}
+                        >
+                          Dejar libre
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
                 {modoEdicion ? (
