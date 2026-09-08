@@ -444,6 +444,14 @@ let borradorTimer = null            // las escrituras se agrupan, no una por mov
 let baseLeida = false               // la base CONTESTO, aunque haya venido vacia
 let ultimoTextoGuardado = null      // para no escribir cuando no cambio nada
 let sesionVencida = false           // el token de la app se vencio; lo renueva la app, no esta pagina
+let sesionEmbebida = null
+let resolverSesionEmbebida = null
+window.addEventListener('message', evento => {
+  if (evento.origin !== location.origin || evento.source !== parent || evento.data?.type !== 'territorios:editor:session') return
+  sesionEmbebida = evento.data.session ?? null
+  resolverSesionEmbebida?.()
+  resolverSesionEmbebida = null
+})
 let paraFusionar = []
 let cortePuntos = []
 let historial = []
@@ -2251,6 +2259,13 @@ try {
 // elige solo: elige la persona, con los numeros de cada uno a la vista.
 // Perder una tarde de dibujo por una regla automatica no se arregla
 // despues.
+if (window.self !== window.top) {
+  await new Promise(resolve => {
+    resolverSesionEmbebida = resolve
+    parent.postMessage({ type: 'territorios:editor:request-session' }, location.origin)
+    setTimeout(resolve, 2000)
+  })
+}
 const remoto = await leerBorrador()
 let local = null
 try { local = JSON.parse(localStorage.getItem(CLAVE) || 'null') } catch (e) { local = null }
@@ -2616,6 +2631,14 @@ function resumenCaras () {
 // pedir, y se avisa con lo que hay que hacer.
 function tokenDeSesion () {
   if (!BD_URL) return null
+  if (sesionEmbebida?.accessToken) {
+    if (sesionEmbebida.expiresAt && sesionEmbebida.expiresAt * 1000 < Date.now() + 60000) {
+      sesionVencida = true
+      return null
+    }
+    sesionVencida = false
+    return sesionEmbebida.accessToken
+  }
   const ref = BD_URL.replace(/^https?:\/\//, '').split('.')[0]
   try {
     const crudo = localStorage.getItem('sb-' + ref + '-auth-token')

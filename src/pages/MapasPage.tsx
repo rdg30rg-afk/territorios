@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { SanJuanMap } from '../components/SanJuanMap'
 import { CoverageHeatmapPanel } from '../components/CoverageHeatmapPanel'
 import { useAuth } from '../context/useAuth'
 import { canOpenAdminPanel } from '../lib/access'
+import { supabase } from '../lib/supabase'
 import '../styles/mapas-pagina.css'
 
 /** Keep the existing editor document alive while switching tabs. */
@@ -15,6 +16,25 @@ export function MapasPage() {
   const canEditMap = canOpenAdminPanel(profile, contexto)
   const [editorHtml, setEditorHtml] = useState<string | null>(null)
   const [editorError, setEditorError] = useState<string | null>(null)
+  const editorFrameRef = useRef<HTMLIFrameElement>(null)
+
+  useEffect(() => {
+    if (!supabase) return
+    const authClient = supabase
+    const sendSession = async () => {
+      const { data } = await authClient.auth.getSession()
+      editorFrameRef.current?.contentWindow?.postMessage({
+        type: 'territorios:editor:session',
+        session: data.session ? { accessToken: data.session.access_token, expiresAt: data.session.expires_at } : null,
+      }, window.location.origin)
+    }
+    const receiveRequest = (event: MessageEvent) => {
+      if (event.origin === window.location.origin && event.source === editorFrameRef.current?.contentWindow && event.data?.type === 'territorios:editor:request-session') void sendSession()
+    }
+    window.addEventListener('message', receiveRequest)
+    const { data: authListener } = authClient.auth.onAuthStateChange(() => { void sendSession() })
+    return () => { window.removeEventListener('message', receiveRequest); authListener.subscription.unsubscribe() }
+  }, [])
 
   useEffect(() => {
     if (!canEditMap || editorHtml) return
@@ -46,7 +66,7 @@ export function MapasPage() {
       <div hidden={view !== 'editor'} className="editor-integrado-container">
         {canEditMap ? (
           editorHtml ? (
-            <iframe className="editor-integrado-frame" srcDoc={editorHtml} title="Editor completo de manzanas y territorios" allow="geolocation; screen-wake-lock" />
+            <iframe ref={editorFrameRef} className="editor-integrado-frame" srcDoc={editorHtml} title="Editor completo de manzanas y territorios" allow="geolocation; screen-wake-lock" />
           ) : (
             <div className={editorError ? 'form-feedback error' : 'map-editing-notice'} role="status">
               {editorError ? `No se pudo abrir el editor: ${editorError}` : 'Abriendo el editor completo…'}
