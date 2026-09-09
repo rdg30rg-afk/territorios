@@ -37,3 +37,8 @@ test('el desplegable de cuenta queda acotado y usable en mobile', () => {
   assert.match(css, /@media \(max-width: 380px\)[\s\S]*?\.cuentaTexto \{ display: none; \}/)
   assert.match(css, /\.vh \.barra-controles\s*\{[\s\S]*?gap: 8px;/)
 })
+
+test('la hora destacada no se parte en teléfonos angostos', () => {
+  assert.match(predicacion, /className="numeroHora"/)
+  assert.match(css, /\.vh \.numeroHora \{[^}]*flex:\s*0 0 auto;[^}]*white-space:\s*nowrap;/)
+})

@@ -199,6 +199,7 @@
   font-size: var(--t-big); font-weight: 700; line-height: 1; letter-spacing: -.03em;
   margin: 4px 0 14px; display: flex; align-items: baseline; gap: 12px;
 }
+.vh .numeroHora { flex: 0 0 auto; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .vh .numeroGrande small { font-size: var(--t-lead); font-weight: 500; color: #a4a8b0; letter-spacing: 0; }
 
 .vh .chip {

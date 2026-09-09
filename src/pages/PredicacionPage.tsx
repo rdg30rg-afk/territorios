@@ -36,7 +36,13 @@ import { MiCuenta } from '../components/MiCuenta'
 import { CoverageCorrectionForm } from '../components/CoverageCorrectionForm'
 import { prepareCoverageCorrection } from '../lib/coverageCorrection'
 import { ponerFondo as ponerTeselas } from '../lib/fondoMapa'
-import { sePuedeLlegar, urlComoLlegar, type ModoLlegar } from '../lib/comoLlegar'
+import {
+  coordenadasDePuntoCatalogado,
+  sePuedeLlegar,
+  urlComoLlegar,
+  type ModoLlegar,
+  type PuntoParaLlegar,
+} from '../lib/comoLlegar'
 import {
   esMiembroPendiente,
   filtrosSalidas,
@@ -185,6 +191,7 @@ function comoSalida(f: Record<string, unknown>, territorios: Territorio[]): Sali
     notes: typeof f.notes === 'string' ? f.notes : null,
     fecha: cuando.toLocaleDateString('sv-SE'),
     hora: cuando.toTimeString().slice(0, 5),
+    puntoCodigo: codigo || undefined,
     lugar: (f.meeting_point_name as string) || '',
     lat: numeroOpcional(f.meeting_point_lat),
     lng: numeroOpcional(f.meeting_point_lng),
@@ -263,6 +270,7 @@ type Salida = {
   notes?: string | null
   fecha: string
   hora: string
+  puntoCodigo?: string
   lugar?: string
   lat?: number
   lng?: number
@@ -746,7 +754,7 @@ export function PredicacionPage() {
       const desdeHoy = new Date()
       desdeHoy.setHours(0, 0, 0, 0)
 
-      const [terrRes, resRes, salRes] = await conLimiteDeCarga(Promise.all([
+      const [terrRes, resRes, salRes, puntosRes] = await conLimiteDeCarga(Promise.all([
         supabase.from('territorios').select('id, name'),
         readAllRows<ReservaPropia>((from, to) => supabase!
           .from('territorio_personal_reservas')
@@ -756,9 +764,12 @@ export function PredicacionPage() {
           .order('id', { ascending: false })
         .range(from, to)).then((data) => ({ data, error: null })),
         salidasDesde(supabase, desdeHoy.toISOString()),
+        supabase.from('puntos_encuentro').select('codigo, nombre, lat, lng').eq('activo', true),
       ]))
       if (!vivo) return
-      if (terrRes.error || resRes.error || salRes.error) throw terrRes.error ?? resRes.error ?? salRes.error
+      if (terrRes.error || resRes.error || salRes.error || puntosRes.error) {
+        throw terrRes.error ?? resRes.error ?? salRes.error ?? puntosRes.error
+      }
 
       const lista = ((terrRes.data as Territorio[]) ?? []).slice().sort(
         (a, b) => Number(a.name) - Number(b.name) || a.name.localeCompare(b.name),
@@ -780,7 +791,17 @@ export function PredicacionPage() {
             ? { trajo: filas.length, hay: salRes.count }
             : null,
         )
-        const convertidas = filas.map((f: Record<string, unknown>) => comoSalida(f, lista))
+        const puntos = (puntosRes.data ?? []) as PuntoParaLlegar[]
+        const convertidas = filas.map((f: Record<string, unknown>) => {
+          const salida = comoSalida(f, lista)
+          const gps = coordenadasDePuntoCatalogado({
+            codigo: salida.puntoCodigo,
+            lugar: salida.lugar,
+            lat: salida.lat,
+            lng: salida.lng,
+          }, puntos)
+          return gps ? { ...salida, ...gps } : salida
+        })
         setSalidas(convertidas)
       } else {
         setSalidas([])
@@ -1814,7 +1835,7 @@ function TarjetaGrupoSale({
     <section className="tarjeta">
       <p className="rotulo">Tu grupo sale</p>
       <p className="numeroGrande">
-        {salida?.hora ?? '—'}{' '}
+        <span className="numeroHora">{salida?.hora ?? '—'}</span>{' '}
         <small>{salida ? comoSeLlamaElDia(salida.fecha) ?? fechaLarga(salida.fecha) : 'cuando lo carguen'}</small>
       </p>
       {punto ? (
@@ -1823,7 +1844,7 @@ function TarjetaGrupoSale({
           {grupo ? ` · ${grupo}` : ''}
         </p>
       ) : (
-        <p className="sub">Tu grupo todavía no cargó dónde se junta. Preguntale al superintendente.</p>
+        <p className="sub">Tu grupo todavía no cargó dónde se junta. Preguntale al superintendente. Cuando lo cargue, acá aparecerán las indicaciones en auto y colectivo.</p>
       )}
       {punto && !conGps ? <p className="sub">El punto no tiene ubicación todavía.</p> : null}
       {conGps ? <BotonesComoLlegar salida={salidaPunto} /> : null}
@@ -1847,7 +1868,7 @@ function TarjetaDestacada({
     <section className="tarjeta">
       <p className="rotulo">{esFutura ? 'La próxima salida' : 'La salida de hoy'}</p>
       <p className="numeroGrande">
-        {salida.hora} <small>{apodo}</small>
+        <span className="numeroHora">{salida.hora}</span> <small>{apodo}</small>
       </p>
       <div className="frase">
         <span className="marco" aria-hidden="true">

@@ -2,6 +2,13 @@
 
 export type ModoLlegar = 'driving' | 'transit'
 
+export type PuntoParaLlegar = {
+  codigo: string | null
+  nombre: string
+  lat: number | null
+  lng: number | null
+}
+
 const CIUDAD = 'San Juan, Argentina'
 
 export function partirEsquina(nombre: string): { a: string; b: string } | null {
@@ -23,6 +30,26 @@ function coordenadas(lat: number, lng: number): { lat: number; lng: number } | n
   return Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180
     ? { lat, lng }
     : null
+}
+
+const clave = (valor: string | null | undefined) =>
+  (valor ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim().toLowerCase()
+
+/**
+ * Recupera el GPS confirmado del catálogo. El código exacto tiene prioridad;
+ * el nombre exacto normalizado cubre filas antiguas sin código. Nunca
+ * geocodifica texto ni usa el centro del mapa como destino.
+ */
+export function coordenadasDePuntoCatalogado(
+  salida: { codigo?: string | null; lugar?: string | null; lat?: number | null; lng?: number | null },
+  puntos: PuntoParaLlegar[],
+): { lat: number; lng: number } | null {
+  if (salida.lat != null && salida.lng != null) return coordenadas(salida.lat, salida.lng)
+  const codigo = clave(salida.codigo)
+  const lugar = clave(salida.lugar)
+  const punto = (codigo ? puntos.find((item) => clave(item.codigo) === codigo) : undefined)
+    ?? (lugar ? puntos.find((item) => clave(item.nombre) === lugar) : undefined)
+  return punto?.lat != null && punto.lng != null ? coordenadas(punto.lat, punto.lng) : null
 }
 
 /** Solo destinos numéricos explícitos; @lat,lng y ll son cámara, no un pin. */
