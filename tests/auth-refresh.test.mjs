@@ -25,6 +25,7 @@ function harness({warning=null,confirm=true}={}){
     }
     if(name.endsWith('/readAllRows'))return {}
     if(name.endsWith('/pendingBeforeLogout'))return {pendingBeforeLogout:()=>warning}
+    if(name.endsWith('/authRedirect'))return {confirmationRedirectUrl(origin){const url=new URL('/login',origin);url.searchParams.set('confirmado','1');return url.toString()}}
     if(name==='./AuthTypes')return {AuthContext:{Provider:'provider'}}
     throw Error(name)
   }})

@@ -11,7 +11,7 @@ const getFriendlyAuthError = (error: string | null) => {
   }
 
   if (error.toLowerCase().includes('email not confirmed')) {
-    return 'El email todavia no fue confirmado en Supabase. Primero debe confirmar el correo recibido o un administrador debe marcarlo como confirmado en Authentication.'
+    return 'Todavía falta confirmar el email. Abrí el correo de Territorios y tocá “Confirmar email”.'
   }
 
   return error
@@ -28,7 +28,11 @@ export function LoginPage() {
   const [email, setEmail] = useState('')
   const [groupCode, setGroupCode] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [message, setMessage] = useState<string | null>(null)
+  const [message, setMessage] = useState<string | null>(() =>
+    new URLSearchParams(location.search).get('confirmado') === '1'
+      ? 'Email confirmado. Ya podés ingresar con tu usuario y contraseña.'
+      : null,
+  )
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const redirectTo = accessLanding(profile, moduleAccess, location.state?.from?.pathname)
@@ -71,7 +75,7 @@ export function LoginPage() {
         setPassword('')
         setGroupCode('')
       } else {
-        setMessage('Solicitud enviada. Si tenés el código de tu grupo, volvé a entrar y ponelo: entrás al instante.')
+        setMessage('Te enviamos un email para confirmar la cuenta. Después volvé e ingresá con tu usuario y contraseña.')
         setMode('login')
         setFullName('')
         setUsername('')

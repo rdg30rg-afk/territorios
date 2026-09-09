@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from 'react'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
+import { confirmationRedirectUrl } from '../lib/authRedirect'
 import {
   canManageAdministrators,
   canOpenAdminPanel,
@@ -527,6 +528,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       email: normalizedEmail,
       password,
       options: {
+        emailRedirectTo: confirmationRedirectUrl(window.location.origin),
         data: {
           full_name: fullName.trim(),
           username: normalizedUsername,
