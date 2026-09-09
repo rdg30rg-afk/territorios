@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase'
 import { readAllRows } from '../lib/readAllRows'
 import { canReportSalidaCoverage, prepareSalidaCoverage } from '../lib/salidaCoverage'
 import { linePoints } from '../lib/heatmapGeometry'
+import { nearestPath } from '../lib/recorridoGesture'
 import type { CoverageState } from '../lib/coverageSummary'
 import { ponerFondo } from '../lib/fondoMapa'
 import type { useCoverageOutbox } from '../lib/useCoverageOutbox'
@@ -21,8 +22,18 @@ type Side = {
 }
 type Block = { id: string; label: string; geometry_geojson: unknown }
 type CoverageRow = { lado_id: string; estado: CoverageState }
-type Outing = { id?: string; driverId?: string; terrId?: string }
+export type CoverageOuting = { id?: string; driverId?: string; terrId?: string }
 type MarkMode = 'manzana' | 'lado'
+
+type SalidaCoverageFormProps = {
+  outing: CoverageOuting
+  queue: ReturnType<typeof useCoverageOutbox>
+  autoOpen?: boolean
+  autoSelectAll?: boolean
+  onSaved?: () => void
+  onCancel?: () => void
+  onDirtyChange?: (dirty: boolean) => void
+}
 
 const coverageChoices: Array<{ value: CoverageState; label: string }> = [
   { value: 'recorrido', label: 'Recorrida' },
@@ -49,15 +60,24 @@ function polygonPoints(geometry: unknown): LatLngTuple[] | null {
   return points
 }
 
-export function SalidaCoverageForm({ outing, queue }: { outing: Outing; queue: ReturnType<typeof useCoverageOutbox> }) {
+export function SalidaCoverageForm({
+  outing,
+  queue,
+  autoOpen = false,
+  autoSelectAll = false,
+  onSaved,
+  onCancel,
+  onDirtyChange,
+}: SalidaCoverageFormProps) {
   const { profile, contexto } = useAuth()
-  const [editing, setEditing] = useState(false)
+  const [internalEditing, setInternalEditing] = useState(false)
+  const editing = autoOpen || internalEditing
   const [sides, setSides] = useState<Side[]>([])
   const [blocks, setBlocks] = useState<Block[]>([])
   const [current, setCurrent] = useState<Record<string, CoverageState>>({})
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
   const [state, setState] = useState<CoverageState>('recorrido')
-  const [mode, setMode] = useState<MarkMode>('manzana')
+  const [mode, setMode] = useState<MarkMode>('lado')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [revision, setRevision] = useState(0)
@@ -72,9 +92,10 @@ export function SalidaCoverageForm({ outing, queue }: { outing: Outing; queue: R
     () => queue.events.filter((item) => item.salida_id === outing.id),
     [outing.id, queue.events],
   )
+  const waiting = useMemo(() => pending.filter((item) => item.status !== 'error'), [pending])
   const pendingState = useMemo(
-    () => Object.fromEntries(pending.map((item) => [item.lado_id, item.estado])) as Record<string, CoverageState>,
-    [pending],
+    () => Object.fromEntries(waiting.map((item) => [item.lado_id, item.estado])) as Record<string, CoverageState>,
+    [waiting],
   )
 
   const sidesByBlock = useMemo(() => {
@@ -83,18 +104,19 @@ export function SalidaCoverageForm({ outing, queue }: { outing: Outing; queue: R
     return grouped
   }, [sides])
   const selectedSides = useMemo(() => sides.filter((side) => selected.has(side.id)), [selected, sides])
-  const selectedBlocks = useMemo(
+  const selectedBlockLabels = useMemo(
     () => blocks.filter((block) => {
       const own = sidesByBlock.get(block.id) ?? []
-      return own.some((side) => selected.has(side.id)) &&
-        own.every((side) => selected.has(side.id) || (pendingState[side.id] ?? current[side.id]) === state)
-    }).length,
-    [blocks, current, pendingState, selected, sidesByBlock, state],
+      return own.length > 0 && own.every((side) => selected.has(side.id))
+    }).map((block) => String(block.label).toUpperCase()),
+    [blocks, selected, sidesByBlock],
   )
 
   useEffect(() => {
     if (lastSent && queue.confirmed.some((item) => item.id === lastSent)) setConfirmed(true)
   }, [lastSent, queue.confirmed])
+
+  useEffect(() => onDirtyChange?.(selected.size > 0), [onDirtyChange, selected.size])
 
   useEffect(() => {
     if (!editing || !allowed || !supabase || !outing.terrId) return
@@ -126,8 +148,12 @@ export function SalidaCoverageForm({ outing, queue }: { outing: Outing; queue: R
     return () => { live = false }
   }, [editing, allowed, outing.terrId, revision, queue.remoteRevision])
 
+  useEffect(() => {
+    if (autoSelectAll && sides.length) setSelected(new Set(sides.map((side) => side.id)))
+  }, [autoSelectAll, sides])
+
   const toggleSides = useCallback((ids: string[]) => {
-    const changeable = ids.filter((id) => (pendingState[id] ?? current[id]) !== state)
+    const changeable = ids.filter((id) => pendingState[id] !== state)
     if (!changeable.length) return
     setSelected((before) => {
       const next = new Set(before)
@@ -138,7 +164,7 @@ export function SalidaCoverageForm({ outing, queue }: { outing: Outing; queue: R
       }
       return next
     })
-  }, [current, pendingState, state])
+  }, [pendingState, state])
 
   useEffect(() => {
     if (!editing || !mapElement.current || loading || !blocks.length) return
@@ -179,6 +205,7 @@ export function SalidaCoverageForm({ outing, queue }: { outing: Outing; queue: R
       if (mode === 'manzana') polygon.on('click', () => toggleSides(own.map((side) => side.id)))
     }
     if (mode === 'lado') {
+      const visibleLines = new Map<string, L.Polyline>()
       for (const side of sides) {
         const points = linePoints(side.geometry_geojson)
         if (!points) continue
@@ -187,17 +214,71 @@ export function SalidaCoverageForm({ outing, queue }: { outing: Outing; queue: R
         const complete = current[side.id] === 'recorrido'
         L.polyline(points, { color: '#000', opacity: 0, weight: 28 })
           .addTo(layer).on('click', () => toggleSides([side.id]))
-        L.polyline(points, {
+        const visible = L.polyline(points, {
           color: drafted ? '#172018' : queued ? '#8a5b16' : complete ? '#236447' : '#6a6e77',
           weight: drafted || queued ? 8 : complete ? 7 : 5,
           opacity: 1,
           interactive: false,
         }).addTo(layer)
+        visibleLines.set(side.id, visible)
       }
+      ;(map as L.Map & { __recorridoLines?: Map<string, L.Polyline> }).__recorridoLines = visibleLines
     }
     map.fitBounds(L.latLngBounds(allPoints).pad(0.12), { animate: false, maxZoom: 17 })
-    return () => { map.remove() }
-  }, [blocks, current, editing, loading, mode, pendingState, selected, sides, sidesByBlock, toggleSides])
+    let drawing = false
+    let stroke = new Set(selected)
+    const markNearest = (event: PointerEvent) => {
+      const bounds = mapElement.current?.getBoundingClientRect()
+      if (!bounds) return
+      const paths = sides.flatMap((side) => {
+        const points = linePoints(side.geometry_geojson)
+        if (!points) return []
+        return [{
+          id: side.id,
+          points: points.map((point) => {
+            const screen = map.latLngToContainerPoint(L.latLng(point[0], point[1]))
+            return { x: screen.x, y: screen.y }
+          }),
+        }]
+      })
+      const nearest = nearestPath({ x: event.clientX - bounds.left, y: event.clientY - bounds.top }, paths)
+      if (nearest && pendingState[nearest] !== state) {
+        stroke.add(nearest)
+        ;(map as L.Map & { __recorridoLines?: Map<string, L.Polyline> }).__recorridoLines
+          ?.get(nearest)?.setStyle({ color: '#172018', weight: 8 })
+      }
+    }
+    const startDrawing = (event: PointerEvent) => {
+      if (mode !== 'lado') return
+      drawing = true
+      stroke = new Set(selected)
+      mapElement.current?.setPointerCapture?.(event.pointerId)
+      markNearest(event)
+      event.preventDefault()
+    }
+    const draw = (event: PointerEvent) => {
+      if (!drawing || mode !== 'lado') return
+      markNearest(event)
+      event.preventDefault()
+    }
+    const stopDrawing = () => {
+      if (!drawing) return
+      drawing = false
+      setSelected(new Set(stroke))
+    }
+    const element = mapElement.current
+    element?.addEventListener('pointerdown', startDrawing)
+    element?.addEventListener('pointermove', draw)
+    element?.addEventListener('pointerup', stopDrawing)
+    element?.addEventListener('pointercancel', stopDrawing)
+    return () => {
+      element?.removeEventListener('pointerdown', startDrawing)
+      element?.removeEventListener('pointermove', draw)
+      element?.removeEventListener('pointerup', stopDrawing)
+      element?.removeEventListener('pointercancel', stopDrawing)
+      map.remove()
+    }
+  }, [blocks, current, editing, loading, mode, pendingState, selected, sides, sidesByBlock, state, toggleSides])
 
   if (!allowed) return null
 
@@ -206,71 +287,69 @@ export function SalidaCoverageForm({ outing, queue }: { outing: Outing; queue: R
       setError('Tenés cambios sin guardar. Guardalos o tocá “Descartar selección”.')
       return
     }
-    setEditing(false)
+    setInternalEditing(false)
     setError(null)
+    onCancel?.()
   }
 
-  return <section className="module-detail-list recorrido-salida">
-    <div className="cierre-paso-encabezado">
+  return <section className={`module-detail-list recorrido-salida${autoOpen ? ' recorrido-pantalla' : ''}`}>
+    {!autoOpen && <div className="cierre-paso-encabezado">
       <span className="cierre-paso-numero" aria-hidden="true">2</span>
       <div>
         <h3>¿Qué territorio recorrieron?</h3>
-        <p>Marcá en el mapa las manzanas que hicieron. Si hicieron sólo una parte, pasá a “Por calles”.</p>
+        <p>Marcá las manzanas completas o dibujá con el dedo por las calles recorridas.</p>
       </div>
-    </div>
+    </div>}
     {lastSent && <p role="status">{confirmed ? 'El servidor confirmó la última marca.' : 'Las marcas quedaron guardadas en este teléfono y esperan confirmación.'}</p>}
-    {pending.length > 0 && <p className="recorrido-aviso" role="status">{pending.length} marca(s) esperando confirmación.
+    {waiting.length > 0 && <p className="recorrido-aviso" role="status">{waiting.length} marca(s) esperando confirmación.
       <button type="button" className="boton secundario" disabled={queue.sending} onClick={() => void queue.retry()}><Icono nombre="rehacer" tamaño={18} />Reintentar</button></p>}
     {(error || queue.error) && <p className="nota" role="alert">{error || queue.error}</p>}
     {pending.filter((item) => item.lastError).map((item) => <p role="alert" key={item.id}>{item.lastError}</p>)}
-    {!editing ? <button type="button" className="boton principal" disabled={busy} onClick={() => setEditing(true)}>
+    {!editing ? <button type="button" className="boton principal" disabled={busy} onClick={() => setInternalEditing(true)}>
       <Icono nombre="marcar" tamaño={18} />Marcar en el mapa
     </button> : <div className="recorrido-editor">
-      <div className="recorrido-modos" role="group" aria-label="Qué querés marcar">
-        <button type="button" aria-pressed={mode === 'manzana'} onClick={() => { setMode('manzana'); setSelected(new Set()) }}>Manzanas completas</button>
-        <button type="button" aria-pressed={mode === 'lado'} onClick={() => { setMode('lado'); setSelected(new Set()) }}>Por calles</button>
-      </div>
-      <div className="recorrido-estados" role="group" aria-label="Qué querés informar">
+      {!autoSelectAll && <div className="recorrido-modos" role="group" aria-label="Cómo querés marcar">
+        <button type="button" aria-pressed={mode === 'lado'} onClick={() => { setMode('lado'); setSelected(new Set()) }}>Dibujar con el dedo</button>
+        <button type="button" aria-pressed={mode === 'manzana'} onClick={() => { setMode('manzana'); setSelected(new Set()) }}>Elegir manzanas</button>
+      </div>}
+      {!autoSelectAll && <div className="recorrido-estados" role="group" aria-label="Qué querés informar">
         {coverageChoices.map((choice) => <button type="button" key={choice.value} aria-pressed={state === choice.value}
           onClick={() => { setState(choice.value); setSelected(new Set()); setError(null) }}>{choice.label}</button>)}
-      </div>
+      </div>}
       {loading ? <div className="recorrido-mapa-cargando" role="status">Cargando el mapa…</div> : !sides.length || !blocks.length ?
         <p>No hay un dibujo disponible para informar el recorrido.</p> : <>
-          <div ref={mapElement} className="recorrido-mapa" aria-label="Mapa para marcar el recorrido de la salida" />
+          <div ref={mapElement} className={`recorrido-mapa${mode === 'lado' ? ' dibujando' : ''}`} aria-label="Mapa para marcar el recorrido de la salida" />
           <div className="recorrido-leyenda" aria-label="Referencias del mapa">
             <span><i className="actual" />Ya informada</span>
             <span><i className="elegida" />Elegida ahora</span>
             <span><i className="enviando" />Esperando envío</span>
             <span><i className="pendiente" />Sin marcar</span>
           </div>
-          <details className="recorrido-lista">
-            <summary>Elegir sin usar el mapa</summary>
+          {!autoSelectAll && <details className="recorrido-lista" open>
+            <summary>Manzanas completas por letra</summary>
             <div>
-              {mode === 'manzana' ? blocks.map((block) => {
+              {blocks.map((block) => {
                 const own = sidesByBlock.get(block.id) ?? []
                 const chosen = own.length > 0 && own.every((side) => selected.has(side.id))
                 return <button type="button" key={block.id} aria-pressed={chosen}
-                  disabled={!own.length || own.every((side) => (pendingState[side.id] ?? current[side.id]) === state)}
+                  disabled={!own.length || own.every((side) => pendingState[side.id] === state)}
                   onClick={() => toggleSides(own.map((side) => side.id))}>
                   Manzana {String(block.label).toUpperCase()}
                 </button>
-              }) : sides.map((side) => <button type="button" key={side.id} aria-pressed={selected.has(side.id)}
-                disabled={(pendingState[side.id] ?? current[side.id]) === state} onClick={() => toggleSides([side.id])}>
-                Manzana {String(blocks.find((block) => block.id === side.manzana_id)?.label ?? '').toUpperCase()} · calle {side.orden + 1}
-              </button>)}
+              })}
             </div>
-          </details>
+          </details>}
           <p className="recorrido-resumen" aria-live="polite">
             {selectedSides.length
-              ? `${selectedBlocks ? `${selectedBlocks} manzana${selectedBlocks === 1 ? '' : 's'} · ` : ''}${selectedSides.length} calle${selectedSides.length === 1 ? '' : 's'} seleccionada${selectedSides.length === 1 ? '' : 's'}`
-              : `Tocá ${mode === 'manzana' ? 'una manzana' : 'las calles'} en el mapa.`}
+              ? `${selectedBlockLabels.length ? `Manzana${selectedBlockLabels.length === 1 ? '' : 's'} ${selectedBlockLabels.join(', ')} completa${selectedBlockLabels.length === 1 ? '' : 's'} · ` : ''}${selectedSides.length} lado${selectedSides.length === 1 ? '' : 's'} marcado${selectedSides.length === 1 ? '' : 's'}`
+              : mode === 'manzana' ? 'Tocá las letras en el mapa o elegilas abajo.' : 'Pasá el dedo por los lados que recorrieron.'}
           </p>
         </>}
       <div className="recorrido-acciones">
         <button type="button" className="boton secundario" disabled={!selected.size || busy} onClick={() => { setSelected(new Set()); setError(null) }}>
           <Icono nombre="cerrar" tamaño={18} />Descartar selección
         </button>
-        <button type="button" className="boton principal" disabled={busy || !selectedSides.length || !!queue.error} onClick={async () => {
+        <button type="button" className="boton principal" disabled={busy || !selectedSides.length} onClick={async () => {
           if (!selectedSides.length || running.current) return
           running.current = true
           setBusy(true)
@@ -285,6 +364,7 @@ export function SalidaCoverageForm({ outing, queue }: { outing: Outing; queue: R
             }
             setSelected(new Set())
             void queue.sync()
+            onSaved?.()
           } catch (failure) {
             setSelected(remaining)
             setError(failure instanceof Error ? failure.message : 'No pudimos conservar todas las marcas.')
@@ -292,11 +372,11 @@ export function SalidaCoverageForm({ outing, queue }: { outing: Outing; queue: R
             running.current = false
             setBusy(false)
           }
-        }}><Icono nombre="guardar" tamaño={18} />{busy ? 'Guardando…' : `Guardar ${selectedSides.length || ''} ${selectedSides.length === 1 ? 'calle' : 'calles'}`}</button>
+        }}><Icono nombre="guardar" tamaño={18} />{busy ? 'Guardando…' : autoOpen ? 'Continuar' : `Guardar ${selectedSides.length || ''} ${selectedSides.length === 1 ? 'lado' : 'lados'}`}</button>
       </div>
       <div className="recorrido-editor-pie">
         <button type="button" className="boton texto" disabled={loading || busy} onClick={() => setRevision((value) => value + 1)}><Icono nombre="rehacer" tamaño={18} />Actualizar mapa</button>
-        <button type="button" className="boton texto" disabled={busy} onClick={closeEditor}><Icono nombre="completo" tamaño={18} />Terminar</button>
+        <button type="button" className="boton texto" disabled={busy} onClick={closeEditor}><Icono nombre="cerrar" tamaño={18} />Cancelar</button>
       </div>
     </div>}
   </section>

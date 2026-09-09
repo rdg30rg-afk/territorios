@@ -206,10 +206,23 @@ function harness({
   }
 
   const mapMock = createLeafletMock()
+  const makeElement = () => {
+    const listeners = new Map()
+    return {
+      nodeName: 'DIV',
+      listeners,
+      addEventListener(type, handler) { listeners.set(type, handler) },
+      removeEventListener(type, handler) {
+        if (listeners.get(type) === handler) listeners.delete(type)
+      },
+      getBoundingClientRect() { return { left: 0, top: 0, width: 800, height: 600 } },
+      setPointerCapture() {},
+    }
+  }
   const jsx = (type, props) => {
     const nextProps = props ?? {}
     if (nextProps.ref && typeof nextProps.ref === 'object') {
-      nextProps.ref.current ??= { nodeName: 'DIV' }
+      nextProps.ref.current ??= makeElement()
     }
     return { type, props: nextProps }
   }
@@ -231,6 +244,7 @@ function harness({
       }
       if (name.endsWith('salidaCoverage')) return { canReportSalidaCoverage, prepareSalidaCoverage }
       if (name.endsWith('heatmapGeometry')) return { linePoints }
+      if (name.endsWith('recorridoGesture')) return { nearestPath: () => null }
       if (name.endsWith('fondoMapa')) return { ponerFondo() {} }
       if (name.endsWith('Icono')) return { Icono: () => null }
       throw Error(`Dependencia inesperada: ${name}`)
@@ -328,36 +342,45 @@ test('abre con Marcar en el mapa, carga las tres tablas y selecciona una manzana
   assert.deepEqual([...new Set(h.loadTables)].sort(), [
     'cobertura_lado_actual', 'manzana_lados', 'territorio_manzanas',
   ])
+  h.button('Elegir manzanas').props.onClick()
+  await h.settle()
   await h.clickBlock('B-02')
-  assert.match(h.text(), /1 manzana · 1 calle seleccionada/)
+  assert.match(h.text(), /Manzana B(?:-02)? completa · 1 lado marcado/)
   assert.equal(h.saveButton().props.disabled, false)
   assert.equal(h.enqueued.length, 0)
 })
 
-test('en modo Por calles selecciona un lado con el handler de la hit-line', async () => {
+test('en modo Dibujar con el dedo selecciona un lado con el handler de la hit-line', async () => {
   const h = harness()
   await h.openAndLoad()
-  h.button('Por calles').props.onClick()
+  h.button('Dibujar con el dedo').props.onClick()
   await h.settle()
-  assert.equal(h.button('Por calles').props['aria-pressed'], true)
+  assert.equal(h.button('Dibujar con el dedo').props['aria-pressed'], true)
   await h.clickSide('side-a-2')
-  assert.match(h.text(), /1 calle seleccionada/)
+  assert.match(h.text(), /1 lado marcado/)
   assert.equal(h.saveButton().props.disabled, false)
 })
 
 test('selección múltiple y doble clic producen un solo envío por lado y payloads correctos', async () => {
   const h = harness()
   await h.openAndLoad()
+  h.button('Elegir manzanas').props.onClick()
+  await h.settle()
   await h.clickBlock('A-01')
   await h.clickBlock('B-02')
-  assert.match(h.text(), /2 manzanas · 2 calles seleccionadas/)
+  assert.match(h.text(), /Manzanas A-01, B-02 completas · 3 lados marcados/)
 
   const save = h.saveButton()
   await Promise.all([save.props.onClick(), save.props.onClick()])
   await h.settle()
 
-  assert.equal(h.enqueued.length, 2)
+  assert.equal(h.enqueued.length, 3)
   assert.deepEqual(h.enqueued, [
+    {
+      lado_id: 'side-a-1', manzana_id: 'block-1', territory_id: 'territory',
+      geometry_version: 1, estado: 'recorrido', origen: 'cierre_salida',
+      salida_id: 'outing', informado_por: 'person',
+    },
     {
       lado_id: 'side-a-2', manzana_id: 'block-1', territory_id: 'territory',
       geometry_version: 1, estado: 'recorrido', origen: 'cierre_salida',
@@ -370,18 +393,20 @@ test('selección múltiple y doble clic producen un solo envío por lado y paylo
     },
   ])
   assert.equal(h.syncs.length, 1)
-  assert.match(h.text(), /Tocá una manzana en el mapa/)
+  assert.match(h.text(), /Tocá las letras en el mapa o elegilas abajo/)
 })
 
 test('un error de enqueue conserva la selección pendiente y muestra el error', async () => {
   const h = harness({ enqueueImpl: async () => { throw Error('almacenamiento local lleno') } })
   await h.openAndLoad()
+  h.button('Elegir manzanas').props.onClick()
+  await h.settle()
   await h.clickBlock('B-02')
   await h.saveButton().props.onClick()
   await h.settle()
 
   assert.match(h.text(), /almacenamiento local lleno/)
-  assert.match(h.text(), /1 manzana · 1 calle seleccionada/)
+  assert.match(h.text(), /Manzana B(?:-02)? completa · 1 lado marcado/)
   assert.doesNotMatch(h.text(), /El servidor confirmó la última marca/)
   assert.equal(h.enqueued.length, 1)
   assert.equal(h.saveButton().props.disabled, false)
@@ -403,4 +428,27 @@ test('otro conductor activo puede informar, pero un publicador o una cuenta inac
   const inactive = harness({ profile: { ...driverProfile, access_status: 'revoked' } })
   await inactive.settle()
   assert.equal(inactive.render(), null)
+})
+
+test('al completar todos los lados el resumen nombra la manzana completa', async () => {
+  const h = harness({ coverage: [] })
+  await h.openAndLoad()
+
+  await h.clickSide('side-a-1')
+  await h.clickSide('side-a-2')
+
+  assert.match(h.text(), /Manzana A(?:-01)? completa/)
+})
+
+test('el mapa de recorrido expone un gesto táctil de marcar por arrastre', async () => {
+  const h = harness()
+  await h.openAndLoad()
+  const mapa = h.nodes().find((node) => String(node.props?.className ?? '').startsWith('recorrido-mapa'))
+  assert.ok(mapa, 'Mapa de recorrido ausente')
+
+  const element = mapa.props.ref?.current
+  assert.ok(element, 'Elemento DOM del mapa ausente')
+  for (const event of ['pointerdown', 'pointermove', 'pointerup']) {
+    assert.equal(typeof element.listeners?.get(event), 'function', `Falta handler táctil ${event}`)
+  }
 })

@@ -36,6 +36,10 @@ export type SalidaResultadoFormProps = {
   salidaId: string
   canReport: boolean
   canCorrect: boolean
+  initialEstado?: SalidaResultadoEstado
+  occurredAt?: string
+  autoEdit?: boolean
+  hideOccurredAt?: boolean
   onSaved?: () => void
 }
 
@@ -137,6 +141,10 @@ export function SalidaResultadoForm({
   salidaId,
   canReport,
   canCorrect,
+  initialEstado = 'realizada',
+  occurredAt,
+  autoEdit = false,
+  hideOccurredAt = false,
   onSaved,
 }: SalidaResultadoFormProps) {
   const client = supabase
@@ -204,11 +212,11 @@ export function SalidaResultadoForm({
         setResultado(currentResult)
         setHasLoaded(true)
         pendingAttempt.current = pending
-        setEstado((pending?.p_estado ?? currentResult?.estado ?? 'realizada') as SalidaResultadoEstado)
+        setEstado((pending?.p_estado ?? currentResult?.estado ?? initialEstado) as SalidaResultadoEstado)
         setMotivo((pending ? pending.p_motivo ?? '' : currentResult?.motivo ?? '') as SalidaResultadoMotivo | '')
         setObservaciones(pending ? pending.p_observaciones ?? '' : currentResult?.observaciones ?? '')
-        setOcurrioAt(toLocalDateTimeValue(pending ? pending.p_ocurrio_at : currentResult?.ocurrio_at ?? null))
-        setModoEdicion(Boolean(pending))
+        setOcurrioAt(toLocalDateTimeValue(pending ? pending.p_ocurrio_at : currentResult?.ocurrio_at ?? occurredAt ?? null))
+        setModoEdicion(Boolean(pending) || Boolean(autoEdit && (!currentResult || canCorrect)))
         attemptId.current = pending?.p_id ?? null
         setUnconfirmed(Boolean(pending))
         if (pending) setMessage('Hay un envío conservado en este dispositivo sin confirmación. Reintentá el mismo envío para comprobarlo sin duplicarlo.')
@@ -221,28 +229,28 @@ export function SalidaResultadoForm({
         return false
       }
     },
-    [client, salidaId],
+    [autoEdit, canCorrect, client, initialEstado, occurredAt, salidaId],
   )
 
   useEffect(() => {
     setResultado(null)
-    setEstado('realizada')
+    setEstado(initialEstado)
     setMotivo('')
     setObservaciones('')
-    setOcurrioAt('')
+    setOcurrioAt(toLocalDateTimeValue(occurredAt ?? null))
     setModoEdicion(false)
     setError(null)
     setMessage(null)
     attemptId.current = null
     void loadCurrentResult()
-  }, [loadCurrentResult])
+  }, [initialEstado, loadCurrentResult, occurredAt])
 
   const openEditor = () => {
     if (!hasLoaded) return
-    setEstado(resultado?.estado === 'sin_dato' ? 'realizada' : resultado?.estado ?? 'realizada')
+    setEstado(resultado?.estado === 'sin_dato' ? initialEstado : resultado?.estado ?? initialEstado)
     setMotivo(resultado?.motivo ?? '')
     setObservaciones(resultado?.observaciones ?? '')
-    setOcurrioAt(toLocalDateTimeValue(resultado?.ocurrio_at ?? null))
+    setOcurrioAt(toLocalDateTimeValue(resultado?.ocurrio_at ?? occurredAt ?? null))
     setModoEdicion(true)
     setError(null)
     setMessage(null)
@@ -452,7 +460,7 @@ export function SalidaResultadoForm({
           <label>
             {resultado
               ? 'Motivo de la corrección y observaciones (obligatorio)'
-              : 'Observaciones'}
+              : 'Comentario o casas para volver (opcional)'}
             <textarea
               value={observaciones}
               onChange={(event) => {
@@ -462,14 +470,14 @@ export function SalidaResultadoForm({
               placeholder={
                 resultado
                   ? 'Explicá qué se corrige y por qué.'
-                  : 'Qué pasó, qué quedó pendiente o qué conviene saber.'
+                  : 'Anotá una casa para volver o algo que convenga saber.'
               }
               rows={4}
               disabled={isSaving || unconfirmed}
             />
           </label>
 
-          <label>
+          {!hideOccurredAt && <label>
             Cuándo ocurrió
             <input
               type="datetime-local"
@@ -480,7 +488,7 @@ export function SalidaResultadoForm({
               }}
               disabled={isSaving || unconfirmed}
             />
-          </label>
+          </label>}
 
           <div className="module-table-actions">
             <button

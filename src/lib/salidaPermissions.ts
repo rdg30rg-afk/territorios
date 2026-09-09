@@ -6,3 +6,16 @@ export function canReportSalida(
 ) {
   return profile?.access_status === 'active' && (capability ?? (profile.role === 'admin' || Boolean(profile.driver_id)))
 }
+
+export function canMarkSalidaNotHeld(
+  profile: Profile,
+  driverId: string | null | undefined,
+  adminCapability?: boolean,
+) {
+  if (profile?.access_status !== 'active') return false
+  return Boolean(
+    adminCapability ||
+    profile.role === 'admin' ||
+    (profile.driver_id && driverId && profile.driver_id === driverId),
+  )
+}

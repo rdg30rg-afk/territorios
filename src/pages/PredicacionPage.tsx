@@ -29,9 +29,8 @@ import { latestEventsAt, validAt } from '../lib/coverageHistory'
 import { coverageSummary } from '../lib/coverageSummary'
 import { useCoverageOutbox } from '../lib/useCoverageOutbox'
 import type { CoverageInput } from '../lib/coverageOutbox'
-import { canReportSalida } from '../lib/salidaPermissions'
-import { SalidaResultadoForm } from '../components/SalidaResultadoForm'
-import { SalidaCoverageForm } from '../components/SalidaCoverageForm'
+import { canMarkSalidaNotHeld, canReportSalida } from '../lib/salidaPermissions'
+import { InformePredicacionFlow, type InformePredicacionAction } from '../components/InformePredicacionFlow'
 import { MiCuenta } from '../components/MiCuenta'
 import { CoverageCorrectionForm } from '../components/CoverageCorrectionForm'
 import { prepareCoverageCorrection } from '../lib/coverageCorrection'
@@ -321,6 +320,11 @@ function yaEmpezo(s: Salida) {
   const [h, m] = s.hora.split(':').map(Number)
   const ahora = new Date()
   return ahora.getHours() * 60 + ahora.getMinutes() > h * 60 + m
+}
+
+function sePuedeInformarAhora(s: Salida) {
+  const scheduled = new Date(`${s.fecha}T${s.hora}:00`)
+  return !Number.isNaN(scheduled.getTime()) && scheduled.getTime() <= Date.now()
 }
 
 function tituloSalida(s: Salida, contexto?: ContextoHermano | null) {
@@ -613,10 +617,6 @@ export function PredicacionPage() {
   }, [estadosBase, cola.confirmed, cola.events, miTerritorio?.id])
   const hechos = useMemo(() => new Set(Object.keys(estados).filter(id => estados[id] === 'recorrido')), [estados])
   const [salidas, setSalidas] = useState<Salida[]>([])
-  const [salidasParaCerrar, setSalidasParaCerrar] = useState<Salida[]>([])
-  const [cierreId, setCierreId] = useState('')
-  const [errorCierres, setErrorCierres] = useState<string | null>(null)
-  const [cargandoCierres, setCargandoCierres] = useState(false)
   const [origenSalidas, setOrigenSalidas] = useState<'base' | 'archivo' | null>(null)
   const [recorte, setRecorte] = useState<{ trajo: number; hay: number } | null>(null)
   const [cargando, setCargando] = useState(true)
@@ -633,15 +633,12 @@ export function PredicacionPage() {
     }
     return base
   }, [salidas, showQA, filtroSalidas, profile?.driver_id, contexto?.group_id])
-  const salidasParaCerrarVisibles = useMemo(
-    () => showQA ? salidasParaCerrar : salidasParaCerrar.filter((salida) => !isSyntheticQaOuting(salida)),
-    [salidasParaCerrar, showQA],
-  )
 
   // Solo se marca el territorio propio. Los demas se miran: la cobertura de
   // un territorio ajeno no la informa quien pasa a ver como es.
   const [abierta, setAbierta] = useState<string | null>(null)
   const [hoja, setHoja] = useState<{ salida?: Salida; propio?: boolean } | null>(null)
+  const [informe, setInforme] = useState<{ salida: Salida; action: InformePredicacionAction } | null>(null)
   const [historial, setHistorial] = useState(false)
   const [hojaGrupo, setHojaGrupo] = useState(false)
   const [online, setOnline] = useState(() => navigator.onLine)
@@ -665,30 +662,6 @@ export function PredicacionPage() {
   const puedeMarcar =
     asignado && Boolean(miTerritorio) && dibujoListo && !cola.error && !esMiembroPendiente(contexto)
   const editando = puedeMarcar && marcando
-
-  useEffect(() => {
-    let live = true
-    setSalidasParaCerrar([])
-    setCierreId('')
-    setErrorCierres(null)
-    setCargandoCierres(false)
-    if (!supabase || profile?.access_status !== 'active' || !contexto?.puede_informar_salidas) return
-    setCargandoCierres(true)
-    const client = supabase
-    const now = new Date()
-    const since = new Date(now)
-    since.setDate(since.getDate() - 30)
-    void readAllRows<Record<string, unknown>>((from, to) => {
-      let query = client.from('salidas').select(CAMPOS_SALIDA)
-        .gte('scheduled_for', since.toISOString()).lte('scheduled_for', now.toISOString())
-        .order('scheduled_for', { ascending: false }).order('id').range(from, to)
-      return query
-    }).then(rows => {
-      if (live) setSalidasParaCerrar(rows.map(row => comoSalida(row, [])))
-    }).catch(() => { if (live) setErrorCierres('No pudimos cargar las salidas para informar su resultado. Tocá Actualizar para reintentar.') })
-      .finally(() => { if (live) setCargandoCierres(false) })
-    return () => { live = false }
-  }, [profile, contexto?.puede_informar_salidas, revision])
 
   // Recuperar una asignación o cambiar de territorio nunca reactiva por sí
   // solo el modo de escritura que se abrió sobre otro contexto.
@@ -1160,10 +1133,10 @@ export function PredicacionPage() {
                 <div key={s.id ?? s.hora}>
                   <p className="numeroGrande">{s.hora}</p>
                   <p>{tituloSalida(s, contexto)}</p>
-                  {yaEmpezo(s) ? (
-                    <button className="boton principal" onClick={() => { setVista('salidas'); setCierreId(s.id ?? '') }}>
+                  {yaEmpezo(s) && s.id ? (
+                    <button className="boton principal" onClick={() => setInforme({ salida: s, action: 'recorrido' })}>
                       <Icono nombre="completo" tamaño={18} />
-                      Informar resultado
+                      Informar predicación
                     </button>
                   ) : null}
                 </div>
@@ -1216,6 +1189,9 @@ export function PredicacionPage() {
             contexto={contexto}
             esFutura={!deHoy.length}
             onMapa={() => setHoja({ salida: destacada })}
+            onInformar={(action) => setInforme({ salida: destacada, action })}
+            puedeInformar={Boolean(destacada.id) && canReportSalida(profile, destacada.driverId, contexto?.puede_informar_salidas)}
+            puedeMarcarNoRealizada={canMarkSalidaNotHeld(profile, destacada.driverId, contexto?.puede_abrir_panel)}
           />
         )}
 
@@ -1230,6 +1206,9 @@ export function PredicacionPage() {
                 abierta={abierta === `hoy-${i}`}
                 onAbrir={() => setAbierta(abierta === `hoy-${i}` ? null : `hoy-${i}`)}
                 onMapa={() => setHoja({ salida: s })}
+                onInformar={(action) => setInforme({ salida: s, action })}
+                puedeInformar={Boolean(s.id) && canReportSalida(profile, s.driverId, contexto?.puede_informar_salidas)}
+                puedeMarcarNoRealizada={canMarkSalidaNotHeld(profile, s.driverId, contexto?.puede_abrir_panel)}
               />
             ))}
           </>
@@ -1343,50 +1322,11 @@ export function PredicacionPage() {
             abierta={abierta}
             setAbierta={setAbierta}
             onMapa={(s) => setHoja({ salida: s })}
+            onInformar={(s, action) => setInforme({ salida: s, action })}
+            puedeInformar={(s) => Boolean(s.id) && canReportSalida(profile, s.driverId, contexto?.puede_informar_salidas)}
+            puedeMarcarNoRealizada={(s) => canMarkSalidaNotHeld(profile, s.driverId, contexto?.puede_abrir_panel)}
           />
         </div>
-        {filtros.resultado && <section className="panel">
-          <h2>Cerrar una salida</h2>
-          <p className="sub">Elegí la salida, contá qué pasó y marcá en el mapa lo que recorrieron.</p>
-          {errorCierres && <p className="nota" role="alert">{errorCierres}</p>}
-          {cargandoCierres && <p role="status">Cargando salidas para informar…</p>}
-          {!cargandoCierres && !errorCierres && salidasParaCerrarVisibles.length === 0 && <p className="sub">No hay salidas disponibles para informar en este período.</p>}
-          {salidasParaCerrarVisibles.length > 0 && (
-            <ElegirDeLista
-              etiqueta="Elegí la salida"
-              valor={cierreId}
-              vacio="Seleccioná una salida…"
-              alElegir={setCierreId}
-              opciones={[
-                { valor: '', texto: 'Seleccioná una salida…' },
-                ...salidasParaCerrarVisibles
-                  .filter((s) => s.id && canReportSalida(profile, s.driverId, contexto?.puede_informar_salidas))
-                  .map((s) => ({
-                    valor: s.id!,
-                    texto: `${fechaLarga(s.fecha)} · ${s.hora}`,
-                    detalle: s.terr || s.lugar || 'Sin lugar informado',
-                  })),
-              ]}
-            />
-          )}
-          {salidasParaCerrarVisibles.filter(s => s.id === cierreId && canReportSalida(profile, s.driverId, contexto?.puede_informar_salidas)).map(s =>
-            <div className="cierre-salida-flujo" key={s.id}>
-              <div className="cierre-salida-elegida">
-                <span>{fechaLarga(s.fecha)} · {s.hora}</span>
-                <strong>{s.terr ? `Territorio ${s.terr}` : s.lugar || 'Sin lugar informado'}</strong>
-              </div>
-              <div className="cierre-paso-encabezado">
-                <span className="cierre-paso-numero" aria-hidden="true">1</span>
-                <div>
-                  <h3>¿Qué pasó con la salida?</h3>
-                  <p>Indicá si se realizó completa, parcialmente o si no pudieron salir.</p>
-                </div>
-              </div>
-              <SalidaResultadoForm salidaId={s.id!} canReport={true} canCorrect={Boolean(contexto?.puede_abrir_panel)} />
-              {!s.terrId && <p role="status">Esta salida no tiene un territorio vinculado en la base. Podés informar su resultado, pero un administrador debe revisar la vinculación antes de registrar lados recorridos.</p>}
-              <SalidaCoverageForm outing={s} queue={cola} />
-            </div>)}
-        </section>}
       </section>
 
       {/* ----------------------------------------------------- TERRITORIO */}
@@ -1700,6 +1640,15 @@ export function PredicacionPage() {
           onCerrar={() => setHoja(null)}
         />
       )}
+      {informe && (
+        <InformePredicacionFlow
+          outing={informe.salida}
+          action={informe.action}
+          queue={cola}
+          canCorrect={Boolean(contexto?.puede_abrir_panel)}
+          onClose={() => setInforme(null)}
+        />
+      )}
     </div>
   )
 }
@@ -1863,16 +1812,45 @@ function TarjetaGrupoSale({
   )
 }
 
+function AccionesConduccion({
+  onInformar,
+  puedeMarcarNoRealizada,
+}: {
+  onInformar: (action: InformePredicacionAction) => void
+  puedeMarcarNoRealizada: boolean
+}) {
+  return <section className="acciones-conduccion" aria-label="Conducción">
+    <h3>Conducción</h3>
+    <button type="button" className="boton principal" onClick={() => onInformar('recorrido')}>
+      <Icono nombre="marcar" tamaño={20} />Informar predicación
+    </button>
+    <div className="acciones-conduccion-rapidas">
+      <button type="button" className="boton secundario" onClick={() => onInformar('completo')}>
+        <Icono nombre="completo" tamaño={18} />Territorio completo
+      </button>
+      {puedeMarcarNoRealizada ? <button type="button" className="boton secundario" onClick={() => onInformar('no_realizada')}>
+        <Icono nombre="cerrar" tamaño={18} />No se realizó
+      </button> : null}
+    </div>
+  </section>
+}
+
 function TarjetaDestacada({
   salida,
   contexto,
   esFutura,
   onMapa,
+  onInformar,
+  puedeInformar,
+  puedeMarcarNoRealizada,
 }: {
   salida: Salida
   contexto?: ContextoHermano | null
   esFutura: boolean
   onMapa: () => void
+  onInformar: (action: InformePredicacionAction) => void
+  puedeInformar: boolean
+  puedeMarcarNoRealizada: boolean
 }) {
   const apodo = comoSeLlamaElDia(salida.fecha) ?? fechaLarga(salida.fecha)
   return (
@@ -1912,6 +1890,9 @@ function TarjetaDestacada({
           Ver el mapa del territorio
         </button>
       )}
+      {sePuedeInformarAhora(salida) && puedeInformar ? (
+        <AccionesConduccion onInformar={onInformar} puedeMarcarNoRealizada={puedeMarcarNoRealizada} />
+      ) : null}
     </section>
   )
 }
@@ -1922,21 +1903,28 @@ function FilaSalida({
   abierta,
   onAbrir,
   onMapa,
+  onInformar,
+  puedeInformar,
+  puedeMarcarNoRealizada,
 }: {
   salida: Salida
   contexto?: ContextoHermano | null
   abierta: boolean
   onAbrir: () => void
   onMapa: () => void
+  onInformar: (action: InformePredicacionAction) => void
+  puedeInformar: boolean
+  puedeMarcarNoRealizada: boolean
 }) {
   const paso = yaEmpezo(salida)
+  const puedeAbrir = Boolean(salida.lugar || (sePuedeInformarAhora(salida) && puedeInformar))
   return (
     <div className="salidaBloque">
       <button
         className={`salida${salida.fecha === hoyISO() ? ' esHoy' : ''}${paso ? ' pasada' : ''}`}
-        {...(salida.lugar ? { 'aria-expanded': abierta } : {})}
-        onClick={salida.lugar ? onAbrir : undefined}
-        style={salida.lugar ? undefined : { cursor: 'default' }}
+        {...(puedeAbrir ? { 'aria-expanded': abierta } : {})}
+        onClick={puedeAbrir ? onAbrir : undefined}
+        style={puedeAbrir ? undefined : { cursor: 'default' }}
       >
         <span className="cuando">
           {salida.hora}
@@ -1950,22 +1938,25 @@ function FilaSalida({
             <ChipsDeSalida salida={salida} />
           </div>
         </span>
-        {salida.lugar && (
+        {puedeAbrir && (
           <span className="flecha" aria-hidden="true">
             <Icono nombre="chevron-abajo" tamaño={18} />
           </span>
         )}
       </button>
-      {abierta && salida.lugar && (
+      {abierta && puedeAbrir && (
         <div className="salidaDetalle">
-          <MapaMini salida={salida} onAbrir={onMapa} />
-          <BotonesComoLlegar salida={salida} />
+          {salida.terrId ? <MapaMini salida={salida} onAbrir={onMapa} /> : null}
+          {salida.lugar ? <BotonesComoLlegar salida={salida} /> : null}
           {salida.terrId && (
             <button className="boton chico" onClick={onMapa}>
               <Icono nombre="territorios" tamaño={18} />
               Ver el mapa del territorio
             </button>
           )}
+          {sePuedeInformarAhora(salida) && puedeInformar ? (
+            <AccionesConduccion onInformar={onInformar} puedeMarcarNoRealizada={puedeMarcarNoRealizada} />
+          ) : null}
         </div>
       )}
     </div>
@@ -1979,6 +1970,9 @@ function ListaSalidas({
   abierta,
   setAbierta,
   onMapa,
+  onInformar,
+  puedeInformar,
+  puedeMarcarNoRealizada,
 }: {
   salidas: Salida[]
   contexto?: ContextoHermano | null
@@ -1986,6 +1980,9 @@ function ListaSalidas({
   abierta: string | null
   setAbierta: (v: string | null) => void
   onMapa: (s: Salida) => void
+  onInformar: (s: Salida, action: InformePredicacionAction) => void
+  puedeInformar: (s: Salida) => boolean
+  puedeMarcarNoRealizada: (s: Salida) => boolean
 }) {
   const hoy = hoyISO()
   const futuras = salidas.filter((s) => s.fecha >= hoy)
@@ -2035,6 +2032,9 @@ function ListaSalidas({
               abierta={abierta === `lista-${i}`}
               onAbrir={() => setAbierta(abierta === `lista-${i}` ? null : `lista-${i}`)}
               onMapa={() => onMapa(s)}
+              onInformar={(action) => onInformar(s, action)}
+              puedeInformar={puedeInformar(s)}
+              puedeMarcarNoRealizada={puedeMarcarNoRealizada(s)}
             />
           </div>
         )

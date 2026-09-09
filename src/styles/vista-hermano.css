@@ -904,6 +904,7 @@
 }
 .vh .recorrido-mapa-cargando { display: grid; place-items: center; color: var(--fg-2); }
 .vh .recorrido-mapa .leaflet-control-container { pointer-events: none; }
+.vh .recorrido-mapa.dibujando { touch-action: none; cursor: crosshair; }
 .vh .recorrido-mapa-etiqueta {
   min-width: 34px;
   padding: 6px 9px;
@@ -975,6 +976,89 @@
 .vh .recorrido-editor-pie { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; }
 .vh .recorrido-editor-pie .boton { width: auto; margin: 0; padding-inline: 8px; }
 .vh .recorrido-aviso .boton { margin-top: 10px; }
+
+.vh .acciones-conduccion {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+.vh .acciones-conduccion h3 { margin: 0; font-size: var(--t-lead); }
+.vh .acciones-conduccion .boton { margin: 0; }
+.vh .acciones-conduccion-rapidas {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+.vh .acciones-conduccion-rapidas .boton { min-width: 0; padding-inline: 10px; }
+
+.vh .informe-predicacion { z-index: 80; }
+.vh .informe-predicacion .sobreBarra > div { flex: 1; min-width: 0; }
+.vh .informe-predicacion .sobreBarra h2 { display: block; }
+.vh .informe-predicacion .sobreBarra small {
+  display: block;
+  overflow: hidden;
+  color: var(--fg-3);
+  font-size: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vh .informe-mapa-cuerpo,
+.vh .informe-resultado-cuerpo {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 14px var(--pad) calc(24px + env(safe-area-inset-bottom, 0px));
+}
+.vh .informe-mapa-cuerpo { display: flex; flex-direction: column; gap: 12px; }
+.vh .informe-instruccion { display: grid; gap: 3px; }
+.vh .informe-instruccion strong { font-size: var(--t-lead); }
+.vh .informe-instruccion span { color: var(--fg-2); font-size: 16px; }
+.vh .recorrido-pantalla { display: flex; flex: 1; min-height: 0; flex-direction: column; }
+.vh .recorrido-pantalla .recorrido-editor { display: flex; flex: 1; min-height: 0; flex-direction: column; }
+.vh .recorrido-pantalla .recorrido-mapa,
+.vh .recorrido-pantalla .recorrido-mapa-cargando {
+  flex: 1 0 min(52dvh, 560px);
+  height: min(52dvh, 560px);
+  min-height: 330px;
+}
+.vh .informe-confirmacion {
+  width: min(100%, 520px);
+  margin: auto;
+  padding: 28px var(--pad) calc(28px + env(safe-area-inset-bottom, 0px));
+  text-align: center;
+}
+.vh .informe-confirmacion-icono {
+  display: grid;
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 18px;
+  place-items: center;
+  border-radius: 24px;
+  background: var(--olive-bg);
+  color: var(--olive-ink);
+}
+.vh .informe-confirmacion h3 { margin: 0 0 10px; font-size: var(--t-h2); }
+.vh .informe-confirmacion p { margin: 0 0 22px; color: var(--fg-2); }
+.vh .informe-confirmacion-acciones { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.vh .informe-confirmacion .boton { margin: 0; }
+.vh .informe-resultado-cuerpo > .module-detail-list { margin-top: 14px; }
+.vh .informe-descartar {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  padding: var(--pad);
+  background: rgba(22, 25, 29, .58);
+}
+.vh .informe-descartar .informe-confirmacion {
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--surface);
+}
 
 /* Los desplegables viven en un portal fuera de .vh. La clase viaja tanto
    al disparador como a la lista para conservar el piso táctil del hermano. */

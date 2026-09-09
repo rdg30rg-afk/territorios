@@ -8,7 +8,7 @@ import ts from 'typescript'
 // React DOM ni la aceptación visual: comprueba las transiciones del formulario.
 const source = await readFile(new URL('../src/components/SalidaResultadoForm.tsx', import.meta.url), 'utf8')
 const code = ts.transpileModule(source, {compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText
-function harness({loadError=false,saveError=false,refreshError=false,pending=null}={}) {
+function harness({loadError=false,saveError=false,refreshError=false,pending=null,hideOccurredAt=false,occurredAt=null}={}) {
   const slots=[], effects=[], calls=[]
   let cursor=0, loads=0, tree
   const same=(a,b)=>a&&b&&a.length===b.length&&a.every((v,i)=>Object.is(v,b[i]))
@@ -37,7 +37,7 @@ function harness({loadError=false,saveError=false,refreshError=false,pending=nul
     if(name.endsWith('decirElError')) return {decirElError:e=>e.message}
     throw Error(name)
   },crypto:{randomUUID:()=>`attempt-${calls.length+1}`},window:{addEventListener(){},removeEventListener(){}},Date,Intl})
-  function render(){cursor=0;tree=exports.SalidaResultadoForm({salidaId:'salida-qa',canReport:true,canCorrect:true});return tree}
+  function render(){cursor=0;tree=exports.SalidaResultadoForm({salidaId:'salida-qa',canReport:true,canCorrect:true,hideOccurredAt,occurredAt});return tree}
   function nodes(node=tree){if(!node||typeof node!=='object')return [];if(Array.isArray(node))return node.flatMap(n=>nodes(n ?? null));return [node,...nodes(node.props?.children ?? null)]}
   function text(node){if(node==null)return '';if(typeof node!=='object')return String(node);if(Array.isArray(node))return node.map(text).join('');return text(node.props?.children)}
   async function settle(){for(let i=0;i<5;i++){render();for(const fn of effects.splice(0))fn();await new Promise(r=>setImmediate(r))}render()}
@@ -93,4 +93,14 @@ test('consultar después de respuesta perdida no descarta el intento pendiente',
   await h.click('Consultar qué quedó guardado')
   assert.match(h.text(),/Reintentar el mismo envío/)
   await h.submit();assert.deepEqual(h.calls[1].payload,original)
+})
+
+test('el cierre desde la salida no pide fecha manual y usa la fecha programada',async()=>{
+  const scheduledAt='2026-09-08T22:00:00.000Z'
+  const h=harness({hideOccurredAt:true,occurredAt:scheduledAt})
+  await h.settle();await h.click('Informar resultado')
+
+  assert.ok(!h.nodes().some((node) => node.type === 'input' && node.props.type === 'datetime-local'))
+  await h.submit()
+  assert.equal(h.calls[0].payload.p_ocurrio_at, scheduledAt)
 })
