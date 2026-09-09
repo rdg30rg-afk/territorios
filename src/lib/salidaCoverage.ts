@@ -1,7 +1,7 @@
 import type { CoverageInput } from './coverageOutbox'
 import type { CoverageState } from './coverageSummary'
 
-type Actor = { id: string; access_status: string; driver_id: string | null; puede_informar_salidas?: boolean } | null
+type Actor = { id: string; access_status: string; role?: string; driver_id: string | null; puede_informar_salidas?: boolean } | null
 type Outing = { id?: string; driverId?: string; terrId?: string }
 type Side = {
   id: string; manzana_id: string; territory_id: string
@@ -9,7 +9,7 @@ type Side = {
 }
 
 export function canReportSalidaCoverage(actor: Actor, outing: Outing) {
-  const capability = actor?.puede_informar_salidas ?? Boolean(actor?.driver_id)
+  const capability = Boolean(actor?.puede_informar_salidas || actor?.driver_id || actor?.role === 'admin')
   return Boolean(actor?.access_status === 'active' && capability && outing.id && outing.terrId)
 }
 

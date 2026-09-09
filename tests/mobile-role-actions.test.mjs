@@ -14,7 +14,7 @@ const [page, groupSheet, groupOutings, permissions, migration] = await Promise.a
 test('la vista móvil usa la capacidad del servidor y no el conductor exacto', () => {
   assert.match(page, /contexto\?\.puede_informar_salidas/)
   assert.doesNotMatch(page, /query = query\.eq\('driver_id'/)
-  assert.match(permissions, /puede_informar_salidas \?\? Boolean\(actor\?\.driver_id\)/)
+  assert.match(permissions, /actor\?\.puede_informar_salidas \|\| actor\?\.driver_id \|\| actor\?\.role === 'admin'/)
   assert.doesNotMatch(permissions, /outing\.driverId === actor\.driver_id/)
 })
 

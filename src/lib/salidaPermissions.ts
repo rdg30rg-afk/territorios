@@ -4,7 +4,9 @@ export function canReportSalida(
   _driverId: string | null | undefined,
   capability?: boolean,
 ) {
-  return profile?.access_status === 'active' && (capability ?? (profile.role === 'admin' || Boolean(profile.driver_id)))
+  return profile?.access_status === 'active' && Boolean(
+    capability || profile.role === 'admin' || profile.driver_id,
+  )
 }
 
 export function canMarkSalidaNotHeld(
