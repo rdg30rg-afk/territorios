@@ -30,6 +30,7 @@ import { coverageSummary } from '../lib/coverageSummary'
 import { useCoverageOutbox } from '../lib/useCoverageOutbox'
 import type { CoverageInput } from '../lib/coverageOutbox'
 import { canMarkSalidaNotHeld, canReportSalida } from '../lib/salidaPermissions'
+import { crearPdfSalida, descargarPdf } from '../lib/salidaPdf'
 import { InformePredicacionFlow, type InformePredicacionAction } from '../components/InformePredicacionFlow'
 import { MiCuenta } from '../components/MiCuenta'
 import { CoverageCorrectionForm } from '../components/CoverageCorrectionForm'
@@ -432,6 +433,64 @@ function BotonesComoLlegar({ salida }: { salida: Salida }) {
         En colectivo
       </button>
     </div>
+  )
+}
+
+function BotonPdfSalida({
+  salida,
+  contexto,
+}: {
+  salida: Salida
+  contexto?: ContextoHermano | null
+}) {
+  const [preparando, setPreparando] = useState(false)
+  const [fallo, setFallo] = useState(false)
+
+  const descargar = async () => {
+    setPreparando(true)
+    setFallo(false)
+    try {
+      descargarPdf(
+        await crearPdfSalida({
+          title: salida.title || tituloSalida(salida, contexto),
+          scheduledFor: `${salida.fecha}T${salida.hora}:00`,
+          territoryName: salida.terr ? `Territorio ${salida.terr}` : tituloSalida(salida, contexto),
+          driverName: salida.conductor,
+          groupName: contexto?.group_number
+            ? `Grupo ${contexto.group_number}`
+            : contexto?.group_name,
+          meetingPointName: salida.lugar,
+          meetingCoords:
+            salida.lat !== undefined && salida.lng !== undefined
+              ? [salida.lng, salida.lat]
+              : null,
+          notes: salida.notes,
+        }),
+      )
+    } catch {
+      setFallo(true)
+    } finally {
+      setPreparando(false)
+    }
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        className="boton secundario boton-pdf-salida"
+        onClick={() => void descargar()}
+        disabled={preparando}
+      >
+        <Icono nombre="descargar" tamaño={18} />
+        {preparando ? 'Preparando PDF…' : 'Descargar PDF de la salida'}
+      </button>
+      {fallo ? (
+        <p className="nota" role="alert">
+          No se pudo preparar el PDF. Probá de nuevo.
+        </p>
+      ) : null}
+    </>
   )
 }
 
@@ -1890,6 +1949,7 @@ function TarjetaDestacada({
           Ver el mapa del territorio
         </button>
       )}
+      <BotonPdfSalida salida={salida} contexto={contexto} />
       {sePuedeInformarAhora(salida) && puedeInformar ? (
         <AccionesConduccion onInformar={onInformar} puedeMarcarNoRealizada={puedeMarcarNoRealizada} />
       ) : null}
@@ -1954,6 +2014,7 @@ function FilaSalida({
               Ver el mapa del territorio
             </button>
           )}
+          <BotonPdfSalida salida={salida} contexto={contexto} />
           {sePuedeInformarAhora(salida) && puedeInformar ? (
             <AccionesConduccion onInformar={onInformar} puedeMarcarNoRealizada={puedeMarcarNoRealizada} />
           ) : null}

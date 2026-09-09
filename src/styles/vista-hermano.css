@@ -338,6 +338,11 @@
    la foto arrancaba de golpe pegada al texto. */
 .vh .salidaDetalle .mapaMini { margin-top: 0; }
 
+.vh .boton-pdf-salida {
+  width: 100%;
+  margin-top: 12px;
+}
+
 /* Auto y colectivo son dos viajes distintos: no se esconden en un solo
    "Cómo llegar" que abre Maps en auto y deja al que va en bondi cambiando
    el modo con un dedo. El título va arriba; los dos botones, al lado,

@@ -27,6 +27,14 @@ import {
 import { BuscadorPunto } from '../components/BuscadorPunto'
 import { saleSinConductor, textoConductor, textoPuntoSalida, textoTerritorio } from '../lib/salidaEtiquetas'
 import { agruparPorDia, etiquetaDelDia, partirAgenda } from '../lib/agendaPorDia'
+import {
+  compartirPdf,
+  crearPdfAgenda,
+  crearPdfSalida,
+  descargarPdf,
+  puedeCompartirPdf,
+  type SalidaPdfData,
+} from '../lib/salidaPdf'
 import { supabase } from '../lib/supabase'
 import '../styles/agenda-salidas.css'
 
@@ -558,6 +566,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
   const [searchTerm, setSearchTerm] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
+  const [pdfEnCurso, setPdfEnCurso] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [gpsPendientes, setGpsPendientes] = useState<GpsPendiente[]>([])
@@ -1054,6 +1063,10 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
     () => agruparPorDia(anteriores.slice(0, anterioresAMostrar)),
     [anteriores, anterioresAMostrar],
   )
+  const salidasAgendaVisibles = useMemo(
+    () => [...proximas, ...anteriores.slice(0, anterioresAMostrar)],
+    [anteriores, anterioresAMostrar, proximas],
+  )
   const anterioresQueFaltan = Math.max(0, anteriores.length - anterioresAMostrar)
   const filtrosActivos = territoryFilter !== 'todos' || scheduleFilter !== 'todos'
 
@@ -1451,61 +1464,22 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
     }
   }
 
-  const buildDraftPdf = async (
-    pdfTitle: string,
-    pdfScheduledFor: string,
-    pdfTerritoryName: string,
-    pdfDriverName: string,
-    pdfGroupName: string,
-    pdfMeetingPointName: string,
-    pdfMeetingCoords: [number, number],
-    pdfNotes: string,
-  ) => {
-    const { default: jsPDF } = await import('jspdf')
-    const doc = new jsPDF()
-    let cursorY = 18
-
-    doc.setFontSize(18)
-    doc.text('Ficha de salida', 14, cursorY)
-    cursorY += 10
-
-    doc.setFontSize(11)
-    doc.text(`Titulo: ${pdfTitle}`, 14, cursorY)
-    cursorY += 8
-    doc.text(`Fecha y hora: ${formatLocalDate(new Date(pdfScheduledFor).toISOString())}`, 14, cursorY)
-    cursorY += 8
-    doc.text(`Territorio: ${pdfTerritoryName}`, 14, cursorY)
-    cursorY += 8
-    doc.text(`Conductor: ${pdfDriverName}`, 14, cursorY)
-    cursorY += 8
-    doc.text(`Grupo: ${pdfGroupName}`, 14, cursorY)
-    cursorY += 8
-    doc.text(`Direccion / encuentro: ${pdfMeetingPointName}`, 14, cursorY)
-    cursorY += 8
-    doc.text(
-      `GPS: ${pdfMeetingCoords[1].toFixed(6)}, ${pdfMeetingCoords[0].toFixed(6)}`,
-      14,
-      cursorY,
-    )
-    cursorY += 8
-
-    const mapsUrl = `https://www.google.com/maps?q=${pdfMeetingCoords[1]},${pdfMeetingCoords[0]}`
-    doc.textWithLink('Abrir punto en Google Maps', 14, cursorY, { url: mapsUrl })
-    cursorY += 10
-
-    doc.setFontSize(12)
-    doc.text('Observaciones', 14, cursorY)
-    cursorY += 6
-    doc.setFontSize(11)
-    doc.splitTextToSize(pdfNotes || 'Sin observaciones', 165).forEach((line: string) => {
-      doc.text(line, 14, cursorY)
-      cursorY += 6
-    })
-
-    doc.save(
-      `salida-${new Date(pdfScheduledFor).toISOString().slice(0, 16).replace(/[:T]/g, '-')}.pdf`,
-    )
-  }
+  const datosPdfDeSalida = (outing: (typeof outingDetails)[number]): SalidaPdfData => ({
+    title: outing.title,
+    scheduledFor: outing.scheduled_for,
+    territoryName: outing.territoryName,
+    driverName: outing.driverName,
+    groupName: outing.groupName,
+    meetingPointName: textoPuntoSalida({
+      codigo: outing.territorio_codigo,
+      nombre: outing.meeting_point_name,
+    }),
+    meetingCoords:
+      outing.meeting_point_lat !== null && outing.meeting_point_lng !== null
+        ? [outing.meeting_point_lng, outing.meeting_point_lat]
+        : null,
+    notes: outing.notes,
+  })
 
   const handleDownloadDraftPdf = async () => {
     const driverName =
@@ -1514,51 +1488,79 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
       groups.find((group) => group.id === lockedGroupId)?.group_name ?? 'Sin grupo'
     const territoryName = selectedFormTerritory?.name ?? 'Sin territorio'
 
-    if (
-      !title.trim() ||
-      !territoryId ||
-      !driverId ||
-      !meetingPointName.trim() ||
-      !scheduledFor ||
-      !meetingCoords
-    ) {
-      setError(
-        'Para el PDF falta completar título, territorio, conductor, dirección, horario y el punto en el mapa.',
-      )
+    if (!scheduledFor) {
+      setError('Elegí la fecha y la hora antes de preparar el PDF.')
       return
     }
-
-    await buildDraftPdf(
-      title.trim(),
-      scheduledFor,
-      territoryName,
-      driverName,
-      groupName,
-      meetingPointName.trim(),
-      meetingCoords,
-      notes.trim(),
-    )
-    setMessage('PDF de la salida descargado correctamente.')
-    setError(null)
+    setPdfEnCurso('borrador')
+    try {
+      const archivo = await crearPdfSalida({
+        title: title.trim() || 'Salida de predicación',
+        scheduledFor,
+        territoryName,
+        driverName,
+        groupName,
+        meetingPointName: meetingPointName.trim() || null,
+        meetingCoords,
+        notes: notes.trim() || null,
+      })
+      descargarPdf(archivo)
+      setMessage('PDF preparado. Si no se abrió, revisá las descargas del navegador.')
+      setError(null)
+    } catch (caught) {
+      setError(mensajeErrorSalidas(caught, 'No se pudo preparar el PDF de la salida.'))
+    } finally {
+      setPdfEnCurso(null)
+    }
   }
 
   const handleDownloadSavedPdf = async (outing: (typeof outingDetails)[number]) => {
-    if (outing.meeting_point_lat === null || outing.meeting_point_lng === null) {
-      setError('Esta salida histórica no tiene coordenadas; no se puede generar el PDF todavía.')
+    setPdfEnCurso(outing.id)
+    try {
+      descargarPdf(await crearPdfSalida(datosPdfDeSalida(outing)))
+      setMessage('PDF preparado. Si no se abrió, revisá las descargas del navegador.')
+      setError(null)
+    } catch (caught) {
+      setError(mensajeErrorSalidas(caught, 'No se pudo preparar el PDF de la salida.'))
+    } finally {
+      setPdfEnCurso(null)
+    }
+  }
+
+  const handleShareSavedPdf = async (outing: (typeof outingDetails)[number]) => {
+    setPdfEnCurso(`compartir-${outing.id}`)
+    try {
+      const archivo = await crearPdfSalida(datosPdfDeSalida(outing))
+      await compartirPdf(archivo, `Salida · ${outing.territoryName}`)
+      setMessage('Salida compartida correctamente.')
+      setError(null)
+    } catch (caught) {
+      if (caught instanceof DOMException && caught.name === 'AbortError') return
+      setError(mensajeErrorSalidas(caught, 'No se pudo compartir el PDF. Podés descargarlo en su lugar.'))
+    } finally {
+      setPdfEnCurso(null)
+    }
+  }
+
+  const handleDownloadAgendaPdf = async () => {
+    if (salidasAgendaVisibles.length === 0) {
+      setError('No hay salidas para exportar con los filtros actuales.')
       return
     }
-    await buildDraftPdf(
-      outing.title,
-      new Date(outing.scheduled_for).toISOString().slice(0, 16),
-      outing.territoryName,
-      outing.driverName,
-      outing.groupName,
-      outing.meeting_point_name ?? 'Punto histórico sin geolocalizar',
-      [outing.meeting_point_lng, outing.meeting_point_lat],
-      outing.notes ?? '',
-    )
-    setMessage('PDF de la salida descargado correctamente.')
-    setError(null)
+    setPdfEnCurso('agenda')
+    try {
+      const archivo = await crearPdfAgenda(
+        salidasAgendaVisibles.map(datosPdfDeSalida),
+        `${salidasAgendaVisibles.length} ${salidasAgendaVisibles.length === 1 ? 'salida visible' : 'salidas visibles'}`,
+      )
+      descargarPdf(archivo)
+      setMessage('Agenda PDF preparada con las salidas que estás viendo.')
+      setError(null)
+    } catch (caught) {
+      setError(mensajeErrorSalidas(caught, 'No se pudo preparar el PDF de la agenda.'))
+    } finally {
+      setPdfEnCurso(null)
+    }
   }
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -2608,6 +2610,16 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                 </div>
               </details>
 
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => void handleDownloadAgendaPdf()}
+                disabled={pdfEnCurso !== null || salidasAgendaVisibles.length === 0}
+              >
+                <Icono nombre="descargar" tamaño={18} />
+                {pdfEnCurso === 'agenda' ? 'Preparando…' : 'Agenda PDF'}
+              </button>
+
               {canManageOutings ? (
                 <button type="button" className="secondary-button" onClick={abrirNueva}>
                   <Icono nombre="salidas" tamaño={18} />
@@ -2781,10 +2793,11 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                               <button
                                 type="button"
                                 className="ghost-button"
-                                onClick={() => handleDownloadSavedPdf(outing)}
+                                onClick={() => void handleDownloadSavedPdf(outing)}
+                                disabled={pdfEnCurso !== null}
                               >
                                 <Icono nombre="descargar" tamaño={18} />
-                                Descargar PDF
+                                {pdfEnCurso === outing.id ? 'Preparando…' : 'Descargar PDF'}
                               </button>
                               <button
                                 type="button"
@@ -3188,11 +3201,11 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
               <button
                 type="button"
                 className="secondary-button full-width"
-                onClick={handleDownloadDraftPdf}
-                disabled={!canManageOutings}
+                onClick={() => void handleDownloadDraftPdf()}
+                disabled={!canManageOutings || pdfEnCurso !== null}
               >
                 <Icono nombre="descargar" tamaño={18} />
-                Descargar PDF
+                {pdfEnCurso === 'borrador' ? 'Preparando PDF…' : 'Descargar PDF de esta salida'}
               </button>
 
               <button
@@ -3232,6 +3245,40 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
 
             {selectedOuting ? (
               <div className="module-detail-list">
+                <article className="salida-export-card">
+                  <div>
+                    <span>Para enviar o imprimir</span>
+                    <strong>Compartí esta salida</strong>
+                    <p>
+                      Incluye horario, territorio, conductor, punto de encuentro e
+                      indicaciones. Se genera aunque todavía falte ubicar el punto en el mapa.
+                    </p>
+                  </div>
+                  <div className="salida-export-actions">
+                    <button
+                      type="button"
+                      className="primary-button"
+                      onClick={() => void handleDownloadSavedPdf(selectedOuting)}
+                      disabled={pdfEnCurso !== null}
+                    >
+                      <Icono nombre="descargar" tamaño={18} />
+                      {pdfEnCurso === selectedOuting.id ? 'Preparando…' : 'Descargar PDF'}
+                    </button>
+                    {puedeCompartirPdf() ? (
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => void handleShareSavedPdf(selectedOuting)}
+                        disabled={pdfEnCurso !== null}
+                      >
+                        <Icono nombre="compartir" tamaño={18} />
+                        {pdfEnCurso === `compartir-${selectedOuting.id}`
+                          ? 'Preparando…'
+                          : 'Compartir'}
+                      </button>
+                    ) : null}
+                  </div>
+                </article>
                 <article className="module-detail-card">
                   <span>Territorio</span>
                   <strong>{selectedOuting.territoryName}</strong>
