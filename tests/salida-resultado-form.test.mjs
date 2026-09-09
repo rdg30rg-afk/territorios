@@ -51,6 +51,12 @@ test('error de lectura no se presenta como ausencia de resultado ni habilita inf
   assert.doesNotMatch(h.text(),/Sin resultado informado/)
   assert.ok(!h.nodes().some(n=>n.type==='button'&&n.props.children==='Informar resultado'))
 })
+test('un informe nuevo empieza en Realizada y no ofrece Sin dato como resultado',async()=>{
+  const h=harness();await h.settle();await h.click('Informar resultado')
+  const realizada=h.nodes().find(n=>n.type==='button'&&n.props.children==='Realizada')
+  assert.equal(realizada?.props['aria-pressed'],true)
+  assert.ok(!h.nodes().some(n=>n.type==='button'&&n.props.children==='Sin dato'))
+})
 test('respuesta perdida bloquea edición y reintenta el mismo UUID y payload',async()=>{
   const h=harness({saveError:true});await h.settle();await h.click('Informar resultado');await h.submit()
   assert.match(h.text(),/Reintentar el mismo envío/)

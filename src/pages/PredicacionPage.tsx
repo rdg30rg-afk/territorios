@@ -1346,8 +1346,8 @@ export function PredicacionPage() {
           />
         </div>
         {filtros.resultado && <section className="panel">
-          <h2>Resultado de las salidas</h2>
-          <p className="sub">Salidas que ya comenzaron en los últimos 30 días. Informar el resultado no marca automáticamente las cuadras.</p>
+          <h2>Cerrar una salida</h2>
+          <p className="sub">Elegí la salida, contá qué pasó y marcá en el mapa lo que recorrieron.</p>
           {errorCierres && <p className="nota" role="alert">{errorCierres}</p>}
           {cargandoCierres && <p role="status">Cargando salidas para informar…</p>}
           {!cargandoCierres && !errorCierres && salidasParaCerrarVisibles.length === 0 && <p className="sub">No hay salidas disponibles para informar en este período.</p>}
@@ -1370,7 +1370,18 @@ export function PredicacionPage() {
             />
           )}
           {salidasParaCerrarVisibles.filter(s => s.id === cierreId && canReportSalida(profile, s.driverId, contexto?.puede_informar_salidas)).map(s =>
-            <div key={s.id}>
+            <div className="cierre-salida-flujo" key={s.id}>
+              <div className="cierre-salida-elegida">
+                <span>{fechaLarga(s.fecha)} · {s.hora}</span>
+                <strong>{s.terr ? `Territorio ${s.terr}` : s.lugar || 'Sin lugar informado'}</strong>
+              </div>
+              <div className="cierre-paso-encabezado">
+                <span className="cierre-paso-numero" aria-hidden="true">1</span>
+                <div>
+                  <h3>¿Qué pasó con la salida?</h3>
+                  <p>Indicá si se realizó completa, parcialmente o si no pudieron salir.</p>
+                </div>
+              </div>
               <SalidaResultadoForm salidaId={s.id!} canReport={true} canCorrect={Boolean(contexto?.puede_abrir_panel)} />
               {!s.terrId && <p role="status">Esta salida no tiene un territorio vinculado en la base. Podés informar su resultado, pero un administrador debe revisar la vinculación antes de registrar lados recorridos.</p>}
               <SalidaCoverageForm outing={s} queue={cola} />

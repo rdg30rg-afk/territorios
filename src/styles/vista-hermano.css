@@ -796,6 +796,186 @@
   font-family: inherit;
 }
 
+/* Cierre de una salida: dos preguntas, una sola secuencia. El mapa no se
+   arrastra ni hace zoom porque vive dentro de una pantalla que se desplaza;
+   cada toque queda reservado para elegir una manzana o una calle. */
+.vh .cierre-salida-flujo {
+  display: grid;
+  gap: 22px;
+  margin-top: 18px;
+}
+.vh .cierre-salida-elegida {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+  padding: 13px 15px;
+  border-radius: 14px;
+  background: var(--canvas);
+  color: var(--fg-2);
+}
+.vh .cierre-salida-elegida strong { color: var(--fg); }
+.vh .cierre-paso-encabezado {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+.vh .cierre-paso-encabezado h3,
+.vh .cierre-paso-encabezado p { margin: 0; }
+.vh .cierre-paso-encabezado h3 { font-size: var(--t-lead); line-height: 1.25; }
+.vh .cierre-paso-encabezado p { margin-top: 4px; color: var(--fg-2); }
+.vh .cierre-paso-numero {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
+  background: var(--olive-bg);
+  color: var(--olive-ink);
+  font-weight: 700;
+}
+.vh .recorrido-salida {
+  padding-top: 22px;
+  border-top: 1px solid var(--line);
+}
+.vh .recorrido-editor { display: grid; gap: 14px; }
+.vh .recorrido-modos,
+.vh .recorrido-estados {
+  display: grid;
+  gap: 8px;
+}
+.vh .recorrido-modos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.vh .recorrido-estados { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.vh .recorrido-modos button,
+.vh .recorrido-estados button {
+  min-width: 0;
+  min-height: var(--tap);
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--fg-2);
+  font: 600 16px/1.2 Urbanist, sans-serif;
+  cursor: pointer;
+}
+.vh .recorrido-modos button[aria-pressed='true'],
+.vh .recorrido-estados button[aria-pressed='true'],
+.vh .cierre-estado-opciones button[aria-pressed='true'] {
+  border-color: var(--olive);
+  background: var(--olive-bg);
+  color: var(--olive-ink);
+  box-shadow: inset 0 0 0 1px var(--olive);
+}
+.vh .cierre-estado { margin: 0; padding: 0; border: 0; }
+.vh .cierre-estado legend {
+  margin-bottom: 8px;
+  color: var(--fg-2);
+  font-size: 16px;
+  font-weight: 600;
+}
+.vh .cierre-estado-opciones {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.vh .cierre-estado-opciones button {
+  min-width: 0;
+  min-height: var(--tap);
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--fg-2);
+  font: 600 16px/1.2 Urbanist, sans-serif;
+  cursor: pointer;
+}
+.vh .recorrido-mapa,
+.vh .recorrido-mapa-cargando {
+  position: relative;
+  z-index: 0;
+  isolation: isolate;
+  height: 280px;
+  overflow: hidden;
+  clip-path: inset(0 round 16px);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--canvas);
+}
+.vh .recorrido-mapa-cargando { display: grid; place-items: center; color: var(--fg-2); }
+.vh .recorrido-mapa .leaflet-control-container { pointer-events: none; }
+.vh .recorrido-mapa-etiqueta {
+  min-width: 34px;
+  padding: 6px 9px;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  background: #172018;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .18);
+  font: 700 16px/1 Urbanist, sans-serif;
+  text-align: center;
+}
+.vh .recorrido-mapa-etiqueta::before { display: none; }
+.vh .recorrido-leyenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  font-size: 16px;
+  color: var(--fg-2);
+}
+.vh .recorrido-leyenda span { display: inline-flex; align-items: center; gap: 7px; }
+.vh .recorrido-leyenda i {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #6a6e77;
+  border-radius: 5px;
+  background: #f4f0e9;
+}
+.vh .recorrido-leyenda i.actual { border-color: #236447; background: #8bc5a4; }
+.vh .recorrido-leyenda i.elegida { border-color: #172018; background: #c8ef4f; }
+.vh .recorrido-leyenda i.enviando { border-color: #8a5b16; background: #f4cb72; }
+.vh .recorrido-resumen {
+  margin: 0;
+  padding: 13px 15px;
+  border-radius: 14px;
+  background: var(--canvas);
+  color: var(--fg);
+  font-weight: 600;
+}
+.vh .recorrido-lista summary {
+  display: flex;
+  align-items: center;
+  min-height: var(--tap);
+  color: var(--olive-ink);
+  font-weight: 600;
+  cursor: pointer;
+}
+.vh .recorrido-lista > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding-bottom: 8px;
+}
+.vh .recorrido-lista button {
+  min-width: 0;
+  min-height: var(--tap);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--fg);
+  font: 600 16px/1.25 Urbanist, sans-serif;
+}
+.vh .recorrido-lista button[aria-pressed='true'] {
+  border-color: var(--olive);
+  background: var(--olive-bg);
+  color: var(--olive-ink);
+}
+.vh .recorrido-acciones { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+.vh .recorrido-acciones .boton { margin: 0; padding-inline: 12px; }
+.vh .recorrido-editor-pie { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; }
+.vh .recorrido-editor-pie .boton { width: auto; margin: 0; padding-inline: 8px; }
+.vh .recorrido-aviso .boton { margin-top: 10px; }
+
 /* Los desplegables viven en un portal fuera de .vh. La clase viaja tanto
    al disparador como a la lista para conservar el piso táctil del hermano. */
 .vh .vh-desplegable,
@@ -822,6 +1002,9 @@
   .vh .gestion-salidas-grupo-cabecera { display: grid; }
   .vh .gestion-salidas-grupo-cabecera .boton { width: 100%; }
   .vh .gestion-salida-fecha { grid-template-columns: minmax(0, 1fr); }
+  .vh .recorrido-acciones { grid-template-columns: minmax(0, 1fr); }
+  .vh .recorrido-mapa,
+  .vh .recorrido-mapa-cargando { height: 250px; }
   .vh .pestanias button { min-width: 0; min-height: 72px; padding-inline: 4px; }
 }
 
@@ -832,4 +1015,8 @@
   .vh .panel { padding-inline: 14px; }
   .vh .numeroGrande { font-size: calc(48px * var(--step)); }
   .vh .cifras { gap: 6px; }
+  .vh .recorrido-modos,
+  .vh .recorrido-estados,
+  .vh .cierre-estado-opciones,
+  .vh .recorrido-lista > div { grid-template-columns: minmax(0, 1fr); }
 }

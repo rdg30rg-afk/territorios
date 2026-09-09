@@ -65,7 +65,6 @@ const motivoOptions: Array<{ valor: SalidaResultadoMotivo; texto: string }> = [
 ]
 
 const estadoOptions: Array<{ valor: SalidaResultadoEstado; texto: string }> = [
-  { valor: 'sin_dato', texto: 'Sin dato' },
   { valor: 'realizada', texto: 'Realizada' },
   { valor: 'parcial', texto: 'Parcial' },
   { valor: 'no_realizada', texto: 'No realizada' },
@@ -146,7 +145,7 @@ export function SalidaResultadoForm({
   const attemptUser = useRef<string | null>(null)
   const submissionRunning = useRef(false)
   const [resultado, setResultado] = useState<SalidaResultadoActual | null>(null)
-  const [estado, setEstado] = useState<SalidaResultadoEstado>('sin_dato')
+  const [estado, setEstado] = useState<SalidaResultadoEstado>('realizada')
   const [motivo, setMotivo] = useState<SalidaResultadoMotivo | ''>('')
   const [observaciones, setObservaciones] = useState('')
   const [ocurrioAt, setOcurrioAt] = useState('')
@@ -205,7 +204,7 @@ export function SalidaResultadoForm({
         setResultado(currentResult)
         setHasLoaded(true)
         pendingAttempt.current = pending
-        setEstado((pending?.p_estado ?? currentResult?.estado ?? 'sin_dato') as SalidaResultadoEstado)
+        setEstado((pending?.p_estado ?? currentResult?.estado ?? 'realizada') as SalidaResultadoEstado)
         setMotivo((pending ? pending.p_motivo ?? '' : currentResult?.motivo ?? '') as SalidaResultadoMotivo | '')
         setObservaciones(pending ? pending.p_observaciones ?? '' : currentResult?.observaciones ?? '')
         setOcurrioAt(toLocalDateTimeValue(pending ? pending.p_ocurrio_at : currentResult?.ocurrio_at ?? null))
@@ -227,7 +226,7 @@ export function SalidaResultadoForm({
 
   useEffect(() => {
     setResultado(null)
-    setEstado('sin_dato')
+    setEstado('realizada')
     setMotivo('')
     setObservaciones('')
     setOcurrioAt('')
@@ -240,7 +239,7 @@ export function SalidaResultadoForm({
 
   const openEditor = () => {
     if (!hasLoaded) return
-    setEstado(resultado?.estado ?? 'sin_dato')
+    setEstado(resultado?.estado === 'sin_dato' ? 'realizada' : resultado?.estado ?? 'realizada')
     setMotivo(resultado?.motivo ?? '')
     setObservaciones(resultado?.observaciones ?? '')
     setOcurrioAt(toLocalDateTimeValue(resultado?.ocurrio_at ?? null))
@@ -413,25 +412,27 @@ export function SalidaResultadoForm({
               Consultar qué quedó guardado
             </button>
           </div> : null}
-          <label>
-            Estado de la salida
-            <Desplegable
-              etiqueta="Elegir estado"
-              valor={estado}
-              alElegir={(value) => {
-                attemptId.current = null
-                setEstado(value as SalidaResultadoEstado)
-              }}
-              deshabilitado={isSaving || unconfirmed}
-              opciones={estadoOptions}
-            />
-          </label>
+          <fieldset className="cierre-estado">
+            <legend>¿Qué pasó?</legend>
+            <div className="cierre-estado-opciones">
+              {estadoOptions.map((option) => (
+                <button
+                  type="button"
+                  key={option.valor}
+                  aria-pressed={estado === option.valor}
+                  disabled={isSaving || unconfirmed}
+                  onClick={() => {
+                    attemptId.current = null
+                    setEstado(option.valor)
+                  }}
+                >
+                  {option.texto}
+                </button>
+              ))}
+            </div>
+          </fieldset>
 
-          <p className="table-hint">
-            “Sin dato” es el valor inicial y no significa que la salida no se haya realizado.
-          </p>
-
-          <label>
+          {(estado === 'parcial' || estado === 'no_realizada' || estado === 'cancelada' || resultado) ? <label>
             Motivo
             <Desplegable
               etiqueta="Elegir motivo"
@@ -446,7 +447,7 @@ export function SalidaResultadoForm({
                 ...motivoOptions,
               ]}
             />
-          </label>
+          </label> : null}
 
           <label>
             {resultado
