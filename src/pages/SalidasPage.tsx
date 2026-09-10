@@ -130,6 +130,7 @@ type OutingRecord = {
   conductor_texto?: string | null
   territorio_codigo?: string | null
   barrio?: string | null
+  priorizar?: string | null
   provenance?: OutingProvenance | null
 }
 
@@ -207,7 +208,7 @@ type SalidasPageProps = {
 const SALIDAS_QUE_SE_TRAEN = 300
 const SALIDAS_POR_PAGINA = 25
 const CAMPOS_SALIDA =
-  'id, title, territory_id, driver_id, group_id, meeting_point_id, meeting_point_name, meeting_point_lat, meeting_point_lng, scheduled_for, notes, tipo, origen, registro_id, conductor_texto, territorio_codigo, barrio'
+  'id, title, territory_id, driver_id, group_id, meeting_point_id, meeting_point_name, meeting_point_lat, meeting_point_lng, scheduled_for, notes, tipo, origen, registro_id, conductor_texto, territorio_codigo, barrio, priorizar'
 const CAMPOS_SALIDA_VIEJOS =
   'id, title, territory_id, driver_id, group_id, meeting_point_id, meeting_point_name, meeting_point_lat, meeting_point_lng, scheduled_for, notes, tipo, origen, registro_id'
 const SALIDAS_RPC_FIELDS = CAMPOS_SALIDA_VIEJOS
@@ -1478,6 +1479,8 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
       outing.meeting_point_lat !== null && outing.meeting_point_lng !== null
         ? [outing.meeting_point_lng, outing.meeting_point_lat]
         : null,
+    neighborhood: outing.barrio,
+    priority: outing.priorizar,
     notes: outing.notes,
   })
 

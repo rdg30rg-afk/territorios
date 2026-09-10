@@ -33,6 +33,14 @@ test('el PDF usa coordenadas cuando existen y la dirección escrita como respald
     enlaceMapaSalida({ title: 'Salida', scheduledFor: '2026-09-12T10:00:00-03:00' }),
     null,
   )
+  assert.equal(
+    enlaceMapaSalida({
+      title: 'Salida',
+      scheduledFor: '2026-09-12T10:00:00-03:00',
+      meetingPointName: 'Predicación telefónica',
+    }),
+    null,
+  )
 })
 
 test('el archivo tiene un nombre legible, estable y sin caracteres problemáticos', async () => {
@@ -49,9 +57,15 @@ test('el archivo tiene un nombre legible, estable y sin caracteres problemático
 })
 
 test('la UI exporta agenda y ficha, captura errores y no exige GPS', async () => {
+  const pdfSource = await readFile(sourceUrl, 'utf8')
   const page = await readFile(pageUrl, 'utf8')
   const brotherPage = await readFile(brotherPageUrl, 'utf8')
 
+  assert.match(pdfSource, /orientation: 'landscape'/)
+  assert.match(pdfSource, /Salidas de predicación/)
+  assert.match(pdfSource, /Lugar de encuentro/)
+  assert.match(pdfSource, /Priorizar/)
+  assert.match(pdfSource, /rotuloDia\(outing\.scheduledFor\)/)
   assert.match(page, /'Agenda PDF'/)
   assert.match(page, />Compartí esta salida</)
   assert.match(page, /Descargar PDF/)

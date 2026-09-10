@@ -6,6 +6,8 @@ export type SalidaPdfData = {
   groupName?: string | null
   meetingPointName?: string | null
   meetingCoords?: [number, number] | null
+  neighborhood?: string | null
+  priority?: string | null
   notes?: string | null
 }
 
@@ -28,6 +30,35 @@ function fechaValida(value: string) {
   return Number.isNaN(date.getTime()) ? null : date
 }
 
+function horaSalidaPdf(value: string) {
+  const date = fechaValida(value)
+  if (!date) return '--:--'
+  return new Intl.DateTimeFormat('es-AR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(date)
+}
+
+function claveDia(value: string) {
+  const date = fechaValida(value)
+  return date?.toLocaleDateString('sv-SE') ?? value
+}
+
+function rotuloDia(value: string) {
+  const date = fechaValida(value)
+  if (!date) return { dia: 'Sin fecha', fecha: '' }
+  const dia = new Intl.DateTimeFormat('es-AR', { weekday: 'long' }).format(date)
+  const fecha = new Intl.DateTimeFormat('es-AR', {
+    day: 'numeric',
+    month: 'long',
+  }).format(date)
+  return {
+    dia: dia.charAt(0).toUpperCase() + dia.slice(1),
+    fecha,
+  }
+}
+
 export function fechaSalidaPdf(value: string) {
   const date = fechaValida(value)
   if (!date) return 'Horario a confirmar'
@@ -47,6 +78,7 @@ export function enlaceMapaSalida(data: SalidaPdfData) {
     return `https://www.google.com/maps?q=${lat},${lng}`
   }
   const place = data.meetingPointName?.trim()
+  if (/^(predicaci[oó]n telef[oó]nica|salidas? de grupos?)$/i.test(place ?? '')) return null
   return place
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place)}`
     : null
@@ -200,39 +232,156 @@ export async function crearPdfAgenda(
   label: string,
 ): Promise<ArchivoPdf> {
   const { jsPDF } = await import('jspdf')
-  const doc = new jsPDF({ unit: 'mm', format: 'a4' })
+  const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' })
   const ordered = [...outings].sort(
     (a, b) => (fechaValida(a.scheduledFor)?.getTime() ?? 0) - (fechaValida(b.scheduledFor)?.getTime() ?? 0),
   )
-  const rowsPerPage = 7
-  const pages = Math.max(1, Math.ceil(ordered.length / rowsPerPage))
+  const firstDate = ordered[0] ? fechaValida(ordered[0].scheduledFor) : null
+  const lastDate = ordered.at(-1) ? fechaValida(ordered.at(-1)!.scheduledFor) : null
+  const shortDate = (date: Date) =>
+    new Intl.DateTimeFormat('es-AR', { day: 'numeric', month: 'long' }).format(date)
+  const period = firstDate && lastDate
+    ? firstDate.toLocaleDateString('sv-SE') === lastDate.toLocaleDateString('sv-SE')
+      ? shortDate(firstDate)
+      : `${shortDate(firstDate)} al ${shortDate(lastDate)}`
+    : 'Fechas a confirmar'
 
-  for (let page = 0; page < pages; page += 1) {
-    if (page > 0) doc.addPage()
-    encabezado(doc, 'Agenda de salidas', label)
-    const slice = ordered.slice(page * rowsPerPage, (page + 1) * rowsPerPage)
-    let y = 51
-    if (slice.length === 0) {
-      doc.setFontSize(12)
-      doc.text('No hay salidas para exportar con estos filtros.', 16, y + 10)
+  const columns = [
+    { label: 'Hora', x: 14, width: 18 },
+    { label: 'Lugar de encuentro', x: 35, width: 84 },
+    { label: 'Terr.', x: 122, width: 22 },
+    { label: 'Conductor', x: 147, width: 49 },
+    { label: 'Ubicación', x: 199, width: 31 },
+    { label: 'Priorizar', x: 233, width: 50 },
+  ] as const
+
+  const drawPageHeader = () => {
+    doc.setFillColor(...TINTA)
+    doc.rect(0, 0, 297, 30, 'F')
+    doc.setFillColor(...OLIVA)
+    doc.rect(0, 30, 297, 3, 'F')
+    doc.setTextColor(255, 255, 255)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(9)
+    doc.text('TERRITORIOS · CONGREGACIÓN SAN JUAN', 14, 11)
+    doc.setFontSize(18)
+    doc.text('Salidas de predicación', 14, 24)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    doc.text(period, 283, 18, { align: 'right' })
+    doc.setTextColor(...SUAVE)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(7.5)
+    for (const column of columns) doc.text(column.label.toUpperCase(), column.x, 41)
+    doc.setDrawColor(216, 212, 202)
+    doc.line(14, 44, 283, 44)
+  }
+
+  const addPage = () => {
+    if (doc.getNumberOfPages() > 0 && paginaIniciada) doc.addPage('a4', 'landscape')
+    drawPageHeader()
+    paginaIniciada = true
+    return 48
+  }
+
+  const rowLines = (outing: SalidaPdfData) => {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8.5)
+    const place = textoO(outing.meetingPointName, outing.title || 'Punto a confirmar')
+    const placeWithNeighborhood = outing.neighborhood?.trim()
+      ? `${place}\n${outing.neighborhood.trim()}`
+      : place
+    return {
+      place: (doc.splitTextToSize(placeWithNeighborhood, columns[1].width) as string[]).slice(0, 2),
+      driver: (doc.splitTextToSize(textoO(outing.driverName, 'A confirmar'), columns[3].width) as string[]).slice(0, 2),
+      priority: (doc.splitTextToSize(textoO(outing.priority, 'Todo el territorio'), columns[5].width) as string[]).slice(0, 2),
     }
-    for (const outing of slice) {
-      doc.setFillColor(...PAPEL)
-      doc.roundedRect(16, y, 178, 28, 3, 3, 'F')
+  }
+
+  let paginaIniciada = false
+  let y = addPage()
+  let currentDay = ''
+  let rowIndex = 0
+
+  if (ordered.length === 0) {
+    doc.setTextColor(...TINTA)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(11)
+    doc.text('No hay salidas para exportar con los filtros actuales.', 14, 61)
+  }
+
+  for (const outing of ordered) {
+    const dayKey = claveDia(outing.scheduledFor)
+    const lines = rowLines(outing)
+    const rowHeight = Math.max(lines.place.length, lines.driver.length, lines.priority.length) > 1 ? 10.5 : 8.5
+    const needsDay = dayKey !== currentDay
+    const required = rowHeight + (needsDay ? 8 : 0)
+    if (y + required > 193) {
+      y = addPage()
+      currentDay = ''
+    }
+
+    if (dayKey !== currentDay) {
+      const day = rotuloDia(outing.scheduledFor)
+      doc.setFillColor(232, 239, 211)
+      doc.roundedRect(14, y, 269, 6.5, 2, 2, 'F')
       doc.setTextColor(...TINTA)
       doc.setFont('helvetica', 'bold')
-      doc.setFontSize(11)
-      doc.text(fechaSalidaPdf(outing.scheduledFor), 21, y + 8, { maxWidth: 168 })
-      doc.setFontSize(12)
-      doc.text(textoO(outing.territoryName, outing.title || 'Territorio a confirmar'), 21, y + 17, { maxWidth: 80 })
-      doc.setFont('helvetica', 'normal')
       doc.setFontSize(9)
+      doc.text(day.dia, 18, y + 4.5)
+      doc.setFont('helvetica', 'normal')
       doc.setTextColor(...SUAVE)
-      const detail = `${textoO(outing.driverName, 'Conductor a confirmar')} · ${textoO(outing.meetingPointName, 'Punto a confirmar')}`
-      doc.text(detail, 21, y + 24, { maxWidth: 168 })
-      y += 32
+      doc.text(day.fecha, 52, y + 4.5)
+      y += 8
+      currentDay = dayKey
+      rowIndex = 0
     }
-    pie(doc, page + 1, pages)
+
+    if (rowIndex % 2 === 1) {
+      doc.setFillColor(...PAPEL)
+      doc.rect(14, y - 1, 269, rowHeight, 'F')
+    }
+    doc.setTextColor(...TINTA)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(9)
+    doc.text(horaSalidaPdf(outing.scheduledFor), columns[0].x, y + 5)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8.5)
+    doc.text(lines.place, columns[1].x, y + 5)
+    doc.setFont('helvetica', 'bold')
+    doc.text(textoO(outing.territoryName, '-').replace(/^Territorio\s+/i, ''), columns[2].x, y + 5, {
+      maxWidth: columns[2].width,
+    })
+    doc.setFont('helvetica', 'normal')
+    doc.text(lines.driver, columns[3].x, y + 5)
+    const mapsUrl = enlaceMapaSalida(outing)
+    if (mapsUrl) {
+      doc.setTextColor(...OLIVA)
+      doc.setFont('helvetica', 'bold')
+      doc.textWithLink('Ver mapa', columns[4].x, y + 5, { url: mapsUrl })
+    } else {
+      doc.setTextColor(...SUAVE)
+      doc.text('Sin ubicación', columns[4].x, y + 5)
+    }
+    doc.setTextColor(...TINTA)
+    doc.setFont('helvetica', 'normal')
+    doc.text(lines.priority, columns[5].x, y + 5)
+    doc.setDrawColor(234, 231, 223)
+    doc.line(14, y + rowHeight - 1, 283, y + rowHeight - 1)
+    y += rowHeight
+    rowIndex += 1
+  }
+
+  const pages = doc.getNumberOfPages()
+  for (let page = 1; page <= pages; page += 1) {
+    doc.setPage(page)
+    doc.setDrawColor(222, 218, 208)
+    doc.line(14, 199, 283, 199)
+    doc.setTextColor(...SUAVE)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(7.5)
+    doc.text(`${label} · Generado desde Territorios`, 14, 204)
+    doc.text(`${page} / ${pages}`, 283, 204, { align: 'right' })
   }
 
   const today = new Date().toISOString().slice(0, 10)

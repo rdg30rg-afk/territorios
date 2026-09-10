@@ -464,6 +464,8 @@ function BotonPdfSalida({
             salida.lat !== undefined && salida.lng !== undefined
               ? [salida.lng, salida.lat]
               : null,
+          neighborhood: salida.barrio,
+          priority: salida.priorizar,
           notes: salida.notes,
         }),
       )
