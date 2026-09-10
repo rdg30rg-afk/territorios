@@ -32,6 +32,17 @@ type DriverOption = {
   status: 'activo' | 'pendiente' | 'inactivo'
 }
 
+type GroupOption = {
+  id: string
+  group_number: number | null
+  group_name: string | null
+}
+
+type GroupMembership = {
+  profile_id: string
+  group_id: string
+}
+
 export function DashboardPage() {
   const { profile, moduleAccess } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -321,7 +332,10 @@ function UserAccessPanel() {
   const [draftRoles, setDraftRoles] = useState<Record<string, ProfileRole>>({})
   const [draftModules, setDraftModules] = useState<Record<string, ModuleKey[]>>({})
   const [draftDriverIds, setDraftDriverIds] = useState<Record<string, string>>({})
+  const [draftGroupIds, setDraftGroupIds] = useState<Record<string, string>>({})
   const [drivers, setDrivers] = useState<DriverOption[]>([])
+  const [groups, setGroups] = useState<GroupOption[]>([])
+  const [groupByProfile, setGroupByProfile] = useState<Record<string, string>>({})
   const [isSavingUserId, setIsSavingUserId] = useState<string | null>(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [feedback, setFeedback] = useState<string | null>(null)
@@ -396,16 +410,46 @@ function UserAccessPanel() {
     setDrivers((data as DriverOption[]) ?? [])
   }, [profile?.role])
 
+  const loadGroups = useCallback(async () => {
+    if (!supabase || profile?.role !== 'admin') {
+      setGroups([])
+      setGroupByProfile({})
+      return
+    }
+
+    const [{ data: groupRows, error: groupsError }, { data: memberRows, error: membersError }] = await Promise.all([
+      supabase
+        .from('grupos_servicio')
+        .select('id, group_number, group_name')
+        .order('group_number', { ascending: true, nullsFirst: false })
+        .order('group_name', { ascending: true }),
+      supabase
+        .from('grupo_miembros')
+        .select('profile_id, group_id')
+        .is('hasta', null),
+    ])
+
+    if (groupsError || membersError) {
+      setError(decirElError(groupsError ?? membersError))
+      return
+    }
+
+    setGroups((groupRows as GroupOption[]) ?? [])
+    setGroupByProfile(Object.fromEntries(
+      ((memberRows as GroupMembership[]) ?? []).map((membership) => [membership.profile_id, membership.group_id]),
+    ))
+  }, [profile?.role])
+
   useEffect(() => {
-    void loadDrivers()
-  }, [loadDrivers])
+    void Promise.all([loadDrivers(), loadGroups()])
+  }, [loadDrivers, loadGroups])
 
   const refreshAccessPanel = async () => {
     setError(null)
     setFeedback(null)
     setIsRefreshing(true)
 
-    await Promise.all([loadManagedUsers(), loadDrivers()])
+    await Promise.all([loadManagedUsers(), loadDrivers(), loadGroups()])
 
     setFeedback(
       `Panel actualizado ${new Intl.DateTimeFormat('es-AR', {
@@ -429,6 +473,37 @@ function UserAccessPanel() {
 
   const getDraftDriverId = (userId: string, fallback: string | null) =>
     draftDriverIds[userId] ?? fallback ?? ''
+
+  const getDraftGroupId = (userId: string) =>
+    draftGroupIds[userId] ?? groupByProfile[userId] ?? ''
+
+  const saveGroup = async (userId: string) => {
+    if (!supabase) return
+    setError(null)
+    setFeedback(null)
+    setIsSavingUserId(userId)
+
+    const groupId = getDraftGroupId(userId)
+    const { error: saveError } = await supabase.rpc('administrar_grupo_usuario', {
+      p_profile_id: userId,
+      p_group_id: groupId || null,
+    })
+
+    if (saveError) {
+      setError(decirElError(saveError))
+    } else {
+      setGroupByProfile((current) => ({ ...current, [userId]: groupId }))
+      setDraftGroupIds((current) => {
+        const next = { ...current }
+        delete next[userId]
+        return next
+      })
+      await loadManagedUsers()
+      setFeedback(groupId ? 'Listo, el grupo quedó asignado.' : 'Listo, la persona quedó sin grupo.')
+    }
+
+    setIsSavingUserId(null)
+  }
 
   const toggleModule = (userId: string, moduleKey: ModuleKey, fallback: ModuleKey[]) => {
     const currentModules = getDraftModules(userId, fallback)
@@ -502,6 +577,7 @@ function UserAccessPanel() {
     const draftRole = getDraftRole(user.id, user.role)
     const draftAccess = getDraftModules(user.id, user.moduleAccess)
     const draftDriverId = getDraftDriverId(user.id, user.driver_id)
+    const draftGroupId = getDraftGroupId(user.id)
     const isOwnUser = user.id === profile?.id
     const isRequestOnly = Boolean(user.requestOnly)
     const isDisabled = isSavingUserId === user.id || isOwnUser || isRequestOnly
@@ -597,6 +673,38 @@ function UserAccessPanel() {
             ]}
           />
         </label>
+
+        <div className="admin-group-assignment">
+          <label>
+            Grupo al que pertenece
+            <Desplegable
+              etiqueta="Grupo al que pertenece"
+              valor={draftGroupId}
+              deshabilitado={isSavingUserId === user.id || isRequestOnly}
+              alElegir={(valor) =>
+                setDraftGroupIds((current) => ({ ...current, [user.id]: valor }))
+              }
+              opciones={[
+                { valor: '', texto: 'Sin grupo' },
+                ...groups.map((group) => ({
+                  valor: group.id,
+                  texto: group.group_number
+                    ? `Grupo ${group.group_number}${group.group_name ? ` · ${group.group_name}` : ''}`
+                    : group.group_name || 'Grupo sin nombre',
+                })),
+              ]}
+            />
+          </label>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => void saveGroup(user.id)}
+            disabled={isSavingUserId === user.id || isRequestOnly}
+          >
+            <Icono nombre="grupo" tamaño={18} />
+            {isSavingUserId === user.id ? 'Guardando...' : 'Guardar grupo'}
+          </button>
+        </div>
 
         {draftRole === 'admin' ? (
           <p className="admin-access-complete">Acceso completo al panel.</p>

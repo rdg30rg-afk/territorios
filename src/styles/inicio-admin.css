@@ -58,6 +58,16 @@
   margin-top: 0.4rem;
 }
 
+.admin-group-assignment {
+  display: grid;
+  gap: 0.55rem;
+  align-self: stretch;
+}
+
+.admin-group-assignment > .secondary-button {
+  justify-self: start;
+}
+
 @media (max-width: 720px) {
   .inicio-lista li { grid-template-columns: 46px 1fr; }
   .inicio-accion { grid-column: 1 / -1; text-align: center; }
