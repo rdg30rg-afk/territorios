@@ -27,6 +27,7 @@ import {
 import { BuscadorPunto } from '../components/BuscadorPunto'
 import { saleSinConductor, textoConductor, textoPuntoSalida, textoTerritorio } from '../lib/salidaEtiquetas'
 import { agruparPorDia, etiquetaDelDia, partirAgenda } from '../lib/agendaPorDia'
+import { readAllRows } from '../lib/readAllRows'
 import {
   compartirPdf,
   crearPdfAgenda,
@@ -46,6 +47,13 @@ const MeetingPointPickerMap = lazy(() =>
 
 function MapFallback() {
   return <div className="status-card">Cargando mapa...</div>
+}
+
+function rangoPdfInicial() {
+  const desde = new Date()
+  const hasta = new Date(desde)
+  hasta.setDate(hasta.getDate() + 13)
+  return { desde: aClaveFecha(desde), hasta: aClaveFecha(hasta) }
 }
 
 type DriverRecord = {
@@ -568,6 +576,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [pdfEnCurso, setPdfEnCurso] = useState<string | null>(null)
+  const [rangoPdf, setRangoPdf] = useState(rangoPdfInicial)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [gpsPendientes, setGpsPendientes] = useState<GpsPendiente[]>([])
@@ -1064,10 +1073,6 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
     () => agruparPorDia(anteriores.slice(0, anterioresAMostrar)),
     [anteriores, anterioresAMostrar],
   )
-  const salidasAgendaVisibles = useMemo(
-    () => [...proximas, ...anteriores.slice(0, anterioresAMostrar)],
-    [anteriores, anterioresAMostrar, proximas],
-  )
   const anterioresQueFaltan = Math.max(0, anteriores.length - anterioresAMostrar)
   const filtrosActivos = territoryFilter !== 'todos' || scheduleFilter !== 'todos'
 
@@ -1471,10 +1476,10 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
     territoryName: outing.territoryName,
     driverName: outing.driverName,
     groupName: outing.groupName,
-    meetingPointName: textoPuntoSalida({
-      codigo: outing.territorio_codigo,
-      nombre: outing.meeting_point_name,
-    }),
+    // El territorio ya tiene su propia columna en la agenda. Repetir aca
+    // el codigo del punto (11.2, 13.1...) hacia que la direccion empezara
+    // con otro numero y pareciera un segundo territorio.
+    meetingPointName: outing.meeting_point_name?.trim() || null,
     meetingCoords:
       outing.meeting_point_lat !== null && outing.meeting_point_lng !== null
         ? [outing.meeting_point_lng, outing.meeting_point_lat]
@@ -1546,18 +1551,70 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
   }
 
   const handleDownloadAgendaPdf = async () => {
-    if (salidasAgendaVisibles.length === 0) {
-      setError('No hay salidas para exportar con los filtros actuales.')
+    if (!client) {
+      setError('Todavía no está configurada la conexión con la base.')
+      return
+    }
+    if (!rangoPdf.desde || !rangoPdf.hasta) {
+      setError('Elegí desde qué fecha y hasta qué fecha querés exportar.')
+      return
+    }
+    if (rangoPdf.desde > rangoPdf.hasta) {
+      setError('La fecha "Desde" no puede ser posterior a la fecha "Hasta".')
       return
     }
     setPdfEnCurso('agenda')
     try {
+      const diaPosterior = deClaveFecha(rangoPdf.hasta)
+      diaPosterior.setDate(diaPosterior.getDate() + 1)
+      const limiteExclusivo = aClaveFecha(diaPosterior)
+      const grupoDelPdf = groupServiceMode
+        ? canManageGeneralOutings
+          ? grupoConsulta === 'todos' ? null : grupoConsulta
+          : lockedGroupId
+        : null
+      const salidasDelPeriodo = await readAllRows<OutingRecord>((from, to) => {
+        let consulta = client
+          .from('salidas')
+          .select(CAMPOS_SALIDA)
+          .gte('scheduled_for', `${rangoPdf.desde}T00:00:00-03:00`)
+          .lt('scheduled_for', `${limiteExclusivo}T00:00:00-03:00`)
+          .order('scheduled_for', { ascending: true })
+          .range(from, to)
+        if (grupoDelPdf) consulta = consulta.eq('group_id', grupoDelPdf)
+        return consulta
+      })
+
+      if (salidasDelPeriodo.length === 0) {
+        setError('No hay salidas programadas entre esas dos fechas.')
+        return
+      }
+
+      const salidasConDetalle = salidasDelPeriodo.map((outing) => {
+        const selectedGroup = groups.find((group) => group.id === outing.group_id)
+        return {
+          ...outing,
+          territoryName: textoTerritorio({
+            territory_id: outing.territory_id,
+            territorio_codigo: outing.territorio_codigo,
+            territoryName: territories.find((territory) => territory.id === outing.territory_id)?.name ?? null,
+          }),
+          driverName: textoConductor({
+            driver_id: outing.driver_id,
+            conductor_texto: outing.conductor_texto,
+            driverName: drivers.find((driver) => driver.id === outing.driver_id)?.full_name ?? null,
+          }),
+          groupName: selectedGroup ? getGroupLabel(selectedGroup) : 'Sin grupo',
+          scheduleStatus: getOutingScheduleStatus(outing.scheduled_for),
+          provenance: null,
+        }
+      })
       const archivo = await crearPdfAgenda(
-        salidasAgendaVisibles.map(datosPdfDeSalida),
-        `${salidasAgendaVisibles.length} ${salidasAgendaVisibles.length === 1 ? 'salida visible' : 'salidas visibles'}`,
+        salidasConDetalle.map(datosPdfDeSalida),
+        `${salidasConDetalle.length} ${salidasConDetalle.length === 1 ? 'salida' : 'salidas'} · ${rangoPdf.desde} a ${rangoPdf.hasta}`,
       )
       descargarPdf(archivo)
-      setMessage('Agenda PDF preparada con las salidas que estás viendo.')
+      setMessage(`PDF preparado con ${salidasConDetalle.length} ${salidasConDetalle.length === 1 ? 'salida' : 'salidas'} del período elegido.`)
       setError(null)
     } catch (caught) {
       setError(mensajeErrorSalidas(caught, 'No se pudo preparar el PDF de la agenda.'))
@@ -2613,16 +2670,6 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                 </div>
               </details>
 
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={() => void handleDownloadAgendaPdf()}
-                disabled={pdfEnCurso !== null || salidasAgendaVisibles.length === 0}
-              >
-                <Icono nombre="descargar" tamaño={18} />
-                {pdfEnCurso === 'agenda' ? 'Preparando…' : 'Agenda PDF'}
-              </button>
-
               {canManageOutings ? (
                 <button type="button" className="secondary-button" onClick={abrirNueva}>
                   <Icono nombre="salidas" tamaño={18} />
@@ -2644,6 +2691,41 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
               ) : null}
             </div>
           </div>
+
+          <section className="agenda-pdf-periodo" aria-labelledby="agenda-pdf-titulo">
+            <div className="agenda-pdf-copy">
+              <span>Exportación PDF</span>
+              <strong id="agenda-pdf-titulo">Elegí el período de la agenda</strong>
+              <p>Incluye todas las salidas comprendidas entre ambas fechas, aunque no estén desplegadas en la lista.</p>
+            </div>
+            <div className="agenda-pdf-fechas">
+              <label>
+                Desde
+                <input
+                  type="date"
+                  value={rangoPdf.desde}
+                  onChange={(event) => setRangoPdf((actual) => ({ ...actual, desde: event.target.value }))}
+                />
+              </label>
+              <label>
+                Hasta
+                <input
+                  type="date"
+                  value={rangoPdf.hasta}
+                  onChange={(event) => setRangoPdf((actual) => ({ ...actual, hasta: event.target.value }))}
+                />
+              </label>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => void handleDownloadAgendaPdf()}
+                disabled={pdfEnCurso !== null}
+              >
+                <Icono nombre="descargar" tamaño={18} />
+                {pdfEnCurso === 'agenda' ? 'Preparando…' : 'Descargar agenda PDF'}
+              </button>
+            </div>
+          </section>
 
           {error ? <div className="form-feedback error">{error}</div> : null}
           {message ? <div className="form-feedback success">{message}</div> : null}
