@@ -10,8 +10,18 @@ const getFriendlyAuthError = (error: string | null) => {
     return null
   }
 
-  if (error.toLowerCase().includes('email not confirmed')) {
+  const normalizedError = error.toLowerCase()
+
+  if (normalizedError.includes('email not confirmed')) {
     return 'Todavía falta confirmar el email. Abrí el correo de Territorios y tocá “Confirmar email”.'
+  }
+
+  if (normalizedError.includes('email rate limit exceeded')) {
+    return 'Se alcanzó el límite temporal de correos. El administrador debe reenviar la confirmación cuando el correo del dominio esté configurado.'
+  }
+
+  if (normalizedError.includes('invalid login credentials')) {
+    return 'El usuario o la contraseña no coinciden. No compartas la contraseña: pedí un enlace de recuperación o usá la contraseña con la que se creó la cuenta.'
   }
 
   return error
@@ -66,9 +76,17 @@ export function LoginPage() {
     try {
       const result = await signUp(fullName, email, password, username, groupCode)
       if (result.error) {
-        setError(result.error)
+        setError(getFriendlyAuthError(result.error))
       } else if (result.joined) {
         setMessage('Entraste al grupo. Ya podés ver el programa.')
+        setFullName('')
+        setUsername('')
+        setEmail('')
+        setPassword('')
+        setGroupCode('')
+      } else if (result.confirmed) {
+        setMessage('Cuenta creada. Ya podés ingresar con tu usuario y contraseña.')
+        setMode('login')
         setFullName('')
         setUsername('')
         setEmail('')

@@ -18,6 +18,10 @@ test('la confirmación vuelve al login del mismo origen', () => {
     confirmationRedirectUrl('http://127.0.0.1:5173/'),
     'http://127.0.0.1:5173/login?confirmado=1',
   )
+  assert.equal(
+    confirmationRedirectUrl('https://preview.example.com/predicacion'),
+    'https://congregacion.estracom.com.ar/login?confirmado=1',
+  )
   assert.match(authContext, /emailRedirectTo: confirmationRedirectUrl\(window\.location\.origin\)/)
 })
 

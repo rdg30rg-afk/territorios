@@ -85,7 +85,7 @@ export type AuthContextValue = {
     password: string,
     username?: string,
     groupCode?: string,
-  ) => Promise<{ error: string | null; joined?: boolean }>
+  ) => Promise<{ error: string | null; joined?: boolean; confirmed?: boolean }>
   signOut: () => Promise<void>
   approveUser: (userId: string) => Promise<{ error: string | null }>
   loadManagedUsers: () => Promise<void>

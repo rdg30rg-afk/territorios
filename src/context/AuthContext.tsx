@@ -550,11 +550,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             : joinError.message,
         }
       }
-      return { error: null, joined: true }
+      return { error: null, joined: true, confirmed: true }
     }
 
+    const confirmed = Boolean(data.session)
     await supabase.auth.signOut()
-    return { error: null, joined: false }
+    return { error: null, joined: false, confirmed }
   }
 
   const approveUser = async (userId: string) => {
