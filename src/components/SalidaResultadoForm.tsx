@@ -245,6 +245,34 @@ export function SalidaResultadoForm({
     void loadCurrentResult()
   }, [initialEstado, loadCurrentResult, occurredAt])
 
+  useEffect(() => {
+    const reintentarAlVolver = () => {
+      const payload = pendingAttempt.current
+      if (!payload || submissionRunning.current || !navigator.onLine) return
+      submissionRunning.current = true
+      setIsSaving(true)
+      setError(null)
+      return (async () => {
+        try {
+          await deliverResult(payload, attemptUser.current)
+          pendingAttempt.current = null
+          setUnconfirmed(false)
+          setModoEdicion(false)
+          const refreshed = await loadCurrentResult(false)
+          setMessage(refreshed ? 'Resultado guardado.' : 'El resultado se guardó, pero no se pudo volver a cargar.')
+          onSaved?.()
+        } catch (caught) {
+          setError(errorMessage(caught, 'No se pudo guardar el resultado de la salida.'))
+        } finally {
+          submissionRunning.current = false
+          setIsSaving(false)
+        }
+      })()
+    }
+    window.addEventListener('online', reintentarAlVolver)
+    return () => window.removeEventListener('online', reintentarAlVolver)
+  }, [loadCurrentResult, onSaved])
+
   const openEditor = () => {
     if (!hasLoaded) return
     setEstado(resultado?.estado === 'sin_dato' ? initialEstado : resultado?.estado ?? initialEstado)

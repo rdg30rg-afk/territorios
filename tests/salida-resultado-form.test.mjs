@@ -22,6 +22,7 @@ function harness({loadError=false,saveError=false,refreshError=false,pending=nul
     from(){return {select(){return this},eq(){return this},async maybeSingle(){loads++;return {data:null,error:loadError||(refreshError&&loads>1)?{message:'falló lectura'}:null}}}},
     async rpc(name,payload){calls.push({name,payload});return {error:saveError?{message:'sin respuesta'}:null}},
   }
+  const listeners = new Map()
   const exports={}
   const jsx=(type,props)=>({type,props})
   vm.runInNewContext(code, {exports,require(name){
@@ -36,14 +37,18 @@ function harness({loadError=false,saveError=false,refreshError=false,pending=nul
     }
     if(name.endsWith('decirElError')) return {decirElError:e=>e.message}
     throw Error(name)
-  },crypto:{randomUUID:()=>`attempt-${calls.length+1}`},window:{addEventListener(){},removeEventListener(){}},Date,Intl})
+  },crypto:{randomUUID:()=>`attempt-${calls.length+1}`},navigator:{onLine:true},window:{
+    addEventListener(type, fn){const list=listeners.get(type)??[];list.push(fn);listeners.set(type,list)},
+    removeEventListener(type, fn){listeners.set(type,(listeners.get(type)??[]).filter(item=>item!==fn))},
+  },Date,Intl})
   function render(){cursor=0;tree=exports.SalidaResultadoForm({salidaId:'salida-qa',canReport:true,canCorrect:true,hideOccurredAt,occurredAt});return tree}
   function nodes(node=tree){if(!node||typeof node!=='object')return [];if(Array.isArray(node))return node.flatMap(n=>nodes(n ?? null));return [node,...nodes(node.props?.children ?? null)]}
   function text(node){if(node==null)return '';if(typeof node!=='object')return String(node);if(Array.isArray(node))return node.map(text).join('');return text(node.props?.children)}
   async function settle(){for(let i=0;i<5;i++){render();for(const fn of effects.splice(0))fn();await new Promise(r=>setImmediate(r))}render()}
   async function click(label){const n=nodes().find(n=>n.type==='button'&&text(n)===label);assert.ok(n,`Botón ausente: ${label}`);assert.ok(!n.props.disabled);await n.props.onClick();await settle()}
   async function submit(){const form=nodes().find(n=>n.type==='form');assert.ok(form);await form.props.onSubmit({preventDefault(){}});await settle()}
-  return {settle,click,submit,nodes,text:()=>text(tree),calls}
+  async function online(){await Promise.all([...(listeners.get('online')??[])].map(fn=>fn()));await settle()}
+  return {settle,click,submit,online,nodes,text:()=>text(tree),calls}
 }
 test('error de lectura no se presenta como ausencia de resultado ni habilita informar',async()=>{
   const h=harness({loadError:true});await h.settle()
@@ -80,6 +85,14 @@ test('dos submits antes del siguiente render hacen una sola llamada',async()=>{
   await h.settle();await h.submit()
   assert.equal(h.calls.length,2)
   assert.deepEqual(h.calls[0].payload,h.calls[1].payload)
+})
+test('al volver la conexión reintenta el envío conservado sin cambiar el UUID',async()=>{
+  const pending={p_id:'recovered',p_salida_id:'salida-qa',p_estado:'parcial',p_motivo:'clima',p_observaciones:'llovió',p_ocurrio_at:null,p_corrige_id:null}
+  const h=harness({pending});await h.settle()
+  await h.online()
+  assert.equal(h.calls.length,1)
+  assert.deepEqual(h.calls[0].payload,pending)
+  assert.match(h.text(),/Resultado guardado/)
 })
 test('recupera envío tras remontar y mantiene UUID aunque el resultado actual esté vacío',async()=>{
   const pending={p_id:'recovered',p_salida_id:'salida-qa',p_estado:'parcial',p_motivo:'clima',p_observaciones:'llovió',p_ocurrio_at:null,p_corrige_id:null}
