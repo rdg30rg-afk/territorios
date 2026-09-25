@@ -1,0 +1,222 @@
+/* ==========================================================================
+   El resultado de una salida
+   --------------------------------------------------------------------------
+   POR QUE EXISTE ESTE ARCHIVO
+
+   El mismo formulario se usa en dos lugares: el informe que el hermano
+   completa en el telefono, adentro de .vh (vista-hermano.css), y la ventana
+   que abre el administrador desde Salidas. El control "¿Que paso?" tenia
+   reglas escritas solo para .vh. En el admin no quedaba ninguna aplicable, y
+   el navegador dibujaba el fieldset con su borde de fabrica y los botones con
+   el estilo nativo del sistema.
+
+   POR QUE ESTA ACOTADO A .app-shell
+
+   Para no pisarle el piso tactil ni la escala a la vista del hermano, que
+   tiene los suyos. Todo lo de abajo vive dentro del AppShell, que es donde
+   esta el admin. Las unicas reglas sueltas son las de forma de la lista de
+   datos: en la vista del hermano evitan los margenes que el navegador le pone
+   a <dl> por defecto.
+
+   LO QUE SE APLICA ACA
+
+   - El estado es un control segmentado: cuatro opciones que se excluyen,
+     mismo ancho, etiquetas cortas y paralelas, y la celda entera como zona de
+     toque, no solo el texto.
+   - El piso de la zona de toque es 44 px con puntero y 48 px en el telefono
+     (Apple pide 44 pt, Android 48 dp, y WCAG 2.2 pone 24 px como minimo
+     absoluto).
+   - La opcion elegida se distingue por relleno, borde y peso, no solo por el
+     color.
+   - En el telefono los cuatro estados pasan a 2x2: apretados en un renglon,
+     "No realizada" se parte.
+   - La accion principal queda pegada abajo mientras se completa el
+     formulario, con la franja del sistema sumada.
+   ========================================================================== */
+
+/* --------------------------------------------------------------- forma base
+   Vale en las dos vistas. */
+.resultado-datos {
+  display: grid;
+  gap: 0.1rem;
+  margin: 0;
+}
+
+.resultado-datos dt {
+  color: var(--text-soft);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.resultado-datos dd { margin: 0; }
+
+/* ------------------------------------------------------------------ el admin */
+
+.app-shell .resultado-form { gap: 0.7rem; }
+
+/* La tarjeta del resultado actual. La barra de la izquierda dice de un vistazo
+   como salio; la palabra lo dice igual, sin depender del color.
+   El selector lleva las cuatro clases porque el tema del hermano apaga la
+   sombra de .module-detail-card y hay que ganarle. */
+.app-shell .resultado-form .module-detail-card.resultado-actual {
+  display: grid;
+  gap: 0.4rem;
+  align-content: start;
+  box-shadow: inset 3px 0 0 var(--resultado-tono, var(--panel-border));
+}
+
+.app-shell .resultado-actual--realizada { --resultado-tono: var(--h-good-fg, #0f6b47); }
+.app-shell .resultado-actual--parcial { --resultado-tono: var(--h-warn-fg, #955408); }
+.app-shell .resultado-actual--no_realizada { --resultado-tono: var(--h-bad-fg, #a12b1e); }
+.app-shell .resultado-actual--cancelada,
+.app-shell .resultado-actual--sin_dato { --resultado-tono: var(--h-line, #e5e0d4); }
+
+.app-shell .resultado-actual .resultado-rotulo {
+  color: var(--h-fg-3, #6a6e77);
+  font-size: var(--h-t-micro, 12px);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+/* En la tarjeta, la pastilla heredaba display:block y se estiraba de lado a
+   lado. Una pastilla es una pastilla. */
+.app-shell .resultado-actual .status-pill {
+  display: inline-flex;
+  justify-self: start;
+}
+
+.app-shell .resultado-actual .resultado-datos { margin-top: 0.15rem; }
+
+.app-shell .resultado-actual .resultado-datos > div + div { margin-top: 0.35rem; }
+
+.app-shell .resultado-actual .resultado-nota {
+  margin: 0.1rem 0 0;
+  padding-left: 0.6rem;
+  border-left: 2px solid var(--panel-border);
+  color: var(--text-soft);
+}
+
+.app-shell .resultado-actual .resultado-vacio {
+  margin: 0.1rem 0 0;
+  color: var(--text-soft);
+}
+
+/* ------------------------------------------------------------- el formulario */
+
+.app-shell .resultado-editor .cierre-estado {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.app-shell .resultado-editor .cierre-estado legend {
+  margin: 0 0 0.45rem;
+  padding: 0;
+  color: var(--text-main);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.app-shell .resultado-editor .cierre-estado-opciones {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.4rem;
+}
+
+.app-shell .resultado-editor .cierre-estado-opciones button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  background: var(--panel-bg);
+  color: var(--text-soft);
+  font: inherit;
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+  transition:
+    background var(--h-dur, 160ms) var(--h-ease, ease),
+    border-color var(--h-dur, 160ms) var(--h-ease, ease),
+    color var(--h-dur, 160ms) var(--h-ease, ease);
+}
+
+.app-shell .resultado-editor .cierre-estado-opciones button:hover:not(:disabled) {
+  border-color: var(--h-olive-line, #d3e2a4);
+  background: var(--h-canvas, #f6f4ee);
+}
+
+.app-shell .resultado-editor .cierre-estado-opciones button[aria-pressed='true'] {
+  border-color: var(--h-olive, #5f7d0a);
+  background: var(--h-olive-bg, #f0f6dd);
+  color: var(--h-olive-ink, #516608);
+  box-shadow: inset 0 0 0 1px var(--h-olive, #5f7d0a);
+}
+
+.app-shell .resultado-editor .cierre-estado-opciones button:focus-visible {
+  outline: 2px solid var(--h-olive, #5f7d0a);
+  outline-offset: 2px;
+}
+
+.app-shell .resultado-editor .cierre-estado-opciones button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Los campos del editor respiran un poco mas que los de una tabla: aca se
+   escribe, no se elige de una lista. */
+.app-shell .resultado-editor input[type='datetime-local'],
+.app-shell .resultado-editor textarea,
+.app-shell .resultado-editor .desplegable { min-height: 44px; }
+
+.app-shell .resultado-editor textarea { min-height: 104px; }
+
+/* Debajo del campo de fecha, la misma fecha ya escrita como se va a guardar. */
+.app-shell .resultado-editor .resultado-ayuda {
+  color: var(--text-soft);
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+/* ------------------------------------------------------------------ el telefono */
+
+@media (max-width: 720px) {
+  /* Dos columnas y no cuatro: en 390 px, "No realizada" en un cuarto de
+     renglon se corta o se parte al medio. */
+  .app-shell .resultado-editor .cierre-estado-opciones {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .app-shell .resultado-editor .cierre-estado-opciones button { min-height: 48px; }
+
+  /* 16 px o menos hace que Safari en el iPhone agrande la pantalla cuando se
+     enfoca el campo. */
+  .app-shell .resultado-editor input[type='datetime-local'],
+  .app-shell .resultado-editor textarea { font-size: 16px; }
+
+  /* La accion principal viaja con el pulgar. El modal tiene 20 px de relleno a
+     los costados y abajo, asi que la barra se estira hasta el borde y le suma
+     la franja del sistema. */
+  .app-shell .resultado-editor .module-table-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    margin: 0.2rem -20px -20px;
+    padding: 0.75rem 20px calc(0.75rem + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--panel-border);
+    background: var(--panel-bg);
+  }
+
+  /* El principal se queda con el ancho que sobra: repartido en partes
+     iguales, "Guardar resultado" se partia en dos renglones. */
+  .app-shell .resultado-editor .module-table-actions > button { flex: 1 1 auto; }
+  .app-shell .resultado-editor .module-table-actions > .secondary-button { flex: 0 1 auto; }
+
+  /* Al enfocar un campo del final, el navegador lo sube por encima de la
+     barra en vez de dejarlo debajo. */
+  .app-shell .modal-cuerpo { scroll-padding-bottom: 6rem; }
+}

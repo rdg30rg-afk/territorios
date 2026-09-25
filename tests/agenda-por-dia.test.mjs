@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { partirAgenda, agruparPorDia, etiquetaDelDia, claveDelDia } from '../src/lib/agendaPorDia.ts'
+import { partirAgenda, agruparPorDia, ordenarSalidasDelDia, etiquetaDelDia, claveDelDia } from '../src/lib/agendaPorDia.ts'
 
 // Mediodia para que el corte por dia no dependa del huso.
 const ahora = new Date(2026, 8, 7, 12, 0)
@@ -52,6 +52,24 @@ test('agrupar no reordena y junta solo días consecutivos iguales', () => {
   assert.deepEqual(dias.map((d) => d.salidas.length), [2, 1])
   assert.equal(dias[0].clave, '2026-09-09')
   assert.equal(dias[1].clave, '2026-09-10')
+})
+
+test('la agenda respeta el orden manual guardado dentro del día y no cambia las salidas antiguas', () => {
+  const salidas = [
+    { id: 'tarde', scheduled_for: en(2026, 9, 9, 17), programa_orden: 1 },
+    { id: 'manana', scheduled_for: en(2026, 9, 9, 9), programa_orden: 2 },
+    { id: 'manual', scheduled_for: en(2026, 9, 9, 19), programa_orden: null },
+  ]
+  const porHora = partirAgenda(salidas, ahora).proximas
+  assert.deepEqual(ordenarSalidasDelDia(porHora).map((s) => s.id), ['tarde', 'manana', 'manual'])
+  assert.deepEqual(ordenarSalidasDelDia(porHora.filter((s) => s.programa_orden == null)).map((s) => s.id), ['manual'])
+  const agregadasDespues = [
+    { id: 'primera-guardada', scheduled_for: en(2026, 9, 9, 9) },
+    { id: 'telefono', scheduled_for: en(2026, 9, 9, 19), programa_orden: 2 },
+    { id: 'tarde-nueva', scheduled_for: en(2026, 9, 9, 17), programa_orden: 3 },
+  ]
+  assert.deepEqual(ordenarSalidasDelDia(agregadasDespues).map((s) => s.id),
+    ['primera-guardada', 'telefono', 'tarde-nueva'])
 })
 
 test('la etiqueta dice hoy, mañana y ayer sin dejar de mostrar la fecha', () => {

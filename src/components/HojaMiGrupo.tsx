@@ -280,7 +280,7 @@ export function HojaMiGrupo({ contexto, abierto, onCerrar, onCambio }: HojaMiGru
           {puntoNombre && !editandoPunto ? (
             <p>
               {puntoNombre}
-              {puntoCoordenadas ? ' · GPS listo' : ' · Falta el GPS'}
+              {puntoCoordenadas ? ' · Con cómo llegar' : ''}
             </p>
           ) : (
             <p className="sub">Todavía no cargaron dónde se junta el grupo.</p>
@@ -303,7 +303,7 @@ export function HojaMiGrupo({ contexto, abierto, onCerrar, onCambio }: HojaMiGru
                   }}
                 />
               </label>
-              <p className="sub">Elegí un punto existente o escribí una esquina. Tocá el mapa para marcar la ubicación exacta.</p>
+              <p className="sub">Escribí una esquina, una casa o Zoom. El mapa es solo para mostrar cómo llegar.</p>
               <MeetingPointPickerMap
                 markerPosition={puntoCoordenadas}
                 onPick={setPuntoCoordenadas}

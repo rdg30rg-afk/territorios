@@ -3,7 +3,13 @@ import { createPortal } from 'react-dom'
 import { Icono } from './Icono'
 import '../styles/desplegable.css'
 
-export type Opcion = { valor: string; texto: string; deshabilitada?: boolean }
+export type Opcion = {
+  valor: string
+  texto: string
+  deshabilitada?: boolean
+  /** Un segundo renglón en la lista, para lo que no entra en el disparador. */
+  detalle?: string
+}
 
 /**
  * UNA LISTA DESPLEGABLE QUE SE PUEDE MIRAR
@@ -217,7 +223,12 @@ export function Desplegable({
         onClick={() => (abierto ? cerrar() : abrir())}
         onKeyDown={porTeclado}
       >
-        <span className="desplegable-texto">{elegida?.texto ?? etiqueta}</span>
+        <span className="desplegable-texto">
+          {elegida?.texto ?? etiqueta}
+          {/* El detalle también se ve en el disparador cuando está: es lo que
+              permite que una celda diga "61" arriba y "hace 96 días" abajo. */}
+          {elegida?.detalle ? <small className="desplegable-sub">{elegida.detalle}</small> : null}
+        </span>
         <Icono nombre="chevron-abajo" tamaño={18} className="desplegable-flecha" />
       </button>
 
@@ -263,7 +274,8 @@ export function Desplegable({
                       onMouseEnter={() => setActiva(i)}
                       onClick={() => elegir(o)}
                     >
-                      {o.texto}
+                      <span>{o.texto}</span>
+                      {o.detalle ? <small className="desplegable-detalle">{o.detalle}</small> : null}
                     </button>
                   ))
                 )}

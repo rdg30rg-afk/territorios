@@ -27,6 +27,8 @@ function harness({loadError=false,saveError=false,refreshError=false,pending=nul
   const jsx=(type,props)=>({type,props})
   vm.runInNewContext(code, {exports,require(name){
     if(name==='react') return hooks
+    // Las hojas de estilo no aportan nada al comportamiento: se ignoran.
+    if(name.endsWith('.css')) return {}
     if(name==='react/jsx-runtime') return {jsx,jsxs:jsx}
     if(name.endsWith('Desplegable')) return {Desplegable:'Desplegable'}
     if(name.endsWith('Icono')) return {Icono:()=>null}

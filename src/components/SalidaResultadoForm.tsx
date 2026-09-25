@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase'
 import { deliverResult, pendingResult } from '../lib/resultDelivery'
 import type { ResultPayload } from '../lib/resultAttempt'
 import { Icono } from './Icono'
+import '../styles/resultado-salida.css'
 
 export type SalidaResultadoEstado =
   | 'realizada'
@@ -90,6 +91,7 @@ function formatDateTime(value: string | null) {
   return new Intl.DateTimeFormat('es-AR', {
     dateStyle: 'medium',
     timeStyle: 'short',
+    hourCycle: 'h23',
   }).format(date)
 }
 
@@ -373,7 +375,7 @@ export function SalidaResultadoForm({
   }
 
   return (
-    <section className="module-detail-list">
+    <section className="module-detail-list resultado-form">
       {error ? (
         <div className="form-feedback error" role="alert">
           {error}
@@ -394,36 +396,53 @@ export function SalidaResultadoForm({
         </button>
       </div> : null}
 
-      {hasLoaded ? <div className="module-detail-card">
-        <span>Resultado actual</span>
-        {resultado ? (
-          <>
-            <strong>
+      {hasLoaded ? (
+        /* La tarjeta se pinta con el estado en el nombre de la clase: la barra
+           de color de la izquierda sale de ahi. */
+        <div
+          className={`module-detail-card resultado-actual resultado-actual--${resultado?.estado ?? 'sin_dato'}`}
+        >
+          <span className="resultado-rotulo">Resultado actual</span>
+          {resultado ? (
+            <>
               <span className={`status-pill ${statusClass(resultado.estado)}`}>
                 {estadoLabels[resultado.estado]}
               </span>
-            </strong>
-            <p>
-              Motivo: {resultado.motivo
-                ? motivoOptions.find((option) => option.valor === resultado.motivo)?.texto ??
-                  resultado.motivo
-                : 'Sin motivo'}
-            </p>
-            <p>Ocurrió: {formatDateTime(resultado.ocurrio_at)}</p>
-            <p>Informado: {formatDateTime(resultado.informado_at)}</p>
-            <p>{resultado.observaciones || 'Sin observaciones.'}</p>
-          </>
-        ) : (
-          <>
-            <strong>
+              {/* Rotulo y valor, uno debajo del otro. Antes eran cuatro
+                  renglones que empezaban todos con "Motivo:", "Ocurrió:". */}
+              <dl className="resultado-datos">
+                <div>
+                  <dt>Motivo</dt>
+                  <dd>
+                    {resultado.motivo
+                      ? motivoOptions.find((option) => option.valor === resultado.motivo)?.texto ??
+                        resultado.motivo
+                      : 'Sin motivo'}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Ocurrió</dt>
+                  <dd>{formatDateTime(resultado.ocurrio_at)}</dd>
+                </div>
+                <div>
+                  <dt>Informado</dt>
+                  <dd>{formatDateTime(resultado.informado_at)}</dd>
+                </div>
+              </dl>
+              {resultado.observaciones ? (
+                <p className="resultado-nota">{resultado.observaciones}</p>
+              ) : null}
+            </>
+          ) : (
+            <>
               <span className="status-pill status-pendiente">Sin resultado informado</span>
-            </strong>
-            <p>
-              Todavía no hay un dato sobre lo que ocurrió. Eso no se interpreta como “no realizada”.
-            </p>
-          </>
-        )}
-      </div> : null}
+              <p className="resultado-vacio">
+                Todavía no hay un dato sobre lo que ocurrió. Eso no se interpreta como “no realizada”.
+              </p>
+            </>
+          )}
+        </div>
+      ) : null}
 
       {hasLoaded && resultado && canCorrect && !modoEdicion ? (
         <button type="button" className="secondary-button full-width" onClick={openEditor}>
@@ -440,7 +459,7 @@ export function SalidaResultadoForm({
       ) : null}
 
       {modoEdicion ? (
-        <form className="form-stack" onSubmit={handleSubmit}>
+        <form className="form-stack resultado-editor" onSubmit={handleSubmit}>
           {unconfirmed && !isSaving ? <div className="form-feedback" role="status">
             <p>No se confirmó el envío. Los campos quedan bloqueados para reintentar exactamente el mismo resultado, sin duplicarlo.</p>
             <button type="button" className="secondary-button" onClick={() => void loadCurrentResult()}>
@@ -516,6 +535,12 @@ export function SalidaResultadoForm({
               }}
               disabled={isSaving || unconfirmed}
             />
+            {/* El navegador muestra el campo con el formato de su locale, que
+                no siempre es el de 24 horas. Aca se lee como va a quedar
+                guardado. */}
+            {ocurrioAt ? (
+              <small className="resultado-ayuda">{formatDateTime(ocurrioAt)}</small>
+            ) : null}
           </label>}
 
           <div className="module-table-actions">

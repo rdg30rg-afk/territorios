@@ -18,14 +18,14 @@ test('la vista móvil usa la capacidad del servidor y no el conductor exacto', (
   assert.doesNotMatch(permissions, /outing\.driverId === actor\.driver_id/)
 })
 
-test('Mi grupo permite programar con fecha, territorio, conductor y punto propio', () => {
+test('Mi grupo permite programar con fecha, territorio, conductor y lugar escrito', () => {
   assert.match(groupSheet, /<GestionSalidasGrupo contexto=\{contexto\}/)
   assert.match(groupOutings, /type="date"/)
   assert.match(groupOutings, /etiqueta="Territorio"/)
   assert.match(groupOutings, /etiqueta="Conductor"/)
   assert.match(groupOutings, /p_scope: 'grupo'/)
   assert.match(groupOutings, /p_group_id: contexto\.group_id/)
-  assert.match(groupOutings, /p_meeting_point_id: contexto\.punto_grupo_id/)
+  assert.match(groupOutings, /p_meeting_point_id: usaPuntoDelGrupo \? contexto\.punto_grupo_id : null/)
 })
 
 test('el servidor autoriza la capacidad, conserva auditoría y restringe el selector al responsable', () => {

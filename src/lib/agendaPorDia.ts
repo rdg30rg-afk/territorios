@@ -5,6 +5,7 @@
 // viene y lo que paso- y cada mitad se ordena como se lee.
 
 export type SalidaConFecha = { scheduled_for: string }
+export type SalidaConPosicion = SalidaConFecha & { programa_orden?: number | null }
 
 export function claveDelDia(fecha: Date): string {
   return [
@@ -59,6 +60,29 @@ export function agruparPorDia<T extends SalidaConFecha>(
   }
 
   return dias
+}
+
+/** Las salidas armadas desde el programa conservan su posición dentro del
+ * día. Las demás mantienen el orden que ya traía la agenda (por horario). */
+export function ordenarSalidasDelDia<T extends SalidaConPosicion>(salidas: T[]): T[] {
+  const conOrden = salidas.filter((salida) => Number.isInteger(salida.programa_orden) && (salida.programa_orden ?? 0) > 0)
+    .sort((a, b) => a.programa_orden! - b.programa_orden!)
+  const sinOrden = salidas.filter((salida) => !Number.isInteger(salida.programa_orden) || (salida.programa_orden ?? 0) <= 0)
+  const resultado: T[] = []
+  let i = 0
+  let j = 0
+  let posicion = 1
+  while (i < conOrden.length || j < sinOrden.length) {
+    if (i < conOrden.length && (conOrden[i].programa_orden ?? 0) <= posicion) {
+      resultado.push(conOrden[i++])
+    } else if (j < sinOrden.length) {
+      resultado.push(sinOrden[j++])
+    } else {
+      resultado.push(conOrden[i++])
+    }
+    posicion += 1
+  }
+  return resultado
 }
 
 const nombreDelDia = new Intl.DateTimeFormat('es-AR', {

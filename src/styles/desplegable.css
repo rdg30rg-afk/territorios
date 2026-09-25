@@ -86,9 +86,16 @@
 }
 
 .desplegable-opcion {
-  display: block;
+  /* Dos columnas: el nombre y, si la opción es la elegida, el tilde al lado.
+     El detalle va abajo del nombre, en la misma columna. */
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
   width: 100%;
   min-height: 38px;
+  /* Que no se achiquen: cuando la lista no entra, scrollea. Si se achican, el
+     segundo renglón queda recortado por el overflow. */
+  flex: 0 0 auto;
   padding: 9px 10px;
   border: 0;
   border-radius: 8px;
@@ -102,10 +109,29 @@
   text-overflow: ellipsis;
 }
 
+/* El recorte del texto largo va en el renglón de arriba, no en la opción
+   entera: si no, se come el detalle. */
+.desplegable-opcion > span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* La opcion bajo el cursor o bajo la flecha del teclado se marca igual:
    una sola idea de "esta es la que va a entrar si apretas Enter". */
 .desplegable-opcion[data-activa='si'] {
   background: var(--page-bg, #f0f6dd);
+}
+
+/* El segundo renglón de una opción: "Hace 96 días", "Punto 2 · en el mapa".
+   Va en bloque para que el tilde de la elegida siga quedando al lado del
+   nombre y no salte a un tercer renglón. */
+.desplegable-detalle {
+  display: block;
+  grid-column: 1;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-soft);
 }
 
 /* La ya elegida lleva un tilde ademas del peso: no depende del color. */
@@ -116,6 +142,8 @@
 
 .desplegable-opcion.elegida::after {
   content: ' ✓';
+  grid-column: 2;
+  grid-row: 1;
 }
 
 .desplegable-opcion:disabled {

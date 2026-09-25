@@ -9,6 +9,7 @@ export type SalidaPdfData = {
   neighborhood?: string | null
   priority?: string | null
   notes?: string | null
+  programOrder?: number | null
 }
 
 export type ArchivoPdf = {
@@ -28,6 +29,23 @@ function textoO(value: string | null | undefined, fallback: string) {
 function fechaValida(value: string) {
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? null : date
+}
+
+function ordenarDiaPdf(salidas: SalidaPdfData[]): SalidaPdfData[] {
+  const conOrden = salidas.filter((salida) => Number.isInteger(salida.programOrder) && (salida.programOrder ?? 0) > 0)
+    .sort((a, b) => a.programOrder! - b.programOrder!)
+  const sinOrden = salidas.filter((salida) => !Number.isInteger(salida.programOrder) || (salida.programOrder ?? 0) <= 0)
+  const resultado: SalidaPdfData[] = []
+  let i = 0
+  let j = 0
+  let posicion = 1
+  while (i < conOrden.length || j < sinOrden.length) {
+    if (i < conOrden.length && (conOrden[i].programOrder ?? 0) <= posicion) resultado.push(conOrden[i++])
+    else if (j < sinOrden.length) resultado.push(sinOrden[j++])
+    else resultado.push(conOrden[i++])
+    posicion += 1
+  }
+  return resultado
 }
 
 function horaSalidaPdf(value: string) {
@@ -69,6 +87,7 @@ export function fechaSalidaPdf(value: string) {
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
+    hourCycle: 'h23',
   }).format(date)
 }
 
@@ -233,9 +252,19 @@ export async function crearPdfAgenda(
 ): Promise<ArchivoPdf> {
   const { jsPDF } = await import('jspdf')
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' })
-  const ordered = [...outings].sort(
-    (a, b) => (fechaValida(a.scheduledFor)?.getTime() ?? 0) - (fechaValida(b.scheduledFor)?.getTime() ?? 0),
-  )
+  const porFecha = [...outings].sort((a, b) => {
+    const dia = claveDia(a.scheduledFor).localeCompare(claveDia(b.scheduledFor))
+    if (dia) return dia
+    return (fechaValida(a.scheduledFor)?.getTime() ?? 0) - (fechaValida(b.scheduledFor)?.getTime() ?? 0)
+  })
+  const ordered: SalidaPdfData[] = []
+  for (let inicio = 0; inicio < porFecha.length;) {
+    const dia = claveDia(porFecha[inicio].scheduledFor)
+    let fin = inicio + 1
+    while (fin < porFecha.length && claveDia(porFecha[fin].scheduledFor) === dia) fin += 1
+    ordered.push(...ordenarDiaPdf(porFecha.slice(inicio, fin)))
+    inicio = fin
+  }
   const firstDate = ordered[0] ? fechaValida(ordered[0].scheduledFor) : null
   const lastDate = ordered.at(-1) ? fechaValida(ordered.at(-1)!.scheduledFor) : null
   const shortDate = (date: Date) =>

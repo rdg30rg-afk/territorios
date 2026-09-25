@@ -1842,15 +1842,18 @@ function TarjetaGrupoSale({
     salidas.find((s) => salidaCorrespondeAlGrupo(s, contexto?.group_id) && s.groupId === contexto?.group_id && s.fecha >= hoy) ??
     salidas.find((s) => salidaCorrespondeAlGrupo(s, contexto?.group_id) && !s.groupId && s.fecha >= hoy) ??
     salidas.find((s) => salidaCorrespondeAlGrupo(s, contexto?.group_id))
-  const punto = contexto?.punto_grupo_nombre
-  const conGps = contexto?.punto_grupo_lat != null && contexto.punto_grupo_lng != null
+  const lugarSalida = salida?.lugar?.trim()
+  const punto = lugarSalida || contexto?.punto_grupo_nombre || ''
+  const usaLugarDeLaSalida = Boolean(lugarSalida)
+  const lat = usaLugarDeLaSalida ? salida?.lat : contexto?.punto_grupo_lat ?? undefined
+  const lng = usaLugarDeLaSalida ? salida?.lng : contexto?.punto_grupo_lng ?? undefined
   const grupo = contexto?.group_number ? `Grupo ${contexto.group_number}` : contexto?.group_name
   const salidaPunto: Salida = {
     fecha: salida?.fecha ?? hoy,
     hora: salida?.hora ?? '',
-    lat: contexto?.punto_grupo_lat ?? undefined,
-    lng: contexto?.punto_grupo_lng ?? undefined,
-    lugar: punto ?? undefined,
+    lat,
+    lng,
+    lugar: punto || undefined,
   }
   return (
     <section className="tarjeta">
@@ -1865,10 +1868,9 @@ function TarjetaGrupoSale({
           {grupo ? ` · ${grupo}` : ''}
         </p>
       ) : (
-        <p className="sub">Tu grupo todavía no cargó dónde se junta. Preguntale al superintendente. Cuando lo cargue, acá aparecerán las indicaciones en auto y colectivo.</p>
+        <p className="sub">El lugar se avisa en el grupo. Puede ser una casa, una esquina o Zoom.</p>
       )}
-      {punto && !conGps ? <p className="sub">El punto no tiene ubicación todavía.</p> : null}
-      {conGps ? <BotonesComoLlegar salida={salidaPunto} /> : null}
+      <BotonesComoLlegar salida={salidaPunto} />
     </section>
   )
 }

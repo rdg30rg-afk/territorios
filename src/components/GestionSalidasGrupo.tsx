@@ -38,6 +38,7 @@ export function GestionSalidasGrupo({ contexto, onCambio }: {
   const [cargando, setCargando] = useState(true)
   const [guardando, setGuardando] = useState(false)
   const [aviso, setAviso] = useState<string | null>(null)
+  const [lugar, setLugar] = useState(contexto.punto_grupo_nombre ?? '')
 
   const cargar = async () => {
     if (!supabase || !contexto.group_id) return
@@ -69,16 +70,18 @@ export function GestionSalidasGrupo({ contexto, onCambio }: {
 
   const nombresTerritorio = useMemo(() => new Map(territorios.map((item) => [item.id, item.name])), [territorios])
   const nombresConductor = useMemo(() => new Map(conductores.map((item) => [item.id, item.full_name])), [conductores])
-  const puntoCompleto = Boolean(
-    contexto.punto_grupo_id && contexto.punto_grupo_nombre
-    && contexto.punto_grupo_lat != null && contexto.punto_grupo_lng != null,
-  )
+  const lugarEscrito = lugar.trim()
+  const usaPuntoDelGrupo = lugarEscrito.length > 0
+    && lugarEscrito === (contexto.punto_grupo_nombre ?? '').trim()
+    && Boolean(contexto.punto_grupo_id)
+  const lat = usaPuntoDelGrupo ? contexto.punto_grupo_lat : null
+  const lng = usaPuntoDelGrupo ? contexto.punto_grupo_lng : null
 
   const guardar = async () => {
-    if (!supabase || !contexto.group_id || !puntoCompleto || guardando) return
+    if (!supabase || !contexto.group_id || guardando) return
     const instante = new Date(`${fecha}T${hora}:00`)
-    if (!fecha || !hora || !territorioId || !conductorId || Number.isNaN(instante.getTime())) {
-      setAviso('Elegí fecha, hora, territorio y conductor.')
+    if (!fecha || !hora || !territorioId || !conductorId || lugarEscrito.length < 2 || Number.isNaN(instante.getTime())) {
+      setAviso('Elegí fecha, hora, territorio, conductor y dónde se juntan.')
       return
     }
     setGuardando(true)
@@ -90,10 +93,10 @@ export function GestionSalidasGrupo({ contexto, onCambio }: {
       p_territory_id: territorioId,
       p_driver_id: conductorId,
       p_group_id: contexto.group_id,
-      p_meeting_point_id: contexto.punto_grupo_id,
-      p_meeting_point_name: contexto.punto_grupo_nombre,
-      p_meeting_point_lat: contexto.punto_grupo_lat,
-      p_meeting_point_lng: contexto.punto_grupo_lng,
+      p_meeting_point_id: usaPuntoDelGrupo ? contexto.punto_grupo_id : null,
+      p_meeting_point_name: lugarEscrito,
+      p_meeting_point_lat: lat,
+      p_meeting_point_lng: lng,
       p_scheduled_for: instante.toISOString(),
       p_notes: null,
     })
@@ -140,11 +143,20 @@ export function GestionSalidasGrupo({ contexto, onCambio }: {
 
       {abierto ? (
         <div className="form-stack gestion-salida-form">
-          {!puntoCompleto ? (
-            <p className="nota" role="alert">Primero cargá arriba el punto del grupo con su ubicación en el mapa.</p>
-          ) : (
-            <p className="sub">Se sale de {contexto.punto_grupo_nombre}.</p>
-          )}
+          <label className="sub">
+            Dónde se juntan
+            <input
+              value={lugar}
+              onChange={(event) => setLugar(event.target.value)}
+              placeholder="Una esquina, una casa o Zoom"
+              maxLength={500}
+            />
+          </label>
+          <p className="sub">
+            {lat != null && lng != null
+              ? 'Con esta ubicación el grupo va a ver cómo llegar.'
+              : 'Sin un punto en el mapa no hay cómo llegar, y la salida se puede programar igual.'}
+          </p>
           <div className="gestion-salida-fecha">
             <label>Fecha<input type="date" min={claveHoy()} value={fecha} onChange={(event) => setFecha(event.target.value)} /></label>
             <label>Hora<input type="time" value={hora} onChange={(event) => setHora(event.target.value)} /></label>
@@ -164,7 +176,7 @@ export function GestionSalidasGrupo({ contexto, onCambio }: {
             opciones={conductores.map((item) => ({ valor: item.id, texto: item.full_name }))}
           />
           {conductores.length === 0 ? <p className="sub">No hay conductores activos para asignar. El siervo de territorios debe vincularlos.</p> : null}
-          <button type="button" className="boton principal" disabled={guardando || !puntoCompleto || !territorioId || !conductorId} onClick={() => void guardar()}>
+          <button type="button" className="boton principal" disabled={guardando || lugarEscrito.length < 2 || !territorioId || !conductorId} onClick={() => void guardar()}>
             <Icono nombre="guardar" tamaño={18} />
             {guardando ? 'Programando…' : 'Guardar la salida'}
           </button>

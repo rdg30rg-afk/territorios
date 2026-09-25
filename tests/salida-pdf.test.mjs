@@ -66,7 +66,7 @@ test('la UI exporta agenda y ficha, captura errores y no exige GPS', async () =>
   assert.match(pdfSource, /Lugar de encuentro/)
   assert.match(pdfSource, /Priorizar/)
   assert.match(pdfSource, /rotuloDia\(outing\.scheduledFor\)/)
-  assert.match(page, /Elegí el período de la agenda/)
+  assert.match(page, /Descargar agenda/)
   assert.match(page, /type="date"/)
   assert.match(page, /Descargar agenda PDF/)
   assert.match(page, /readAllRows<OutingRecord>/)
