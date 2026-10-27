@@ -1,5 +1,49 @@
 # Desarrollo en Hostinger
 
+## Publicación del 27 de octubre de 2026 — mapas, build de producción y PWA real
+
+Publicado el tag `publicacion-2026-10-27` (commit `455be01`) con
+`scripts/publicar-hostinger.mjs --ejecutar --sin-podar`. Es la primera vez que
+se publica con el script y desde un tag. La base sigue siendo el clon DEV
+`rkmioktcsgqqjshrlkmy`, y no se aplicó ninguna migración. Pendientes:
+`20261027151000` y `20261027151500`; mientras falten, el reporte de errores
+del cliente se apaga solo.
+
+**Qué cambió para quien usa el sitio:**
+
+- Sale con el React de producción. Antes salía con el de desarrollo.
+- Por primera vez queda un service worker activo. Antes `import.meta.env.DEV`
+  era verdadero y la app lo borraba en cada carga.
+- Las versiones nuevas se avisan con "Hay una versión nueva", en vez de
+  recargar sola.
+- El `.htaccess` sirve los assets con un año e `immutable`, y la CSP va en
+  `Report-Only`.
+
+**Qué se respaldó y verificó:**
+
+- Respaldo previo:
+  `/home/u800479702/backups/congregacion-dev-20261027-publicacion-2026-10-27-pre`.
+- Rutas y archivos:
+  - `/`, `/mapas`, `/login`, `/version.json` y `/sw.js` responden 200.
+  - `version.json` trae el commit y el tag.
+  - En el navegador: sin `jsxDEV`, service worker `activated` y sin errores
+    en consola.
+- SHA-256: la verificación del script marcó solo `pwa/icon-180|192|512.png`.
+  En el disco del servidor coinciden con el paquete; la CDN de Hostinger
+  (`hcdn`) recomprime los PNG al servirlos (512 px: 74.763 → 51.113 bytes). Por
+  eso el script frenó antes de podar, aunque con `--sin-podar` no había nada
+  que podar.
+
+**Antes de la próxima publicación:**
+
+- Que el script compare las imágenes por SSH y no por HTTPS.
+- No se podaron assets ni respaldos viejos.
+
+**Ojo con el editor:** ya corta las caras con la diferencia de ángulos
+corregida. Republicar alguno de los 34 territorios de
+`output/informe-caras-afectadas.json` retira las caras viejas de esas manzanas
+y su cobertura. Decidir antes de publicarlos.
+
 ## Publicación del 1 de octubre de 2026 — renumeración y colores del mapa
 
 Publicada la versión de trabajo local contra el clon DEV `rkmioktcsgqqjshrlkmy` en `congregacion.estracom.com.ar`. El editor permite intercambiar los números de dos territorios sin desplazar el resto y elegir el color con una paleta o selector personalizado. Los cambios quedan en el borrador hasta guardar el lote completo.
