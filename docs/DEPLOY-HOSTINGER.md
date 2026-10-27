@@ -1,5 +1,25 @@
 # Desarrollo en Hostinger
 
+## Publicación del 27 de octubre de 2026 (b) — abrir un territorio desde el mapa
+
+Publicado el tag `publicacion-2026-10-27b` (commit `9dbf669`) con
+`scripts/publicar-hostinger.mjs --ejecutar --sin-podar`.
+
+**Qué cambia:** en el editor, con todo deseleccionado y "Solo mirar", tocar
+una manzana abre su territorio, igual que elegirlo en la lista. Sin
+migraciones.
+
+**Respaldo previo:**
+`/home/u800479702/backups/congregacion-dev-20261027-publicacion-2026-10-27b-pre`.
+
+**Verificación:**
+
+- `version.json` trae el commit y el tag.
+- `/`, `/mapas` y `/login` responden 200.
+- El editor publicado (`assets/editor-nfycnJIl.js`) trae el cambio.
+- El script volvió a frenar solo por los íconos PNG. La CDN los recomprime
+  al servirlos; en el disco del servidor coinciden con el paquete.
+
 ## Publicación del 27 de octubre de 2026 — mapas, build de producción y PWA real
 
 Publicado el tag `publicacion-2026-10-27` (commit `455be01`) con
