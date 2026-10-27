@@ -1,5 +1,30 @@
 # Desarrollo en Hostinger
 
+## Publicación del 27 de octubre de 2026 (c) — ícono y logo nuevos
+
+Publicado el tag `publicacion-2026-10-27c` (commit `5707640`) con
+`scripts/publicar-hostinger.mjs --ejecutar --sin-podar`.
+
+**Qué cambia:** la marca nueva. Son tres manzanas tinta sobre el lima de la
+app y una casa en contorno: la que falta visitar. Aparece en:
+
+- el favicon, que reemplaza al rayo de Vite;
+- los íconos de la PWA, con uno maskable nuevo;
+- el menú, el login y la vista del hermano.
+
+Sin migraciones.
+
+**Respaldo previo:**
+`/home/u800479702/backups/congregacion-dev-20261027-publicacion-2026-10-27c-pre`.
+
+**Verificación:**
+
+- Es la primera publicación que termina sin aviso: 112 de 112 archivos
+  coinciden. Las 4 imágenes se compararon por SSH en el disco del servidor.
+- `/`, `/mapas` y `/login` responden 200.
+- `version.json` trae el tag.
+- El login publicado muestra la marca.
+
 ## Publicación del 27 de octubre de 2026 (b) — abrir un territorio desde el mapa
 
 Publicado el tag `publicacion-2026-10-27b` (commit `9dbf669`) con
