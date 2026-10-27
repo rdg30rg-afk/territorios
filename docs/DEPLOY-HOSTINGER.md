@@ -1,5 +1,15 @@
 # Desarrollo en Hostinger
 
+## Publicación del 1 de octubre de 2026 — renumeración y colores del mapa
+
+Publicada la versión de trabajo local contra el clon DEV `rkmioktcsgqqjshrlkmy` en `congregacion.estracom.com.ar`. El editor permite intercambiar los números de dos territorios sin desplazar el resto y elegir el color con una paleta o selector personalizado. Los cambios quedan en el borrador hasta guardar el lote completo.
+
+Aplicada `20261001010000_renumeracion_editor_atomica.sql` mediante el editor SQL de Supabase, después de un ensayo con rollback. La definición instalada coincide con la fuente local: MD5 del cuerpo sin comentarios ni espacios `f9b0e69d91a657756e80e4bf76679a71`. Ejecución habilitada para authenticated, revocada para anon; la RPC exige administrador vigente. Si el dibujo no cambió, conserva los IDs de manzanas/lados y la cobertura vigente. Una prueba real en DEV intercambió 5 y 12, cambió colores y rechazó una versión vieja; terminó en rollback, sin persistir cambios de prueba. El primer intento usó el rol histórico; se repitió correctamente seleccionando el administrador con `public.is_admin(id)` del modelo vigente.
+
+Pasaron 386 pruebas JavaScript, el conjunto SQL local (incluida aplicación doble), TypeScript/Vite y `build:dev:seguro`. Se publicó el paquete `territorios-build-dev-yJCObw`. Respaldo remoto previo completo (30 MB): `/home/u800479702/backups/congregacion-dev-20261001-numeros-colores-pre`. Se subieron primero assets, luego ambos editores, index y finalmente service worker; se conservaron assets anteriores.
+
+Los SHA-256 de `index.html`, `sw.js` y ambos HTML del editor coinciden entre paquete local, servidor SSH y HTTPS. `/`, `/mapas` y `/login` respondieron 200. La sesión del usuario en Chrome se recargó después de verificar el borrador guardado y muestra la paleta en la ficha del territorio 38. No se guardaron cambios de color o número del usuario. Evidencia local: `output/renumeracion-territorios/verificacion-publicacion.json`.
+
 ## Publicación del 25 de septiembre de 2026 — resultado de la salida y agenda compacta
 
 Se publicó desde `dev` el commit `4838983` contra Supabase DEV
