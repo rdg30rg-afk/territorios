@@ -1,5 +1,31 @@
 # Desarrollo en Hostinger
 
+## Publicaciones del 27 de octubre de 2026 (e y f) — iconografía completa
+
+**(e)** Tag `publicacion-2026-10-27e` (commit `c8e738d`).
+
+- El set suma siete íconos: reintentar, telefono, agregar, subir, bajar,
+  priorizar y tilde. Son 46 en total.
+- "rehacer" deja de usarse para "volver a intentar".
+- La vista del hermano y el programa dejan de usar ☎, ★, ×, ＋, ↑, ↓ y ✓
+  de texto.
+
+**(f)** Tag `publicacion-2026-10-27f` (commit `8b37018`). El sprite de íconos
+se pide con `?v=` y un resumen de su contenido, en `Icono.tsx` y en el
+editor. Sin eso, un navegador con el sprite viejo guardado, que dura 7 días,
+dibujaba vacíos los íconos nuevos.
+
+**Respaldos previos:** los dos están en `/home/u800479702/backups/`.
+
+- `congregacion-dev-20261027-publicacion-2026-10-27e-pre`
+- `congregacion-dev-20261027-publicacion-2026-10-27f-pre`
+
+**Verificación:**
+
+- 120 de 120 archivos coinciden en las dos publicaciones.
+- El editor publicado no tiene ninguna referencia al sprite sin versión.
+- El sprite versionado trae los 46 símbolos.
+
 ## Publicación del 27 de octubre de 2026 (d) — favicon e íconos con versión
 
 Publicado el tag `publicacion-2026-10-27d` (commit `0c9d30e`). Respaldo
