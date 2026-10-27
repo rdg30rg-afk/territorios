@@ -34,10 +34,13 @@ import {
   publicar,
   referenciasAAssets,
   revisarEncabezados,
+  analizarSumas,
+  seComparaPorSsh,
   separarVolcado,
   sha256,
   shQuote,
   verificarPorHttps,
+  verificarPorSsh,
 } from '../scripts/publicar-hostinger.mjs'
 
 const repoRoot = fileURLToPath(new URL('..', import.meta.url))
@@ -477,14 +480,77 @@ test('verifica el SHA-256 de cada archivo por HTTPS, sin leer copias viejas', as
       return respuesta(archivos[ruta])
     },
   })
-  assert.deepEqual({ verificados: resultado.verificados, total: resultado.total, fallas: resultado.fallas }, { verificados: 3, total: 3, fallas: [] })
-  // .htaccess lo esconde el servidor: no se pide.
+  assert.deepEqual({ verificados: resultado.verificados, total: resultado.total, fallas: resultado.fallas }, { verificados: 2, total: 2, fallas: [] })
+  // .htaccess lo esconde el servidor y las imágenes las recomprime la CDN: no se piden.
   assert.equal(pedidos.some((p) => p.url.includes('htaccess')), false)
+  assert.equal(pedidos.some((p) => p.url.includes('.png')), false)
   for (const pedido of pedidos) {
     assert.match(pedido.url, /\?verif=n0nce$/)
     assert.equal(pedido.opciones.headers['cache-control'], 'no-cache')
   }
-  assert.ok(pedidos.some((p) => p.url === 'https://sitio.test/assets/Foo%402x.png?verif=n0nce'))
+  assert.ok(pedidos.some((p) => p.url === 'https://sitio.test/assets/main-A1.js?verif=n0nce'))
+})
+
+// ---------------------------------------------------------------- verificación SSH
+
+test('las imágenes se comparan por SSH; el resto, por HTTPS', () => {
+  for (const ruta of ['pwa/icon-512.png', 'assets/Foo@2x.PNG', 'fotos/a.jpg', 'b.jpeg', 'c.webp', 'd.gif', 'e.avif']) {
+    assert.equal(seComparaPorSsh(ruta), true, ruta)
+  }
+  for (const ruta of ['index.html', 'sw.js', 'assets/main-A1.js', 'icons.svg', 'favicon.svg', 'manifest.webmanifest', 'datos/x.json']) {
+    assert.equal(seComparaPorSsh(ruta), false, ruta)
+  }
+})
+
+test('el comando de sumas solo lee, entrecomilla y rechaza nombres raros', () => {
+  const comando = comandos.sumasSha256({ carpeta: SERVIDOR.carpeta, rutas: ['pwa/icon-180.png', 'assets/Foo@2x.png'] })
+  assert.equal(comando, `cd '${SERVIDOR.carpeta}' && for f in 'pwa/icon-180.png' 'assets/Foo@2x.png'; do if [ -f "$f" ]; then sha256sum -- "$f"; fi; done; true`)
+  assert.doesNotMatch(comando, /rm |mv |cp |>/)
+  for (const rutas of [[], ['../fuera.png'], ['pwa/../../x.png'], ["a'b.png"], ['a b.png'], ['$(id).png']]) {
+    assert.throws(() => comandos.sumasSha256({ carpeta: SERVIDOR.carpeta, rutas }), PublicacionBloqueada, JSON.stringify(rutas))
+  }
+})
+
+test('lee la salida de sha256sum, en modo texto y binario', () => {
+  const a = 'a'.repeat(64)
+  const b = 'b'.repeat(64)
+  const sumas = analizarSumas(`${a}  pwa/icon-180.png\n${b} *assets/Foo@2x.png\nbasura\n\n`)
+  assert.deepEqual([...sumas], [['pwa/icon-180.png', a], ['assets/Foo@2x.png', b]])
+})
+
+test('verifica las imágenes en el disco del servidor: bien, distinta, faltante y SSH caído', async () => {
+  const manifiesto = [
+    { ruta: 'index.html', sha256: sha256(Buffer.from('html')), bytes: 4 },
+    { ruta: 'pwa/bien.png', sha256: sha256(Buffer.from('bien')), bytes: 4 },
+    { ruta: 'pwa/distinta.png', sha256: sha256(Buffer.from('nueva')), bytes: 5 },
+    { ruta: 'pwa/falta.png', sha256: sha256(Buffer.from('x')), bytes: 1 },
+  ]
+  const comandosPedidos = []
+  const resultado = await verificarPorSsh({
+    carpeta: SERVIDOR.carpeta,
+    manifiesto,
+    ssh: async (comando) => {
+      comandosPedidos.push(comando)
+      return `${sha256(Buffer.from('bien'))}  pwa/bien.png\n${sha256(Buffer.from('vieja'))}  pwa/distinta.png\n`
+    },
+  })
+  // Un solo pedido por SSH, solo con las imágenes.
+  assert.equal(comandosPedidos.length, 1)
+  assert.doesNotMatch(comandosPedidos[0], /index\.html/)
+  assert.equal(resultado.verificados, 1)
+  assert.equal(resultado.total, 3)
+  assert.deepEqual(resultado.fallas.map((f) => f.ruta), ['pwa/distinta.png', 'pwa/falta.png'])
+  assert.match(resultado.fallas[0].motivo, /SHA-256 distinto en el disco del servidor/)
+  assert.match(resultado.fallas[1].motivo, /no está en el servidor/)
+
+  const caido = await verificarPorSsh({ carpeta: SERVIDOR.carpeta, manifiesto, ssh: async () => { throw new Error('Connection refused\nmás') } })
+  assert.equal(caido.verificados, 0)
+  assert.equal(caido.fallas.length, 3)
+  assert.match(caido.fallas[0].motivo, /no se pudo leer por SSH: Connection refused$/)
+
+  // Sin imágenes no se conecta.
+  const sinImagenes = await verificarPorSsh({ carpeta: SERVIDOR.carpeta, manifiesto: manifiesto.slice(0, 1), ssh: async () => { throw new Error('no debía llamarse') } })
+  assert.deepEqual(sinImagenes, { verificados: 0, total: 0, fallas: [] })
 })
 
 test('detecta un SHA distinto, un 404 y un error de red', async () => {
@@ -674,6 +740,10 @@ async function crearMundo({ configurar } = {}) {
   }
   for (const [nombre, texto] of v6.textos) archivosLocales[`assets/${nombre}`] = texto
   archivosLocales['assets/vendor-COMPARTIDO.js'] = ''
+  if (configurar?.conImagen) {
+    await mkdir(join(local, 'pwa'))
+    archivosLocales['pwa/icon-512.png'] = 'png-original'
+  }
   for (const [ruta, texto] of Object.entries(archivosLocales)) await writeFile(join(local, ruta), texto)
 
   const remoto = {
@@ -720,6 +790,11 @@ async function crearMundo({ configurar } = {}) {
       return ''
     }
     if (comando.startsWith('test "$(find')) return ''
+    if (comando.includes('sha256sum -- ')) {
+      const lista = comando.slice(comando.indexOf(' for f in ') + 10, comando.indexOf('; do '))
+      const rutas = [...lista.matchAll(/'([^']+)'/g)].map((m) => m[1])
+      return rutas.filter((r) => remoto.vivo.has(r)).map((r) => `${sha256(Buffer.from(remoto.vivo.get(r)))}  ${r}`).join('\n')
+    }
     if (comando.startsWith('ls -1A ')) return [...remoto.assets.keys()].join('\n')
     if (comando.includes('for f in *.js *.mjs *.css')) {
       return [...remoto.assets].filter(([n]) => /\.(js|mjs|css)$/.test(n)).map(([n, t]) => `${marcador}${n}\n${t}\n`).join('')
@@ -755,6 +830,7 @@ async function crearMundo({ configurar } = {}) {
       if (ruta.startsWith('assets/')) remoto.assets.set(ruta.slice('assets/'.length), contenido.toString('utf8'))
       remoto.vivo.set(ruta, contenido.toString('utf8'))
     }
+    if (configurar?.imagenRotaEnServidor && archivos.includes('pwa/icon-512.png')) remoto.vivo.set('pwa/icon-512.png', 'png-cortado')
     if (configurar?.rsyncFallaEn && archivos.includes(configurar.rsyncFallaEn)) throw new Error('rsync terminó con código 23')
     if (archivos.includes('.htaccess') && configurar?.htaccessRompeElSitio) remoto.htaccessCaido = true
   }
@@ -770,6 +846,8 @@ async function crearMundo({ configurar } = {}) {
       })
     }
     const ruta = decodeURIComponent(pathname.slice(1))
+    // La CDN de Hostinger recomprime las imágenes: por HTTPS nunca llegan iguales.
+    if (remoto.vivo.has(ruta) && ruta.endsWith('.png')) return respuesta(`${remoto.vivo.get(ruta)}-recomprimido`)
     if (remoto.vivo.has(ruta)) {
       return respuesta(remoto.vivo.get(ruta), {
         headers: {
@@ -894,6 +972,36 @@ test('si la verificación por HTTPS falla, no se poda nada y se muestra cómo vo
     assert.equal(mundo.remoto.borradosDeAssets.length, 0)
     assert.equal(mundo.remoto.borradosDeRespaldos.length, 0)
     assert.equal(mundo.remoto.assets.has('main-v1.js'), true)
+  } finally {
+    await mundo.limpiar()
+  }
+})
+
+test('una imagen que la CDN recomprime no frena la publicación: se compara en el disco por SSH', async () => {
+  const mundo = await crearMundo({ configurar: { conImagen: true } })
+  try {
+    await publicar({ opciones: parsearArgumentos(['--ejecutar', '--sin-podar']), deps: mundo.deps })
+    assert.equal(mundo.registro.some((linea) => linea === 'fetch /pwa/icon-512.png'), false)
+    assert.ok(mundo.registro.some((linea) => /sha256sum -- /.test(linea) && /'pwa\/icon-512\.png'/.test(linea)))
+    assert.match(mundo.log.join('\n'), /1 imágenes comparadas en el servidor por SSH/)
+    assert.match(mundo.log.join('\n'), /Publicación terminada/)
+  } finally {
+    await mundo.limpiar()
+  }
+})
+
+test('si la imagen quedó distinta en el disco del servidor, la verificación frena y no poda', async () => {
+  const mundo = await crearMundo({ configurar: { conImagen: true, imagenRotaEnServidor: true } })
+  try {
+    await assert.rejects(
+      () => publicar({ opciones: parsearArgumentos(['--ejecutar']), deps: mundo.deps }),
+      (error) =>
+        error instanceof PublicacionBloqueada &&
+        /La verificación falló \(1 archivos, 0 rutas\)/.test(error.message) &&
+        /pwa\/icon-512\.png: SHA-256 distinto en el disco del servidor/.test(error.message),
+    )
+    assert.equal(mundo.remoto.borradosDeAssets.length, 0)
+    assert.equal(mundo.remoto.borradosDeRespaldos.length, 0)
   } finally {
     await mundo.limpiar()
   }

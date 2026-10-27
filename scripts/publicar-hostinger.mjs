@@ -19,7 +19,9 @@
  *   3. Respalda la carpeta remota en ~/backups/congregacion-dev-<fecha>-<tag>-pre.
  *   4. Sube primero los assets, después los editores y index.html, y al final sw.js.
  *      Nunca borra nada durante la subida.
- *   5. Verifica el SHA-256 de todo lo subido, pidiéndolo por HTTPS.
+ *   5. Verifica el SHA-256 de todo lo subido: por HTTPS lo que se sirve tal
+ *      cual, y por SSH, en el disco del servidor, las imágenes, que la CDN de
+ *      Hostinger recomprime al servirlas.
  *   6. Solo si la verificación salió bien, poda: deja las últimas 3 versiones de
  *      assets y los últimos 2 respaldos congregacion-dev-*.
  *
@@ -378,6 +380,17 @@ export const comandos = {
     return `cd ${shQuote(directorio)} && for f in ${nombres.map(shQuote).join(' ')}; do if [ -f "$f" ]; then printf '%s%s\\n' ${shQuote(marcador)} "$f"; cat "$f"; printf '\\n'; fi; done; true`
   },
 
+  /** SHA-256 de cada archivo tal como quedó en el disco del servidor. Solo lee. */
+  sumasSha256: ({ carpeta, rutas }) => {
+    if (rutas.length === 0) throw new PublicacionBloqueada('No hay archivos para sumar.')
+    for (const ruta of rutas) {
+      if (!/^[A-Za-z0-9._@~/-]+$/.test(ruta) || ruta.split('/').includes('..')) {
+        throw new PublicacionBloqueada(`Nombre de archivo no permitido: ${ruta}`)
+      }
+    }
+    return `cd ${shQuote(carpeta)} && for f in ${rutas.map(shQuote).join(' ')}; do if [ -f "$f" ]; then sha256sum -- "$f"; fi; done; true`
+  },
+
   /** Vuelca todos los .js, .mjs y .css de una carpeta. Solo lee. */
   volcarTextoDeAssets: ({ carpeta, marcador }) =>
     `cd ${shQuote(`${carpeta}/assets`)} && for f in *.js *.mjs *.css; do if [ -f "$f" ]; then printf '%s%s\\n' ${shQuote(marcador)} "$f"; cat "$f"; printf '\\n'; fi; done; true`,
@@ -557,13 +570,23 @@ export function planDePodaDeAssets({ existentes, versiones, leerAsset }) {
 // ---------------------------------------------------------------- verificación
 
 /**
+ * La CDN de Hostinger (hcdn) recomprime las imágenes al servirlas: el ícono de
+ * 512 px sale de 74.763 bytes en el disco y llega en 51.113. Por HTTPS nunca
+ * coinciden, así que se comparan en el disco del servidor, por SSH.
+ */
+export function seComparaPorSsh(ruta) {
+  return /\.(png|jpe?g|gif|webp|avif)$/i.test(ruta)
+}
+
+/**
  * Pide cada archivo por HTTPS y compara su SHA-256 con el del paquete local.
  * La consulta lleva un parámetro cambiante y `cache-control: no-cache` para no
  * leer una copia vieja de la CDN. .htaccess no se sirve (el servidor lo
- * esconde), así que no se verifica por HTTPS.
+ * esconde) y las imágenes las recomprime la CDN, así que ninguno de los dos
+ * se verifica por HTTPS.
  */
 export async function verificarPorHttps({ baseUrl, manifiesto, fetchFn, concurrencia = 8, nonce = randomBytes(4).toString('hex') }) {
-  const aVerificar = manifiesto.filter((archivo) => archivo.ruta !== '.htaccess')
+  const aVerificar = manifiesto.filter((archivo) => archivo.ruta !== '.htaccess' && !seComparaPorSsh(archivo.ruta))
   const fallas = []
   let siguiente = 0
 
@@ -589,6 +612,39 @@ export async function verificarPorHttps({ baseUrl, manifiesto, fetchFn, concurre
   }
 
   await Promise.all(Array.from({ length: Math.min(concurrencia, aVerificar.length) }, trabajar))
+  return { verificados: aVerificar.length - fallas.length, total: aVerificar.length, fallas: fallas.sort((a, b) => (a.ruta < b.ruta ? -1 : 1)) }
+}
+
+/** Lee la salida de sha256sum ("<hash>  <ruta>" por línea) en un Map ruta -> hash. */
+export function analizarSumas(salida) {
+  const sumas = new Map()
+  for (const linea of salida.split('\n')) {
+    const partes = /^([0-9a-f]{64}) [ *](.+)$/.exec(linea)
+    if (partes) sumas.set(partes[2], partes[1])
+  }
+  return sumas
+}
+
+/** Compara por SSH, en el disco del servidor, lo que la CDN no sirve tal cual. */
+export async function verificarPorSsh({ carpeta, manifiesto, ssh }) {
+  const aVerificar = manifiesto.filter((archivo) => seComparaPorSsh(archivo.ruta))
+  if (aVerificar.length === 0) return { verificados: 0, total: 0, fallas: [] }
+  let sumas
+  try {
+    sumas = analizarSumas(await ssh(comandos.sumasSha256({ carpeta, rutas: aVerificar.map((archivo) => archivo.ruta) })))
+  } catch (error) {
+    const motivo = `no se pudo leer por SSH: ${error instanceof Error ? error.message.split('\n')[0] : String(error)}`
+    return { verificados: 0, total: aVerificar.length, fallas: aVerificar.map((archivo) => ({ ruta: archivo.ruta, motivo })) }
+  }
+  const fallas = []
+  for (const archivo of aVerificar) {
+    const obtenido = sumas.get(archivo.ruta)
+    if (!obtenido) {
+      fallas.push({ ruta: archivo.ruta, motivo: 'no está en el servidor' })
+    } else if (obtenido !== archivo.sha256) {
+      fallas.push({ ruta: archivo.ruta, motivo: `SHA-256 distinto en el disco del servidor (local ${archivo.sha256.slice(0, 12)}…, servidor ${obtenido.slice(0, 12)}…)` })
+    }
+  }
   return { verificados: aVerificar.length - fallas.length, total: aVerificar.length, fallas: fallas.sort((a, b) => (a.ruta < b.ruta ? -1 : 1)) }
 }
 
@@ -675,7 +731,7 @@ export function formatearPlan(plan) {
   lineas.push(`       b) editores, index.html, manifest y version.json${cuenta(grupos?.paginas ?? [])}`)
   lineas.push(`       c) .htaccess, y se comprueba que el sitio siga contestando 200${cuenta(grupos?.servidor ?? [])}`)
   lineas.push(`       d) sw.js, lo último${cuenta(grupos?.serviceWorker ?? [])}`)
-  lineas.push(`  6. Verificar el SHA-256 de lo subido pidiéndolo por HTTPS a ${servidor.urlPublica}, y que ${RUTAS_A_COMPROBAR.join(', ')} contesten 200.`)
+  lineas.push(`  6. Verificar el SHA-256 de lo subido pidiéndolo por HTTPS a ${servidor.urlPublica} (las imágenes, que la CDN recomprime, en el disco del servidor por SSH), y que ${RUTAS_A_COMPROBAR.join(', ')} contesten 200.`)
   if (opciones.sinPodar) {
     lineas.push('  7. Podar: OMITIDO (--sin-podar).')
   } else {
@@ -812,16 +868,22 @@ export async function publicar({ opciones, deps, servidor = SERVIDOR }) {
   }
 
   // ---- 5. verificación
-  log('Paso 6 de 7: verificando SHA-256 por HTTPS…')
-  const verificacion = await verificarPorHttps({ baseUrl: configuracion.urlPublica, manifiesto, fetchFn: deps.fetchFn })
+  log('Paso 6 de 7: verificando SHA-256 (por HTTPS, y las imágenes por SSH)…')
+  const porHttps = await verificarPorHttps({ baseUrl: configuracion.urlPublica, manifiesto, fetchFn: deps.fetchFn })
+  const porSsh = await verificarPorSsh({ carpeta: configuracion.carpeta, manifiesto, ssh: deps.ssh })
+  const fallas = [...porHttps.fallas, ...porSsh.fallas].sort((a, b) => (a.ruta < b.ruta ? -1 : 1))
   const rutasMalas = await comprobarRutas({ baseUrl: configuracion.urlPublica, fetchFn: deps.fetchFn })
-  if (verificacion.fallas.length > 0 || rutasMalas.length > 0) {
-    const detalle = [...verificacion.fallas, ...rutasMalas].slice(0, 10).map((falla) => `  - ${falla.ruta}: ${falla.motivo}`).join('\n')
+  if (fallas.length > 0 || rutasMalas.length > 0) {
+    const detalle = [...fallas, ...rutasMalas].slice(0, 10).map((falla) => `  - ${falla.ruta}: ${falla.motivo}`).join('\n')
     throw new PublicacionBloqueada(
-      `La verificación falló (${verificacion.fallas.length} archivos, ${rutasMalas.length} rutas). No se podó nada.\n${detalle}\n${ayudaParaVolver()}`,
+      `La verificación falló (${fallas.length} archivos, ${rutasMalas.length} rutas). No se podó nada.\n${detalle}\n${ayudaParaVolver()}`,
     )
   }
-  log(`  ${verificacion.verificados} de ${verificacion.total} archivos coinciden y ${RUTAS_A_COMPROBAR.join(', ')} contestan 200.`)
+  log(
+    `  ${porHttps.verificados + porSsh.verificados} de ${porHttps.total + porSsh.total} archivos coinciden` +
+      (porSsh.total > 0 ? ` (${porSsh.total} imágenes comparadas en el servidor por SSH)` : '') +
+      ` y ${RUTAS_A_COMPROBAR.join(', ')} contestan 200.`,
+  )
   const ejemploDeAsset = grupos.assets.find((ruta) => ruta.startsWith('assets/') && ruta.endsWith('.js'))
   const avisos = await revisarEncabezados({ baseUrl: configuracion.urlPublica, ejemploDeAsset, fetchFn: deps.fetchFn })
   for (const aviso of avisos) log(`  AVISO: ${aviso}`)
@@ -837,6 +899,7 @@ export async function publicar({ opciones, deps, servidor = SERVIDOR }) {
 
   log('')
   log(`Publicación terminada: ${git.tag} (${git.commit.slice(0, 12)}) en ${configuracion.urlPublica}`)
+  const verificacion = { verificados: porHttps.verificados + porSsh.verificados, total: porHttps.total + porSsh.total, fallas: [], porHttps, porSsh }
   return { dryRun: false, plan, nombreDeRespaldo: nombre, verificacion, avisos, poda }
 }
 
