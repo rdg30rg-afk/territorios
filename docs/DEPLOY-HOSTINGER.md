@@ -1,5 +1,28 @@
 # Desarrollo en Hostinger
 
+## Publicación del 27 de octubre de 2026 (d) — favicon e íconos con versión
+
+Publicado el tag `publicacion-2026-10-27d` (commit `0c9d30e`). Respaldo
+previo: `/home/u800479702/backups/congregacion-dev-20261027-publicacion-2026-10-27d-pre`.
+
+**El problema.** Después de la publicación (c) se seguía viendo el favicon
+viejo. Dos causas:
+
+- `favicon.svg` y los PNG de la PWA salían con caché de 7 días.
+- La CDN (`hcdn`) servía su copia del ícono viejo de 180 px.
+
+**El arreglo.** Las direcciones de los íconos llevan `?v=` con un resumen de
+su contenido, que calcula `vite.config.ts`. Además:
+
+- Se suma `favicon.ico`, porque antes esa dirección devolvía la app en HTML.
+- El favicon se revalida siempre (`no-cache`).
+
+**Verificación:**
+
+- 113 de 113 archivos coinciden.
+- La CDN entrega el ícono nuevo (`MISS`, 1.960 bytes).
+- `/favicon.ico` sale como `image/x-icon`.
+
 ## Publicación del 27 de octubre de 2026 (c) — ícono y logo nuevos
 
 Publicado el tag `publicacion-2026-10-27c` (commit `5707640`) con
