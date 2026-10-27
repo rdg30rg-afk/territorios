@@ -277,6 +277,13 @@
         <button class="b sec" id="bDividirT"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#dividir"></use></svg> Dividir</button>
         <button class="b dan" id="bBorrar"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#eliminar"></use></svg> Borrar</button>
       </div>
+      <div style="margin-top:12px">
+        <label for="colorTerritorio">Color del territorio</label>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <input id="colorTerritorio" type="color" aria-label="Elegir un color personalizado" style="width:44px;height:36px;padding:3px;cursor:pointer">
+          <div id="paletaTerritorio" style="display:flex;gap:5px;flex-wrap:wrap" aria-label="Colores del territorio"></div>
+        </div>
+      </div>
       <div class="chips" id="chipsLetras" style="display:flex;gap:4px;align-items:center;margin-top:9px">
         <span style="font-size:11.5px;color:var(--suave);margin-right:2px">Letras</span>
         <button data-l="orden" class="on">como marco</button>
@@ -1277,7 +1284,7 @@ function refrescarPanel () {
     // Lo que dice la base, si se pudo consultar. Sin esto no hay forma de
     // saber que territorios ya se guardaron y cuales quedaron a medias: son
     // 69 y se guardan de a uno.
-    const enBase = enLaBase ? enLaBase.get(String(t.numero)) : undefined
+    const enBase = enLaBase ? enLaBase.get(String(t.numeroBase ?? t.numero)) : undefined
     let estado = n ? 'ver' : 'vacío'
     let color = 'var(--suave)'
     if (enLaBase && n) {
@@ -1289,6 +1296,8 @@ function refrescarPanel () {
     // al 61 y el 61 otra al 12, los dos siguen teniendo las mismas de antes y
     // el cartel diria "guardado" con las manzanas cruzadas en la base.
     if (tocados.has(t.id)) { estado = 'movida sin guardar'; color = '#b45309' }
+    if (t.colorBase != null) { estado = 'color sin guardar'; color = '#b45309' }
+    if (t.numeroBase != null) { estado = t.colorBase != null ? 'número y color sin guardar' : 'número sin guardar'; color = '#b45309' }
     b.innerHTML = `<span class="num" style="background:${t.color}">${t.numero}</span>
       <span><strong>Territorio ${t.numero}</strong><small>Sector ${t.sector} · ${n} manzana${n === 1 ? '' : 's'}</small></span>
       <span style="color:${color};font-size:11px">${estado === 'guardado' ? icono('completo') + ' guardado' : estado}</span>`
@@ -1310,6 +1319,14 @@ function refrescarPanel () {
   document.querySelector('.app').classList.toggle('territorio-abierto', Boolean(hayActivo))
   if (hayActivo) {
     const t = territorios.get(activo)
+    document.getElementById('colorTerritorio').value = t.color
+    document.getElementById('colorTerritorio').disabled = document.getElementById('bGuardarBD').disabled
+    document.querySelectorAll('#paletaTerritorio button').forEach(b => {
+      const elegido = b.dataset.color.toLowerCase() === t.color.toLowerCase()
+      b.setAttribute('aria-pressed', String(elegido))
+      b.style.outline = elegido ? '2px solid var(--texto)' : 'none'
+      b.disabled = document.getElementById('bGuardarBD').disabled
+    })
     const propias = [...manzanas.values()].filter(m => m.territorio === t.id)
     const m2 = propias.reduce((s, m) => s + area(feat(m.geom)), 0)
     sel.style.display = ''
@@ -1735,7 +1752,7 @@ function traerDelSistema (respaldo) {
       // El sector sale del PDF "Mapa x Sectores"; los territorios posteriores
       // al PDF (60 a 69) se dedujeron por cercania a los ya conocidos.
       sector: SECTORES[numero] || 'I',
-      color: r.color || PALETA[territorios.size % PALETA.length],
+      color: r.color || r.polygon_geojson?.color || PALETA[territorios.size % PALETA.length],
     })
     informe.territorios++
 
@@ -1994,15 +2011,66 @@ function enGrupo (borrar) {
 document.getElementById('bMzQuitar').onclick = () => enGrupo(false)
 document.getElementById('bMzBorrar').onclick = () => enGrupo(true)
 
+// Cambiar el color se guarda en el borrador y se publica con el territorio.
+function cambiarColorTerritorio (color) {
+  if (!activo || !territorios.has(activo)) return
+  if (publicacionEnVuelo) return avisar('Esperá a que termine el guardado para cambiar el color.')
+  if (!/^#[0-9a-f]{6}$/i.test(color)) return
+  const t = territorios.get(activo)
+  if (t.color.toLowerCase() === color.toLowerCase()) return
+  instantanea()
+  if (t.colorBase == null) t.colorBase = t.color
+  t.color = color
+  if (t.color.toLowerCase() === t.colorBase.toLowerCase()) delete t.colorBase
+  refrescar()
+  avisar('Color cambiado en el borrador. Guardá en la base para aplicarlo. <b>Cmd+Z</b> deshace.')
+}
+
+document.getElementById('colorTerritorio').onchange = e => cambiarColorTerritorio(e.target.value)
+const nombresColores = ['Azul', 'Verde', 'Naranja', 'Violeta', 'Índigo', 'Lima', 'Rosa', 'Turquesa']
+PALETA.forEach((color, i) => {
+  const b = document.createElement('button')
+  b.type = 'button'
+  b.dataset.color = color
+  b.setAttribute('aria-label', nombresColores[i])
+  b.setAttribute('aria-pressed', 'false')
+  b.title = nombresColores[i]
+  b.style.cssText = `width:28px;height:28px;padding:0;border:2px solid var(--canvas);border-radius:50%;background:${color};cursor:pointer;outline-offset:1px`
+  b.onclick = () => cambiarColorTerritorio(color)
+  document.getElementById('paletaTerritorio').appendChild(b)
+})
+
+// El número original identifica el registro hasta publicar el cambio completo.
+function cambiarNumeroTerritorio (t, numero) {
+  if (t.numeroBase == null) t.numeroBase = String(t.numero)
+  t.numero = numero
+  if (t.numero === t.numeroBase) delete t.numeroBase
+  tocados.add(t.id)
+}
+
 document.getElementById('bRenom').onclick = async () => {
   if (!activo) return
+  if (publicacionEnVuelo) return avisar('Esperá a que termine el guardado para renumerar.')
   const t = territorios.get(activo)
-  const n = await pedir('Renumerar', `Nuevo número para el territorio <b>${t.numero}</b>.`, t.numero)
-  if (!n) return
-  if ([...territorios.values()].some(x => x.id !== activo && x.numero === n)) {
-    return avisar(`Ya existe el territorio <b>${n}</b>. Elegí otro número.`)
-  }
-  instantanea(); t.numero = n; refrescar()
+  const entrada = await pedir('Renumerar', `Nuevo número para el territorio <b>${t.numero}</b>. Si está ocupado, podés intercambiar los dos números.`, t.numero)
+  const n = entrada?.trim()
+  if (!n || n === String(t.numero)) return
+  // Los números son rótulos cortos, no HTML.
+  if (!/^[0-9]+[a-zA-Z]?(?:[.-][0-9]+)?$/.test(n)) return avisar('Usá un número de territorio, por ejemplo 5, 5b o 5.1.')
+  const otro = [...territorios.values()].find(x => x.id !== t.id && String(x.numero).toLowerCase() === n.toLowerCase())
+  const anterior = String(t.numero)
+  const numeroOtro = otro ? String(otro.numero) : null
+  if (otro && !await confirmar('Intercambiar números',
+    `El territorio <b>${anterior}</b> pasa a ser <b>${otro.numero}</b> y el actual <b>${otro.numero}</b> pasa a ser <b>${anterior}</b>.<br><br>Cada uno conserva sus manzanas y su historial. Los demás territorios mantienen su número.`, 'Intercambiar')) return
+  if (publicacionEnVuelo || territorios.get(t.id) !== t || String(t.numero) !== anterior ||
+      (otro && (territorios.get(otro.id) !== otro || String(otro.numero) !== numeroOtro))) return avisar('El editor cambió. Volvé a intentar la renumeración.')
+  instantanea()
+  cambiarNumeroTerritorio(t, otro ? String(otro.numero) : n)
+  if (otro) cambiarNumeroTerritorio(otro, anterior)
+  refrescar()
+  avisar(otro
+    ? `Números <b>${anterior}</b> y <b>${t.numero}</b> intercambiados en el borrador. Guardá en la base para aplicarlos juntos. <b>Cmd+Z</b> deshace.`
+    : `Número cambiado a <b>${n}</b> en el borrador. Guardá en la base para aplicarlo. <b>Cmd+Z</b> deshace.`)
 }
 
 // Dividir un territorio NO toca geometria: se reparten sus manzanas.
@@ -2714,7 +2782,8 @@ document.getElementById('bGuardarBD').onclick = async () => {
     .filter((id) => id !== activo && territorios.has(id) && !mzDe(id).length)
     .map((id) => territorios.get(id))
 
-  const aPublicar = [t, ...arrastrados, ...vaciados]
+  const renumerados = [...territorios.values()].filter(x => x.numeroBase != null || x.colorBase != null)
+  const aPublicar = [...new Map([t, ...arrastrados, ...vaciados, ...renumerados].map(x => [x.id, x])).values()]
   const vacios = aPublicar.filter((x) => !mzDe(x.id).length)
   publicacionEnVuelo = true
   const boton = document.getElementById('bGuardarBD')
@@ -2724,23 +2793,29 @@ document.getElementById('bGuardarBD').onclick = async () => {
   // Copia profunda antes de abrir el diálogo: nunca enviar ediciones posteriores
   // que la persona todavía no confirmó.
   const capturas = aPublicar.map((x) => ({
-    id: x.id, nombre: String(x.numero),
+    id: x.id, nombre: String(x.numero), nombreBase: String(x.numeroBase ?? x.numero),
+    color: x.colorBase != null ? x.color : null,
     manzanas: JSON.parse(JSON.stringify(prepararTerritorio(x))),
   }))
   const versiones = await rpcEditor('revisar_publicacion_editor', {
-    p_nombres: capturas.map((x) => x.nombre),
+    p_nombres: capturas.map((x) => x.nombreBase),
   }, token)
   const lote = capturas.map((x) => {
-    const revision = versiones.find((v) => v.nombre.toLowerCase() === x.nombre.toLowerCase())
+    const revision = versiones.find((v) => v.nombre.toLowerCase() === x.nombreBase.toLowerCase())
     if (!revision || !Number.isInteger(revision.version)) throw new Error('No se pudo verificar la versión del territorio ' + x.nombre)
-    return { nombre: x.nombre, version_esperada: revision.version, manzanas: x.manzanas }
+    return { nombre: x.nombre, version_esperada: revision.version, manzanas: x.manzanas, ...(x.color ? { color: x.color } : {}) }
   })
+  const renumeraciones = capturas.filter(x => x.nombreBase !== x.nombre).map(x => ({
+    id: versiones.find(v => v.nombre.toLowerCase() === x.nombreBase.toLowerCase()).id,
+    nombre_anterior: x.nombreBase, nombre_nuevo: x.nombre,
+  }))
+  const colores = capturas.filter(x => x.color)
   const caras = propias.reduce((n, m) => n + carasDeMz(m).length, 0)
   const ok = await dialogo({
     titulo: aPublicar.length > 1
       ? 'Guardar ' + aPublicar.length + ' territorios'
       : 'Guardar el territorio ' + t.numero,
-    cuerpo: 'Los hermanos van a ver el territorio <b>' + t.numero + '</b> con las <b>' +
+    cuerpo: (colores.length ? 'Se guarda también el color de ' + colores.map(x => 'territorio ' + x.nombre).join(', ') + '.<br><br>' : '') + (renumeraciones.length ? 'Cambios de número: <b>' + renumeraciones.map(x => x.nombre_anterior + ' → ' + x.nombre_nuevo).join('</b>, <b>') + '</b>.<br><br>' : '') + 'Los hermanos van a ver el territorio <b>' + t.numero + '</b> con las <b>' +
             propias.length + '</b> manzanas que dibujaste y sus <b>' + caras + ' cuadras</b>.<br><br>' +
             (arrastrados.length
               ? 'Moviste manzanas entre territorios, así que también se guarda ' +
@@ -2760,14 +2835,26 @@ document.getElementById('bGuardarBD').onclick = async () => {
 
   avisar('Guardando…')
     enviada = true
-    const resultados = await rpcEditor('publicar_territorios_atomico', { p_territorios: lote }, token)
+    const resultados = renumeraciones.length || colores.length
+      ? await rpcEditor('publicar_editor_con_renumeracion', { p_territorios: lote, p_renumeraciones: renumeraciones }, token)
+      : await rpcEditor('publicar_territorios_atomico', { p_territorios: lote }, token)
     if (!Array.isArray(resultados) || resultados.length !== capturas.length) throw new Error('Respuesta de publicación incompleta')
     const hechos = resultados.map((res, i) => ({ numero: capturas[i].nombre, ...res }))
     for (const captura of capturas) {
       const actual = territorios.get(captura.id)
+      if (actual && captura.nombreBase !== captura.nombre) {
+        if (String(actual.numero) === captura.nombre) delete actual.numeroBase
+        else actual.numeroBase = captura.nombre
+      }
+      if (actual && captura.color) {
+        if (actual.color.toLowerCase() === captura.color.toLowerCase()) delete actual.colorBase
+        else actual.colorBase = captura.color
+      }
       if (actual && String(actual.numero) === captura.nombre &&
           JSON.stringify(prepararTerritorio(actual)) === JSON.stringify(captura.manzanas)) tocados.delete(captura.id)
     }
+    // El historial previo referencia los nombres anteriores ya publicados.
+    if (renumeraciones.length || colores.length) { historial.length = 0; rehechos.length = 0 }
     guardar()
     avisar(hechos.map((h) =>
       'Territorio <b>' + h.numero + '</b> guardado: ' + h.manzanas + ' manzanas, ' +
@@ -3151,7 +3238,7 @@ document.getElementById('bTraerTerr').onclick = async () => {
   let filas
   try {
     const H = { apikey: BD_KEY, Authorization: 'Bearer ' + token }
-    const rt = await fetch(`${BD_URL}/rest/v1/territorios?select=id&name=eq.${encodeURIComponent(t.numero)}`, { headers: H })
+    const rt = await fetch(`${BD_URL}/rest/v1/territorios?select=id&name=eq.${encodeURIComponent(t.numeroBase ?? t.numero)}`, { headers: H })
     const terr = await rt.json()
     if (!terr.length) throw new Error('En la base no existe el territorio ' + t.numero)
     const rm = await fetch(

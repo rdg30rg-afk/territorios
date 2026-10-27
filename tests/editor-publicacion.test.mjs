@@ -17,13 +17,15 @@ test('el panel no duplica el editor que ya vive completo dentro de Mapas', async
   assert.match(mapas, /title="Editor completo de manzanas y territorios"/)
 })
 
-function fixture({ confirm = true, fail = false, edit = false } = {}) {
+function fixture({ confirm = true, fail = false, edit = false, renumber = false, color = false } = {}) {
   const button = {}, calls = [], dialogs = []
   const manzanas = new Map([['m', {territorio:'a',letra:'A',geom:{type:'Polygon',coordinates:[]}}]])
   const tocados = new Set(['a','b'])
+  const territorios = new Map([['a',{id:'a',numero:renumber ? '58' : 57, ...(renumber ? {numeroBase:'57'} : {})}],['b',{id:'b',numero:renumber ? '57' : 58, ...(renumber ? {numeroBase:'58'} : {})}]])
+  if (color) Object.assign(territorios.get('a'), {color:'#01bc73',colorBase:'#407dfe'})
   const context = vm.createContext({
     document:{getElementById:()=>button}, BD_URL:'https://dev.invalid',BD_KEY:'test',
-    tokenDeSesion:()=> 'test',activo:'a',territorios:new Map([['a',{id:'a',numero:57}],['b',{id:'b',numero:58}]]),
+    tokenDeSesion:()=> 'test',activo:'a',territorios, historial:[], rehechos:[],
     manzanas,tocados,carasDeMz:()=>[],centroDe:()=>[0,0],areaM2De:()=>0,
     avisar:()=>{},guardar:()=>{},traerDeLaBase:async()=>{},
     dialogo:async options=>{
@@ -33,13 +35,13 @@ function fixture({ confirm = true, fail = false, edit = false } = {}) {
     },
     fetch:async(url,options)=>{
       const body=JSON.parse(options.body);calls.push({url,body})
-      if(url.endsWith('revisar_publicacion_editor')) return {ok:true,text:async()=>JSON.stringify([{nombre:'57',version:1},{nombre:'58',version:2}])}
+      if(url.endsWith('revisar_publicacion_editor')) return {ok:true,text:async()=>JSON.stringify([{nombre:'57',id:'uuid-a',version:1},{nombre:'58',id:'uuid-b',version:2}])}
       if(fail) throw Error('sin conexión')
       return {ok:true,text:async()=>JSON.stringify(body.p_territorios.map(()=>({manzanas:1,lados:0})))}
     },
   })
   vm.runInContext(source,context)
-  return {button,calls,dialogs,tocados}
+  return {button,calls,dialogs,tocados,territorios}
 }
 test('publica un único lote con origen vacío y versión revisada',async()=>{
   const f=fixture();await f.button.onclick()
@@ -63,4 +65,40 @@ test('edición posterior al snapshot no se publica ni se marca guardada',async()
   const f=fixture({edit:true});await f.button.onclick()
   assert.equal(f.calls[1].body.p_territorios[0].manzanas[0].label,'A')
   assert.equal(f.tocados.has('a'),true);assert.equal(f.tocados.has('b'),false)
+})
+
+test('intercambio revisa números originales y publica UUIDs y dibujos juntos',async()=>{
+  const f=fixture({renumber:true});await f.button.onclick()
+  assert.deepEqual(f.calls[0].body.p_nombres,['57','58'])
+  assert.match(f.calls[1].url,/publicar_editor_con_renumeracion$/)
+  assert.deepEqual(f.calls[1].body.p_renumeraciones,[
+    {id:'uuid-a',nombre_anterior:'57',nombre_nuevo:'58'},
+    {id:'uuid-b',nombre_anterior:'58',nombre_nuevo:'57'},
+  ])
+  assert.equal(f.calls[1].body.p_territorios[0].nombre,'58')
+  assert.equal(f.calls[1].body.p_territorios[0].version_esperada,1)
+  assert.equal(f.territorios.get('a').numeroBase,undefined)
+  assert.equal(f.territorios.get('b').numeroBase,undefined)
+  assert.equal(f.tocados.size,0)
+  assert.match(f.dialogs[0].cuerpo,/57 → 58/)
+})
+test('fallo de intercambio conserva identidad original para resolver el resultado',async()=>{
+  const f=fixture({renumber:true,fail:true});await f.button.onclick()
+  assert.equal(f.territorios.get('a').numeroBase,'57')
+  assert.equal(f.territorios.get('b').numeroBase,'58')
+  assert.equal(f.tocados.size,2)
+  assert.equal(f.calls.length,2)
+})
+
+test('publica un color sin renumerar y conserva el publicador atómico',async()=>{
+  const f=fixture({color:true});await f.button.onclick()
+  assert.match(f.calls[1].url,/publicar_editor_con_renumeracion$/)
+  assert.deepEqual(f.calls[1].body.p_renumeraciones,[])
+  assert.equal(f.calls[1].body.p_territorios[0].color,'#01bc73')
+  assert.equal(f.territorios.get('a').colorBase,undefined)
+  assert.match(f.dialogs[0].cuerpo,/color/)
+})
+test('fallo al guardar color conserva el cambio pendiente',async()=>{
+  const f=fixture({color:true,fail:true});await f.button.onclick()
+  assert.equal(f.territorios.get('a').colorBase,'#407dfe')
 })

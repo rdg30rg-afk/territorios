@@ -147,7 +147,7 @@ test('la publicación revisa versiones y envía un lote atómico completo', () =
   assertSource(/const versiones = await rpcEditor\('revisar_publicacion_editor'/)
   assertSource(/version_esperada:\s*revision\.version/)
   assertSource(/const lote = capturas\.map\([\s\S]*?manzanas: x\.manzanas/)
-  assertSource(/const resultados = await rpcEditor\('publicar_territorios_atomico', \{ p_territorios: lote \}, token\)/)
+  assertSource(/const resultados = renumeraciones\.length \|\| colores\.length[\s\S]*?rpcEditor\('publicar_editor_con_renumeracion'[\s\S]*?rpcEditor\('publicar_territorios_atomico', \{ p_territorios: lote \}, token\)/)
   assertSource(/resultados\.length !== capturas\.length/)
   assertSource(/Se guarda el lote completo o ninguno\./)
   assertSource(/publicacionEnVuelo\s*=\s*true[\s\S]*?boton\.disabled\s*=\s*true/)
@@ -169,5 +169,5 @@ test('mover una manzana marca explícitamente origen y destino para el mismo lot
 
   assertSource(/const arrastrados = \[\.\.\.tocados\][\s\S]*?id !== activo/)
   assertSource(/const vaciados = \[\.\.\.tocados\][\s\S]*?!mzDe\(id\)\.length/)
-  assertSource(/const aPublicar = \[t, \.\.\.arrastrados, \.\.\.vaciados\]/)
+  assertSource(/const aPublicar = \[\.\.\.new Map\(\[t, \.\.\.arrastrados, \.\.\.vaciados, \.\.\.renumerados\]/)
 })
