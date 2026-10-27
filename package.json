@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "build:development": "tsc -b && vite build --mode development",
     "build:dev:seguro": "node scripts/build-dev-seguro.mjs",
+    "publicar:hostinger": "node scripts/publicar-hostinger.mjs",
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "node --experimental-strip-types --test tests/*.test.mjs",

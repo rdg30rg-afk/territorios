@@ -8,11 +8,24 @@ import { loadEnv } from 'vite'
 export const DEV_SUPABASE_REF = 'rkmioktcsgqqjshrlkmy'
 export const PRODUCTION_SUPABASE_REF = 'dwgvzcnarrjgqjotocdw'
 export const DEV_SUPABASE_URL = `https://${DEV_SUPABASE_REF}.supabase.co`
-export const BUILD_MODE = 'development'
+
+// Antes `development` hacía dos trabajos a la vez: elegía a qué base apunta el
+// build Y le decía a Vite que compilara en modo desarrollo. Por eso el sitio
+// publicado traía el React de desarrollo (jsx-dev-runtime), que es más lento
+// en cada render. Son dos cosas distintas:
+//
+// - ENV_PROFILE: qué archivos .env se leen (`.env`, `.env.local`,
+//   `.env.development`, `.env.development.local`), es decir, a qué base apunta.
+//   Sigue siendo `development` porque es donde viven las variables DEV, y
+//   todos los guards (URL, JWT, VITE_APP_ENV) se aplican sobre ese perfil.
+// - BUILD_MODE: el modo de Vite. `production`: React de producción, sin
+//   avisos de desarrollo, y `import.meta.env.DEV` en false.
+export const ENV_PROFILE = 'development'
+export const BUILD_MODE = 'production'
 
 const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const SERVICE_WORKER_CONTRACT =
-  'Contrato requerido: vite.config.ts debe generar sw.js, precachear solo archivos presentes y mantener fuera del precache los respaldos y prototipos; no se modificó ese archivo.'
+  'Contrato requerido: vite.config.ts debe generar sw.js en modo prompt (espera el mensaje SKIP_WAITING), precachear solo archivos presentes, mantener fuera del precache los respaldos y prototipos, cachear solo teselas en teselas-mapa y nunca Supabase.'
 
 const TEXT_EXTENSIONS = new Set([
   '.css',
@@ -34,6 +47,10 @@ export const PUBLISHABLE_RUNTIME_DATA_FILES = [
   'sectores.json',
   'sin-viviendas.json',
 ]
+
+// Archivos que un sistema operativo deja al pasar y que nunca se publican:
+// .DS_Store (macOS) se coló en cada publicación y el servidor lo contesta 403.
+const JUNK_FILE_PATTERN = /^(?:\.DS_Store|Thumbs\.db|desktop\.ini|\._.*)$/i
 const PROTOTYPE_OUTPUT_FILES = [
   'banco-ato.html',
   'banco-tema.html',
@@ -337,8 +354,23 @@ async function pruneDataDirectory(outputDir) {
   return removed
 }
 
+/** ¿Es un archivo basura del sistema operativo (.DS_Store, Thumbs.db, ._*)? Lo reusa el script de publicación. */
+export function isJunkFile(relativePath) {
+  const baseName = relativePath.split(/[\\/]/).pop() ?? ''
+  return JUNK_FILE_PATTERN.test(baseName)
+}
+
 export async function prunePublishableOutput(outputDir) {
   const removed = []
+
+  // Basura del sistema operativo (.DS_Store, Thumbs.db, ._*): se saca del
+  // paquete en cualquier carpeta. assertNoJunkFiles lo vuelve a comprobar al
+  // final y falla si algo se escapó.
+  for (const file of await listFiles(outputDir)) {
+    if (!isJunkFile(file.relativePath)) continue
+    await rm(file.absolutePath, { force: true })
+    removed.push(file.relativePath.split(sep).join('/'))
+  }
 
   for (const directory of PUBLISH_ONLY_DIRS) {
     const relativePath = directory
@@ -383,6 +415,65 @@ export async function prunePublishableOutput(outputDir) {
   }
 
   return { removed, referencedAtoFiles: [...referencedAtoFiles].sort() }
+}
+
+/**
+ * Falla si en la salida quedó algún archivo basura del sistema operativo.
+ * prunePublishableOutput los saca; esto es el cinturón de seguridad.
+ */
+export async function assertNoJunkFiles(outputDir) {
+  const found = (await listFiles(outputDir))
+    .filter((file) => isJunkFile(file.relativePath))
+    .map((file) => file.relativePath.split(sep).join('/'))
+  if (found.length > 0) {
+    throw new BuildSafetyError(
+      `El paquete contiene archivos basura que no se publican: ${found.slice(0, 5).join(', ')}${found.length > 5 ? ` y ${found.length - 5} más` : ''}.`,
+    )
+  }
+  return { checkedFiles: (await listFiles(outputDir)).length }
+}
+
+const DEVELOPMENT_RUNTIME_MARKERS = ['jsxDEV', 'jsx-dev-runtime']
+
+/**
+ * Falla si algún JS (o HTML con scripts) de la salida trae el runtime de
+ * desarrollo de React. `jsxDEV` solo existe en builds de desarrollo: que
+ * aparezca quiere decir que el sitio publicado va a correr el React lento.
+ */
+export async function assertProductionBundle(outputDir) {
+  const files = await listFiles(outputDir)
+  let checkedFiles = 0
+  for (const file of files) {
+    const extension = extname(file.relativePath).toLowerCase()
+    if (extension !== '.js' && extension !== '.mjs' && extension !== '.html') continue
+    checkedFiles += 1
+    const text = await readFile(file.absolutePath, 'utf8')
+    const marker = DEVELOPMENT_RUNTIME_MARKERS.find((candidate) => text.includes(candidate))
+    if (marker) {
+      throw new BuildSafetyError(
+        `El paquete trae el runtime de desarrollo de React (${marker}) en ${file.relativePath.split(sep).join('/')}: el build tiene que salir en modo ${BUILD_MODE}.`,
+      )
+    }
+  }
+  return { checkedFiles }
+}
+
+/**
+ * Vite, en modo production, además lee `.env.production` y
+ * `.env.production.local`. El build seguro valida las variables del perfil
+ * development y se las pasa a Vite (las variables del proceso ganan sobre los
+ * archivos), pero una variable VITE_* que exista SOLO en un archivo de
+ * production se colaría sin pasar por ningún guard. Si hay una, se frena.
+ */
+export function assertProductionEnvFilesDoNotLeak(rootDir, env, loadEnvFn = loadEnv) {
+  const productionEnv = loadEnvFn(BUILD_MODE, rootDir, 'VITE_')
+  const extraKeys = Object.keys(productionEnv).filter((key) => !(key in env))
+  if (extraKeys.length > 0) {
+    throw new BuildSafetyError(
+      `Build bloqueado: ${extraKeys.join(', ')} viene de un archivo .env.${BUILD_MODE}* y no pasó por los guards del build DEV. Movelas a .env o .env.${ENV_PROFILE}.local, o borrá ese archivo.`,
+    )
+  }
+  return { checkedKeys: Object.keys(productionEnv).length }
 }
 
 export async function assertRuntimeDataPresent(outputDir) {
@@ -507,6 +598,31 @@ export async function assertRuntimeSecretsAbsent(outputDir, env = {}) {
   return { checkedFiles: runtimeFiles.length }
 }
 
+/**
+ * El worker se registra desde la app (`virtual:pwa-register`, que queda dentro
+ * del bundle) o, en el contrato anterior, desde un registerSW.js suelto.
+ * Alcanza con que algún JS que no sea el worker lo registre.
+ */
+async function assertServiceWorkerRegistered(outputDir) {
+  const candidates = (await listFiles(outputDir)).filter((file) => {
+    const relativePath = file.relativePath.split(sep).join('/')
+    return (
+      extname(relativePath).toLowerCase() === '.js' &&
+      relativePath !== 'sw.js' &&
+      !/^workbox-.+\.js$/.test(relativePath)
+    )
+  })
+  for (const file of candidates) {
+    const text = await readFile(file.absolutePath, 'utf8')
+    if (/["'`]\/?sw\.js["'`]/.test(text) && /serviceWorker/.test(text)) {
+      return file.relativePath.split(sep).join('/')
+    }
+  }
+  throw new BuildSafetyError(
+    `Ningún JS de la app registra sw.js (virtual:pwa-register o registerSW.js). ${SERVICE_WORKER_CONTRACT}`,
+  )
+}
+
 export async function assertServiceWorkerConsistent(outputDir) {
   const serviceWorkerPath = outputPath(outputDir, 'sw.js')
   if (!(await pathExists(serviceWorkerPath))) {
@@ -517,15 +633,10 @@ export async function assertServiceWorkerConsistent(outputDir) {
   if (!rootFiles.some((file) => /^workbox-.+\.js$/.test(file))) {
     throw new BuildSafetyError(`Falta el runtime Workbox del service worker. ${SERVICE_WORKER_CONTRACT}`)
   }
-  for (const required of ['manifest.webmanifest', 'registerSW.js']) {
-    if (!(await pathExists(outputPath(outputDir, required)))) {
-      throw new BuildSafetyError(`Falta ${required} junto con el service worker. ${SERVICE_WORKER_CONTRACT}`)
-    }
+  if (!(await pathExists(outputPath(outputDir, 'manifest.webmanifest')))) {
+    throw new BuildSafetyError(`Falta manifest.webmanifest junto con el service worker. ${SERVICE_WORKER_CONTRACT}`)
   }
-  const registerServiceWorkerText = await readFile(outputPath(outputDir, 'registerSW.js'), 'utf8')
-  if (!/register\(\s*["']\/?sw\.js["']/.test(registerServiceWorkerText)) {
-    throw new BuildSafetyError(`registerSW.js no registra sw.js. ${SERVICE_WORKER_CONTRACT}`)
-  }
+  const registeredBy = await assertServiceWorkerRegistered(outputDir)
 
   const serviceWorkerText = await readFile(serviceWorkerPath, 'utf8')
   const precacheUrls = serviceWorkerUrls(serviceWorkerText)
@@ -537,6 +648,25 @@ export async function assertServiceWorkerConsistent(outputDir) {
   if (!/editor-manzanas/i.test(serviceWorkerText) || !/denylist/i.test(serviceWorkerText)) {
     throw new BuildSafetyError(
       `El service worker no conserva la exclusión de fallback para el editor. ${SERVICE_WORKER_CONTRACT}`,
+    )
+  }
+
+  // Actualización avisada: el worker nuevo solo se activa con este mensaje.
+  // Sin el handler, `skipWaiting: true` lo activaría solo y recargaría la app
+  // en pleno uso.
+  if (!serviceWorkerText.includes('SKIP_WAITING')) {
+    throw new BuildSafetyError(
+      `El service worker no espera el mensaje SKIP_WAITING: se actualizaría solo. ${SERVICE_WORKER_CONTRACT}`,
+    )
+  }
+  if (!serviceWorkerText.includes('teselas-mapa') || !/CacheFirst/.test(serviceWorkerText)) {
+    throw new BuildSafetyError(
+      `El service worker no cachea las teselas del mapa en teselas-mapa con CacheFirst. ${SERVICE_WORKER_CONTRACT}`,
+    )
+  }
+  if (/supabase\.co/i.test(serviceWorkerText)) {
+    throw new BuildSafetyError(
+      `El service worker menciona Supabase: la sesión y los datos nunca se cachean. ${SERVICE_WORKER_CONTRACT}`,
     )
   }
 
@@ -553,7 +683,7 @@ export async function assertServiceWorkerConsistent(outputDir) {
     }
   }
 
-  return { serviceWorker: 'sw.js', precacheCount: precacheUrls.length }
+  return { serviceWorker: 'sw.js', precacheCount: precacheUrls.length, registeredBy }
 }
 
 function runProcess(command, args, options) {
@@ -578,21 +708,27 @@ function runProcess(command, args, options) {
 }
 
 export async function buildDevSeguro({ rootDir = PROJECT_ROOT } = {}) {
-  const env = loadEnv(BUILD_MODE, rootDir, '')
+  // A qué base apunta: se lee el perfil `development` y se valida entero.
+  const env = loadEnv(ENV_PROFILE, rootDir, '')
   const environment = validateEnvironment(env)
+  assertProductionEnvFilesDoNotLeak(rootDir, env)
   const outputDir = await mkdtemp(join(tmpdir(), 'territorios-build-dev-'))
   const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm'
   const childEnv = { ...process.env }
 
+  // Las variables ya validadas se le pasan a Vite por el entorno del proceso:
+  // ahí ganan sobre cualquier archivo .env que Vite lea en modo production.
   for (const [key, value] of Object.entries(env)) {
     if (key.startsWith('VITE_')) childEnv[key] = value
   }
+  // Cómo se compila: modo production de Vite y NODE_ENV=production (React de
+  // producción). Es independiente de la base a la que apunta.
   childEnv.NODE_ENV = BUILD_MODE
 
   try {
     await runProcess(
       npmCommand,
-      ['run', 'build:development', '--', '--outDir', outputDir],
+      ['run', 'build', '--', '--mode', BUILD_MODE, '--outDir', outputDir],
       { cwd: rootDir, env: childEnv },
     )
     await copyFile(
@@ -600,17 +736,22 @@ export async function buildDevSeguro({ rootDir = PROJECT_ROOT } = {}) {
       outputPath(outputDir, EMBEDDED_EDITOR_FILE),
     )
     const pruned = await prunePublishableOutput(outputDir)
+    const junk = await assertNoJunkFiles(outputDir)
     const data = await assertRuntimeDataPresent(outputDir)
     const entries = await assertAppEditorEntries(outputDir, environment.supabaseUrl)
+    const production = await assertProductionBundle(outputDir)
     const runtime = await assertRuntimeSecretsAbsent(outputDir, env)
     const serviceWorker = await assertServiceWorkerConsistent(outputDir)
 
     return {
       outputDir,
       environment,
+      buildMode: BUILD_MODE,
       data,
       entries,
       pruned,
+      junk,
+      production,
       runtime,
       serviceWorker,
     }
@@ -626,9 +767,11 @@ async function main() {
   const result = await buildDevSeguro()
   console.log('Build DEV seguro OK.')
   console.log(`Supabase efectivo: ${result.environment.supabaseUrl} (${result.environment.jwtRole})`)
+  console.log(`Modo de Vite: ${result.buildMode} (sin jsxDEV en ${result.production.checkedFiles} archivos JS/HTML).`)
+  console.log(`Sin archivos basura (.DS_Store y similares) en ${result.junk.checkedFiles} archivos.`)
   console.log('Entradas verificadas: / y /editor-manzanas.html.')
   console.log(`Datos runtime verificados: ${result.data.files.length} archivos JSON.`)
-  console.log(`Service worker consistente: ${result.serviceWorker.precacheCount} archivos precacheados.`)
+  console.log(`Service worker consistente: ${result.serviceWorker.precacheCount} archivos precacheados; se registra desde ${result.serviceWorker.registeredBy}.`)
   console.log(`Salida temporal publicable: ${result.outputDir}`)
   if (result.pruned.removed.length > 0) {
     const namedExclusions = result.pruned.removed.filter(

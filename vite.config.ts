@@ -23,8 +23,16 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
-      injectRegister: 'auto',
+      // "prompt": el service worker nuevo se instala pero queda esperando.
+      // Con "autoUpdate" (+ skipWaiting + clientsClaim) una publicación le
+      // recargaba la pantalla a quien estaba marcando o editando. Ahora
+      // AvisoActualizacion muestra "Hay una versión nueva" y recién cuando
+      // la persona toca "Actualizar" (y no quedan marcas por enviar) se
+      // activa el worker nuevo y se recarga.
+      registerType: 'prompt',
+      // Sin script inyectado: el registro lo hace AvisoActualizacion con
+      // `virtual:pwa-register/react`, para poder avisar y esperar.
+      injectRegister: false,
       includeAssets: ['favicon.svg', 'icons.svg', 'pwa/icon-180.png'],
       manifest: {
         name: 'Territorios San Juan',
@@ -78,17 +86,62 @@ export default defineConfig({
       },
       workbox: {
         cleanupOutdatedCaches: true,
+        // Se reclaman los clientes al activarse, pero activarse ya NO es
+        // automático: sin `skipWaiting: true` el worker nuevo espera hasta
+        // recibir el mensaje SKIP_WAITING que manda el botón "Actualizar".
         clientsClaim: true,
+        skipWaiting: false,
         navigateFallback: '/index.html',
         // Sin esto, el service worker le contesta index.html a quien pide
         // el editor y la PWA instalada abre la app en su lugar.
         navigateFallbackDenylist: [/^\/editor-manzanas\.html$/],
-        skipWaiting: true,
         globPatterns: ['**/*.{js,css,html,svg,png,ico,json}'],
         // Los datos runtime se sirven online pero no se precachean: el build
         // seguro conserva una lista explícita de archivos públicos permitidos
         // y elimina respaldos locales. banco-ato es un prototipo, no se publica.
         globIgnores: ['**/datos/**', 'banco-ato.html'],
+        // Teselas del mapa para usar sin señal, de MapTiler y de OpenStreetMap.
+        // Se compara por host, no por la forma del path: la precarga de teselas
+        // pide exactamente la URL que arma Leaflet (con el subdominio {s} de
+        // OSM, a/b/c.tile.openstreetmap.org, y el @2x de MapTiler), y esa URL
+        // tiene que caer acá sin importar cómo se arme. Hoy la app no pide a
+        // api.maptiler.com nada que no sea una tesela; si algún día pide
+        // estilos, glifos o búsquedas, acotar el path para que no queden 30
+        // días en un CacheFirst.
+        // Supabase NO se cachea acá: la sesión y los datos tienen que ser
+        // siempre los del servidor.
+        //
+        // El nombre del caché es un contrato: la precarga de teselas escribe
+        // en 'teselas-mapa' y esta ruta las lee. No cambiarlo de un solo lado.
+        //
+        // La función se serializa dentro de sw.js: tiene que bastarse sola,
+        // sin variables ni imports de afuera.
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }: { url: URL }) =>
+              url.hostname === 'api.maptiler.com' ||
+              url.hostname === 'tile.openstreetmap.org' ||
+              url.hostname.endsWith('.tile.openstreetmap.org'),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'teselas-mapa',
+              expiration: {
+                maxEntries: 3000,
+                maxAgeSeconds: 60 * 60 * 24 * 30,
+                // Las respuestas opacas (status 0) pesan mucho para la
+                // cuota del navegador: si se llena, se vacía este caché en
+                // vez de dejar de guardar el resto de la app.
+                purgeOnQuotaError: true,
+              },
+              // 0 = respuesta opaca: un <img> de otro origen sin
+              // crossorigin la devuelve así, y es el caso normal de Leaflet.
+              cacheableResponse: { statuses: [0, 200] },
+              // La precarga pide con CORS y el <img> sin CORS: sin esto el
+              // Vary de la respuesta hace que una no encuentre a la otra.
+              matchOptions: { ignoreVary: true },
+            },
+          },
+        ],
       },
       devOptions: {
         // Apagado. El service worker de desarrollo secuestraba el editor:

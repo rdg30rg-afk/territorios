@@ -1,8 +1,23 @@
 Options -Indexes -MultiViews
 DirectoryIndex index.html
 
+# El manifest de la PWA salía como text/plain. Con su tipo correcto, el
+# navegador lo trata como manifest sin adivinar.
+<IfModule mod_mime.c>
+  AddType application/manifest+json .webmanifest
+</IfModule>
+
 <IfModule mod_rewrite.c>
   RewriteEngine On
+
+  # Archivos con hash de /assets/ (main-DsaJd9.js): no cambian nunca, porque
+  # si cambia el contenido cambia el nombre. Solo se marca si el archivo
+  # EXISTE: si falta, el fallback de abajo contesta index.html con 200 y esa
+  # respuesta nunca debe quedar guardada como "inmutable" por un año.
+  # La marca se lee más abajo, en mod_headers.
+  RewriteCond %{REQUEST_FILENAME} -f
+  RewriteRule ^assets/ - [E=ASSET_CON_HASH:1]
+
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d
   RewriteRule ^ index.html [L]
@@ -11,7 +26,32 @@ DirectoryIndex index.html
 <IfModule mod_headers.c>
   Header always set X-Content-Type-Options "nosniff"
   Header always set Referrer-Policy "strict-origin-when-cross-origin"
-  <FilesMatch "^(index\.html|sw\.js|registerSW\.js|manifest\.webmanifest)$">
+
+  # Lo que apunta a la versión vigente nunca se guarda: index.html y los
+  # editores (referencian los assets con hash de ESTA publicación), el service
+  # worker, el manifest y version.json (commit, tag y fecha publicados).
+  <FilesMatch "^(index\.html|editor-manzanas\.html|editor-manzanas-embedded\.html|sw\.js|registerSW\.js|manifest\.webmanifest|version\.json)$">
     Header set Cache-Control "no-cache, no-store, must-revalidate"
   </FilesMatch>
+
+  # Assets con hash: un año, inmutables. Antes salían con 7 días.
+  Header set Cache-Control "public, max-age=31536000, immutable" env=ASSET_CON_HASH
+
+  # Content-Security-Policy en modo SOLO REPORTE (no bloquea nada).
+  #
+  # Por qué no se aplica todavía: no se pudo probar contra el sitio real con
+  # sesión iniciada, y hay tres cosas que una política estricta rompería:
+  #  - MapasPage inyecta un <script> en línea en el editor (srcDoc) para pasarle
+  #    el origen de la app, y editor-manzanas.html tiene scripts y estilos en
+  #    línea: por eso script-src y style-src llevan 'unsafe-inline'.
+  #  - el editor importa Leaflet de unpkg.com y turf de esm.sh.
+  #  - jsPDF y MapLibre podrían pedir 'unsafe-eval' o workers por blob: en
+  #    algún camino que no se recorrió.
+  #
+  # Cómo pasarla a "aplicar": abrir el sitio con sesión de administrador, entrar
+  # a Mapas, abrir el editor, generar un PDF y mirar la consola del navegador.
+  # Si no aparece ningún "[Report Only] Refused to ...", cambiar el nombre del
+  # encabezado a Content-Security-Policy. Si aparece alguno, sumar ese origen
+  # a la directiva que nombra el mensaje.
+  Header always set Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com https://esm.sh; style-src 'self' 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https://unpkg.com https://api.maptiler.com https://tile.openstreetmap.org https://*.tile.openstreetmap.org; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.maptiler.com https://tile.openstreetmap.org https://*.tile.openstreetmap.org; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'"
 </IfModule>

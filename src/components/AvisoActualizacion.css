@@ -1,0 +1,98 @@
+/*
+ * Aviso fijo "Hay una versión nueva · Actualizar".
+ *
+ * Reglas de la vista del hermano: nada menor a 16 px, controles de 56 px de
+ * alto como mínimo, y el color nunca es lo único que dice algo (hay icono y
+ * palabras). Los colores son los de theme-hermano.css, con valores de
+ * respaldo por si la hoja no cargó.
+ */
+.aviso-actualizacion {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  /* Por encima de las hojas y capas de la app (la más alta es 1000). */
+  z-index: 2000;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+  background: var(--h-ink, #16191d);
+  color: #fff;
+  border-top: 3px solid var(--h-lime, #cbea5b);
+  box-shadow: 0 -8px 24px rgba(22, 25, 29, 0.22);
+  font: 600 16px/1.35 Urbanist, system-ui, sans-serif;
+}
+
+.aviso-actualizacion-texto {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 220px;
+}
+
+.aviso-actualizacion-texto strong {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.aviso-actualizacion-texto span {
+  font-size: 16px;
+  font-weight: 500;
+  color: #e8e6df;
+}
+
+.aviso-actualizacion-boton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 56px;
+  min-width: 56px;
+  padding: 0 22px;
+  border: 2px solid var(--h-lime, #cbea5b);
+  border-radius: 14px;
+  background: var(--h-lime, #cbea5b);
+  color: var(--h-ink, #16191d);
+  font: 700 16px/1 Urbanist, system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.aviso-actualizacion-boton:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 3px;
+}
+
+/* En espera: sin fondo y con borde punteado, para que no se confunda con un
+   botón listo ni dependa solo del tono. El motivo está escrito al lado. */
+.aviso-actualizacion-boton[aria-disabled='true'] {
+  background: transparent;
+  color: #fff;
+  border-style: dashed;
+  border-color: #fff;
+  cursor: not-allowed;
+}
+
+@media print {
+  .aviso-actualizacion {
+    display: none;
+  }
+}
+
+/*
+ * La vista del hermano tiene dos elementos fijos pegados abajo: las pestañas
+ * y la acción pegajosa. Con el aviso a la vista se corren hacia arriba para
+ * quedar a mano en lugar de escondidas atrás. El alto lo mide el componente.
+ */
+html.con-aviso-actualizacion .vh .pestanias {
+  bottom: var(--aviso-actualizacion-alto, 72px);
+  /* El margen de seguridad del borde ya lo pone el aviso. */
+  padding-bottom: 0;
+}
+
+html.con-aviso-actualizacion .vh .pieFijo {
+  bottom: var(--aviso-actualizacion-alto, 72px);
+}
