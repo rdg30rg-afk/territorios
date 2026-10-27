@@ -1831,7 +1831,7 @@ export function ProgramaSemanal({
                   hojaMovil.paso === 'punto' ? 'Punto de encuentro' :
                   hojaMovil.paso === 'conductor' ? 'Elegir conductor' : 'Elegir horario'}
               </h3>
-              <button type="button" className="prog-m-hoja-icono cerrar" data-hoja-cerrar aria-label="Cerrar" onClick={cerrarHojaMovil}>×</button>
+              <button type="button" className="prog-m-hoja-icono cerrar" data-hoja-cerrar aria-label="Cerrar" onClick={cerrarHojaMovil}><Icono nombre="cerrar" tamaño={20} /></button>
             </header>
             {hojaMovil.tipo === 'dia' && diaAbierto ? (
               <div className="prog-m-hoja-cuerpo">
@@ -1841,7 +1841,7 @@ export function ProgramaSemanal({
                     <button key={turno} type="button" onClick={() => {
                       agregarExtra(null, diaAbierto, turno)
                       cerrarHojaMovil()
-                    }}>Agregar salida {turno === 'telefono' ? 'por teléfono' : `a la ${NOMBRE_TURNO[turno]}`} <span aria-hidden="true">＋</span></button>
+                    }}>Agregar salida {turno === 'telefono' ? 'por teléfono' : `a la ${NOMBRE_TURNO[turno]}`} <Icono nombre="agregar" tamaño={18} /></button>
                   ))}
                   <button type="button" onClick={() => {
                     marcarSinSalidaElDia(null, diaAbierto)
@@ -1865,7 +1865,7 @@ export function ProgramaSemanal({
                     {filaAbierta.turno !== 'grupos' ? (
                       <>
                         <button type="button" className="prog-m-incluir" onClick={() => cambiar(filaAbierta, { tildada: !datoAbierto.tildada })} disabled={!puedeEscribir} aria-pressed={datoAbierto.tildada}>
-                          <span className="prog-m-incluir-marca" aria-hidden="true">{datoAbierto.tildada ? '✓' : ''}</span>
+                          <span className="prog-m-incluir-marca" aria-hidden="true">{datoAbierto.tildada ? <Icono nombre="tilde" tamaño={16} /> : null}</span>
                           Incluir esta salida en el programa
                         </button>
                         <div className="prog-m-hoja-campos">
@@ -1885,8 +1885,8 @@ export function ProgramaSemanal({
                         {datoAbierto.propuesta ? <button type="button" className="prog-m-hoja-accion" onClick={() => siguienteTerritorio(filaAbierta)}>Cambiar por el siguiente territorio</button> : null}
                         <div className="prog-m-hoja-mover">
                           <span>Posición en el día</span>
-                          <button type="button" onClick={() => moverUnLugar(filaAbierta, -1)} disabled={filasDelPeriodo.filter((f) => f.fecha === filaAbierta.fecha)[0]?.clave === filaAbierta.clave}>↑ Subir</button>
-                          <button type="button" onClick={() => moverUnLugar(filaAbierta, 1)} disabled={filasDelPeriodo.filter((f) => f.fecha === filaAbierta.fecha).at(-1)?.clave === filaAbierta.clave}>↓ Bajar</button>
+                          <button type="button" onClick={() => moverUnLugar(filaAbierta, -1)} disabled={filasDelPeriodo.filter((f) => f.fecha === filaAbierta.fecha)[0]?.clave === filaAbierta.clave}><Icono nombre="subir" tamaño={18} /> Subir</button>
+                          <button type="button" onClick={() => moverUnLugar(filaAbierta, 1)} disabled={filasDelPeriodo.filter((f) => f.fecha === filaAbierta.fecha).at(-1)?.clave === filaAbierta.clave}><Icono nombre="bajar" tamaño={18} /> Bajar</button>
                         </div>
                         <button type="button" className="prog-m-hoja-quitar" onClick={() => {
                           quitarFila(filaAbierta)
@@ -2051,7 +2051,7 @@ export function ProgramaSemanal({
                 onClick={() => {
                   const libre = [1, 2, 3, 4, 5, 6, 0].find((dow) => !config.telefono.some((item) => item.dow === dow))
                   if (libre !== undefined) setConfigEditada({ ...config, telefono: [...config.telefono, { dow: libre, hora: '16:00' }] })
-                }}>＋ Agregar día de teléfono</button>
+                }}><Icono nombre="agregar" tamaño={18} /> Agregar día de teléfono</button>
 
               <h4>Titulares</h4>
               <p className="prog-config-ayuda">Una persona conduce siempre. Si elegís dos, se alternan semana por semana.</p>

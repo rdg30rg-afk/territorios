@@ -141,7 +141,12 @@
 }
 
 .desplegable-opcion.elegida::after {
-  content: ' ✓';
+  /* El tilde del set de íconos (tilde.svg), del color del texto. */
+  content: '';
+  width: 1.05em;
+  height: 1.05em;
+  align-self: center;
+  background: currentColor; -webkit-mask: url('/iconos-territorios/tilde.svg') center / contain no-repeat; mask: url('/iconos-territorios/tilde.svg') center / contain no-repeat;
   grid-column: 2;
   grid-row: 1;
 }

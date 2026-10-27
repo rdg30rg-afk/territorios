@@ -3711,7 +3711,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false, 
                       Pantalla completa
                     </button>
                     <button type="button" className="ghost-button" onClick={refreshMapOverlay}>
-                      <Icono nombre="rehacer" tamaño={18} />
+                      <Icono nombre="reintentar" tamaño={18} />
                       Volver a dibujar los territorios
                     </button>
                   </div>
@@ -4060,7 +4060,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false, 
                                 onClick={() => updateSelectedBlockSides(null, 'Las caras volvieron al cálculo automático.')}
                                 disabled={!selectedEditorBlock.manualSideGroups}
                               >
-                                <Icono nombre="rehacer" tamaño={17} />
+                                <Icono nombre="reintentar" tamaño={17} />
                                 Volver a automático
                               </button>
                             </div>

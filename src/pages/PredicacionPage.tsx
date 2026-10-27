@@ -1365,7 +1365,7 @@ export function PredicacionPage() {
           {cola.events.filter(event => event.status === 'error').map(event => <p className="nota" role="alert" key={event.id}>
             Cuadra {event.lado_id.slice(0, 8)}: {event.lastError}
           </p>)}
-          <button className="boton secundario" disabled={cola.sending} onClick={() => void cola.retry()}><Icono nombre="rehacer" tamaño={18} />Reintentar marcas pendientes</button>
+          <button className="boton secundario" disabled={cola.sending} onClick={() => void cola.retry()}><Icono nombre="reintentar" tamaño={18} />Reintentar marcas pendientes</button>
         </>}
       </div>
 
@@ -1929,7 +1929,7 @@ export function PredicacionPage() {
 
 // =====================================================================
 function ChipsDeSalida({ salida }: { salida: Salida }) {
-  if (salida.tipo === 'telefonica') return <span className="marca-chip tel">☎ Por teléfono</span>
+  if (salida.tipo === 'telefonica') return <span className="marca-chip tel"><Icono nombre="telefono" tamaño={17} /> Por teléfono</span>
   if (salida.tipo === 'grupos') return <span className="marca-chip tel"><Icono nombre="grupo" tamaño={17} /> Cada grupo por su lado</span>
   // El mismo criterio que usa el mapa. Con dos lecturas distintas, la misma
   // salida decia una cosa en el chip y pintaba otra abajo.
@@ -1946,7 +1946,7 @@ function ChipsDeSalida({ salida }: { salida: Salida }) {
       )}
       {letras && (
         <span className="marca-chip priorizar">
-          <b aria-hidden="true">★</b>
+          <Icono nombre="priorizar" tamaño={20} />
           <span>{letras}</span>
         </span>
       )}
@@ -2571,7 +2571,7 @@ function HojaHistorial({
       {cola.events.some(e=>e.origen==='correccion'&&e.territory_id===territorio.id)?<div role="status">
         <p>Hay correcciones pendientes o con error. Todavía no forman parte del historial confirmado.</p>
         <button className="boton secundario" disabled={cola.sending} onClick={()=>void cola.retry()}>
-          <Icono nombre="rehacer" tamaño={18} />
+          <Icono nombre="reintentar" tamaño={18} />
           Reintentar envíos
         </button>
       </div>:null}

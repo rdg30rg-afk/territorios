@@ -586,7 +586,7 @@ export function ImportacionPage() {
               <div className="form-feedback error" role="alert">
                 <span>No se pudieron cargar las importaciones: {corridasError}</span>
                 <button type="button" className="ghost-button" onClick={() => setCorridasReintento((value) => value + 1)}>
-                  <Icono nombre="rehacer" tamaño={18} />
+                  <Icono nombre="reintentar" tamaño={18} />
                   Reintentar
                 </button>
               </div>
@@ -623,7 +623,7 @@ export function ImportacionPage() {
           <div className="form-feedback error" role="alert">
             <span>No se pudieron contar las filas: {resumenError}</span>
             <button type="button" className="ghost-button" onClick={reintentarResumen}>
-              <Icono nombre="rehacer" tamaño={18} />
+              <Icono nombre="reintentar" tamaño={18} />
               Reintentar conteos
             </button>
           </div>
@@ -697,7 +697,7 @@ export function ImportacionPage() {
           <div className="form-feedback error" role="alert">
             <span>No se pudieron cargar las filas: {listaError}</span>
             <button type="button" className="ghost-button" onClick={reintentarLista}>
-              <Icono nombre="rehacer" tamaño={18} />
+              <Icono nombre="reintentar" tamaño={18} />
               Reintentar lista
             </button>
           </div>

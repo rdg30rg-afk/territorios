@@ -29,7 +29,7 @@ export function MarcasPendientes({
           <span className="avisoCalleTexto">{frase.texto}</span>
           {modo === 'pendientes' && conError && enLinea && (
             <button type="button" className="avisoCalleBoton" onClick={onReintentar}>
-              <Icono nombre="rehacer" tamaño={22} />
+              <Icono nombre="reintentar" tamaño={22} />
               Reintentar
             </button>
           )}

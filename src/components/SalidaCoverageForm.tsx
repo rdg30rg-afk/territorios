@@ -302,7 +302,7 @@ export function SalidaCoverageForm({
     </div>}
     {lastSent && <p role="status">{confirmed ? 'El servidor confirmó la última marca.' : 'Las marcas quedaron guardadas en este teléfono y esperan confirmación.'}</p>}
     {waiting.length > 0 && <p className="recorrido-aviso" role="status">{waiting.length} marca(s) esperando confirmación.
-      <button type="button" className="boton secundario" disabled={queue.sending} onClick={() => void queue.retry()}><Icono nombre="rehacer" tamaño={18} />Reintentar</button></p>}
+      <button type="button" className="boton secundario" disabled={queue.sending} onClick={() => void queue.retry()}><Icono nombre="reintentar" tamaño={18} />Reintentar</button></p>}
     {(error || queue.error) && <p className="nota" role="alert">{error || queue.error}</p>}
     {pending.filter((item) => item.lastError).map((item) => <p role="alert" key={item.id}>{item.lastError}</p>)}
     {!editing ? <button type="button" className="boton principal" disabled={busy} onClick={() => setInternalEditing(true)}>
@@ -375,7 +375,7 @@ export function SalidaCoverageForm({
         }}><Icono nombre="guardar" tamaño={18} />{busy ? 'Guardando…' : autoOpen ? 'Continuar' : `Guardar ${selectedSides.length || ''} ${selectedSides.length === 1 ? 'lado' : 'lados'}`}</button>
       </div>
       <div className="recorrido-editor-pie">
-        <button type="button" className="boton texto" disabled={loading || busy} onClick={() => setRevision((value) => value + 1)}><Icono nombre="rehacer" tamaño={18} />Actualizar mapa</button>
+        <button type="button" className="boton texto" disabled={loading || busy} onClick={() => setRevision((value) => value + 1)}><Icono nombre="reintentar" tamaño={18} />Actualizar mapa</button>
         <button type="button" className="boton texto" disabled={busy} onClick={closeEditor}><Icono nombre="cerrar" tamaño={18} />Cancelar</button>
       </div>
     </div>}

@@ -172,7 +172,7 @@ export function CoverageHeatmapPanel({initialTerritoryId=null}:{initialTerritory
         <button className="ghost-button" disabled={loading} type="button" onClick={()=>{
           const now=new Date();const valor=localDateValue(now)
           setDateInput(valor);setInstant(now.toISOString());setValidation(null)
-        }}><Icono nombre="rehacer" tamaño={18}/>Ahora</button>
+        }}><Icono nombre="reintentar" tamaño={18}/>Ahora</button>
       </div>
     </div>
 
@@ -185,7 +185,7 @@ export function CoverageHeatmapPanel({initialTerritoryId=null}:{initialTerritory
       {loading?<p className="coverage-map-aviso" role="status">Cargando cobertura…</p>:null}
     </div>
 
-    {error?<div role="alert"><p>{error}</p><button className="secondary-button" onClick={()=>setRetry(n=>n+1)}><Icono nombre="rehacer" tamaño={18}/>Volver a intentar</button></div>:null}
+    {error?<div role="alert"><p>{error}</p><button className="secondary-button" onClick={()=>setRetry(n=>n+1)}><Icono nombre="reintentar" tamaño={18}/>Volver a intentar</button></div>:null}
     {snapshot?<p className="coverage-cifra">{sides.length} lados · {new Date(snapshot.instant).toLocaleString('es-AR')}</p>:null}
     {!!snapshot?.inconsistentSides||invalid>0?<p role="alert">No se dibujaron {snapshot?.inconsistentSides??0} lados con referencias incoherentes y {invalid} con geometría inválida.</p>:null}
     {hayPedido&&!loading&&!error&&sides.length===0?<p>No hay lados para este territorio y fecha.</p>:null}

@@ -391,7 +391,7 @@ export function SalidaResultadoForm({
         <p>No se pudo verificar el resultado actual. No significa que la salida esté sin informar.</p>
         <button type="button" className="secondary-button" disabled={isSaving}
           onClick={() => void loadCurrentResult()}>
-          <Icono nombre="rehacer" tamaño={18} />
+          <Icono nombre="reintentar" tamaño={18} />
           Volver a consultar
         </button>
       </div> : null}
@@ -463,7 +463,7 @@ export function SalidaResultadoForm({
           {unconfirmed && !isSaving ? <div className="form-feedback" role="status">
             <p>No se confirmó el envío. Los campos quedan bloqueados para reintentar exactamente el mismo resultado, sin duplicarlo.</p>
             <button type="button" className="secondary-button" onClick={() => void loadCurrentResult()}>
-              <Icono nombre="rehacer" tamaño={18} />
+              <Icono nombre="reintentar" tamaño={18} />
               Consultar qué quedó guardado
             </button>
           </div> : null}

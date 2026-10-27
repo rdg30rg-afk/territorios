@@ -331,7 +331,7 @@ export function HojaMiGrupo({ contexto, abierto, onCerrar, onCambio }: HojaMiGru
             Compartir por WhatsApp
           </button>
           <button type="button" className="boton secundario" disabled={ocupado} onClick={() => void renovar()}>
-            <Icono nombre="rehacer" tamaño={18} />
+            <Icono nombre="reintentar" tamaño={18} />
             Cambiar el código
           </button>
         </section>

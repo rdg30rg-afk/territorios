@@ -1,6 +1,6 @@
 # Territorios · pack de iconos 01
 
-39 SVG originales dibujados para la app. Retícula 24 × 24, trazo 1.75, extremos y uniones redondeados, color heredado con currentColor. Referencias de claridad y sobriedad del estudio JW; ningún trazado se extrajo de sus recursos.
+46 SVG originales dibujados para la app. Retícula 24 × 24, trazo 1.75, extremos y uniones redondeados, color heredado con currentColor. Referencias de claridad y sobriedad del estudio JW; ningún trazado se extrajo de sus recursos.
 
 ## Uso
 

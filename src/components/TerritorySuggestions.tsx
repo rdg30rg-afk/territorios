@@ -43,7 +43,7 @@ export function TerritorySuggestions() {
       {/* La consulta no corre sola al entrar mas de una vez: este boton la
           fuerza, y por eso es secundario y no la accion de la pantalla. */}
       <button type="button" className="secondary-button" onClick={()=>setReload(n=>n+1)}>
-        <Icono nombre="rehacer" tamaño={18} />
+        <Icono nombre="reintentar" tamaño={18} />
         Actualizar cobertura
       </button>
     </div>

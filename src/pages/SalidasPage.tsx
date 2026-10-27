@@ -2388,7 +2388,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                 className="secondary-button"
                   onClick={repetirSemanaEnElResto}
                 >
-                <Icono nombre="rehacer" tamaño={18} />
+                <Icono nombre="reintentar" tamaño={18} />
                 Repetir la primera semana en las demás
               </button>
             ) : null}

@@ -281,7 +281,7 @@ function QueNecesitaAtencion() {
     <button type="button" className="secondary-button" onClick={() => {
       setReload(value => value + 1)
       if (managedUsersError) void loadManagedUsers().catch(() => setUnavailable(current => [...current, 'accesos']))
-    }}><Icono nombre="rehacer" tamaño={18} />Volver a consultar pendientes</button>
+    }}><Icono nombre="reintentar" tamaño={18} />Volver a consultar pendientes</button>
   </div> : null
 
   if (!items.length && !missing.length) {
@@ -774,7 +774,7 @@ function UserAccessPanel() {
           onClick={() => void refreshAccessPanel()}
           disabled={isRefreshing}
         >
-          <Icono nombre="rehacer" tamaño={18} />
+          <Icono nombre="reintentar" tamaño={18} />
           {isRefreshing ? 'Actualizando...' : 'Actualizar'}
         </button>
       </div>

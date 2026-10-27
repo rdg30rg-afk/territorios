@@ -386,12 +386,12 @@
 .vh .tarjeta .marca-chip.terr b { color: #a4a8b0; }
 /* Priorizar es una nota sobre el territorio, no otra etiqueta del mismo
    rango. Sin superficie llena, no le compite al numero. El ambar queda
-   solo en la estrella, que es lo que llama la atencion. */
+   solo en la bandera, que es lo que llama la atencion. */
 .vh .marca-chip.priorizar {
   background: none; border: 0; padding: 0; color: var(--fg-2);
   font-weight: 500; align-items: flex-start; line-height: 1.35;
 }
-.vh .marca-chip.priorizar b { color: var(--warn-fg); font-size: var(--t-lead); line-height: 1.1; }
+.vh .marca-chip.priorizar .icono { color: var(--warn-fg); flex: 0 0 auto; margin-top: 1px; }
 .vh .marca-chip.priorizar span { flex: 1; }
 .vh .marca-chip.tel { background: var(--olive-bg); border-color: var(--olive-line); color: var(--olive-ink); }
 
@@ -527,7 +527,11 @@
   font: 600 var(--t-body)/1.2 Urbanist, sans-serif;
 }
 .vh .modo[aria-pressed='true'] { background: var(--olive-bg); border-color: var(--olive); color: var(--olive-ink); }
-.vh .modo[aria-pressed='true']::before { content: '✓ '; }
+/* El tilde es el del set de íconos (tilde.svg), del color del texto. */
+.vh .modo[aria-pressed='true']::before {
+  content: ''; display: inline-block; width: 1.1em; height: 1.1em; margin-right: .35em; vertical-align: -.2em;
+  background: currentColor; -webkit-mask: url('/iconos-territorios/tilde.svg') center / contain no-repeat; mask: url('/iconos-territorios/tilde.svg') center / contain no-repeat;
+}
 .vh #sobreModos:not(:empty) { padding: 12px var(--pad) 0; background: var(--surface); border-bottom: 1px solid var(--line); }
 .vh #sobreModos .modos { margin-bottom: 12px; }
 
