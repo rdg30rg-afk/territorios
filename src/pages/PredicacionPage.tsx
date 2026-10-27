@@ -20,7 +20,7 @@
  * poligono, asi que al redibujar cambiaban de cantidad y de orden, y la
  * cobertura habria quedado apuntando a otra calle.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import L from 'leaflet'
 import { useAuth } from '../context/useAuth'
 import { supabase } from '../lib/supabase'
@@ -58,7 +58,32 @@ import { ElegirTerritorio } from '../components/ElegirTerritorio'
 import { CampoCodigoGrupo } from '../components/CampoCodigoGrupo'
 import { HojaMiGrupo } from '../components/HojaMiGrupo'
 import { Icono } from '../components/Icono'
+import { AvisoDeshacer } from '../components/AvisoDeshacer'
+import { MarcasPendientes } from '../components/MarcasPendientes'
+import { AvisoDeCopia, EstadoMapaSinSenal } from '../components/MapaSinSenal'
+import {
+  almacenDelTelefono,
+  guardarAsignaciones,
+  guardarCopiaDeMapa,
+  leerAsignacionesGuardadas,
+  leerCopiaDeMapa,
+} from '../lib/almacenSinSenal'
+import { VERSION_COPIA, pareceFaltaDeRed, type CausaDeCopia } from '../lib/copiaDeMapa'
+import {
+  DURACION_DESHACER_MS,
+  DURACION_DESHECHA_MS,
+  cambiosParaMarcar,
+  entradasDeMarca,
+  entradasParaDeshacer,
+  textoDeMarca,
+  type Alcance,
+  type MarcaReciente,
+} from '../lib/deshacerMarca'
+import { resumirCola, useModoDeEnvio } from '../lib/marcasPendientes'
+import { usePantallaEncendida } from '../lib/pantallaEncendida'
+import { useMapaSinSenal } from '../lib/useMapaSinSenal'
 import '../styles/vista-hermano.css'
+import '../styles/vista-hermano-calle.css'
 
 // Los tres mapas de la pantalla se arman igual.
 //
@@ -603,6 +628,11 @@ function pintarSalida(
 // peloton negro donde deberia verse donde queda el barrio.
 const ENTRAN_LAS_LETRAS = 8
 
+// Cuánto se espera al mapa del territorio antes de usar la copia guardada en
+// el teléfono. Con una barra de señal la consulta puede no fallar nunca y
+// tampoco volver: sin límite, la pantalla se quedaba en "Cargando el mapa…".
+const LIMITE_CARGA_MAPA_MS = 12_000
+
 type Evento = {
   id: string
   lado_id: string
@@ -658,6 +688,25 @@ export function PredicacionPage() {
   const [miTerritorio, setMiTerritorio] = useState<Territorio | null>(null)
   const asignado = reservas.some((r) => r.status === 'activa' && r.assigned_to === profile?.id && r.territory_id === miTerritorio?.id)
   const solicitado = reservas.some((r) => r.status === 'solicitada' && r.territory_id === miTerritorio?.id)
+  // Lo que los efectos de carga leen al terminar sin tener que volver a correr
+  // cada vez que cambia: si cambiara `asignado`, se volvería a pedir el mapa.
+  const asignadoRef = useRef(false)
+  asignadoRef.current = asignado
+  const perfilIdRef = useRef<string | undefined>(undefined)
+  perfilIdRef.current = profile?.id
+  // Qué territorio ya tiene su dibujo en pantalla. Mientras se vuelve a pedir
+  // el mismo, el mapa sigue disponible para marcar: antes cada confirmación
+  // del servidor lo apagaba hasta que terminaba la consulta, y con poca señal
+  // eso son segundos con el dedo sin respuesta.
+  const territorioCargado = useRef<string | null>(null)
+  // Cuando el mapa sale de la copia del teléfono y no de la base.
+  const [desdeCopia, setDesdeCopia] = useState<{ territorioId: string; guardadoEl: string; causa: CausaDeCopia } | null>(null)
+  // La última marca, para "Deshacer".
+  const [reciente, setReciente] = useState<MarcaReciente | null>(null)
+  const numeroDeMarca = useRef(0)
+  // Guardar el mapa para usar sin señal arranca cuando abre su territorio, no
+  // al abrir la app: quien viene por la salida de hoy no necesita bajar el mapa.
+  const [territorioAbierto, setTerritorioAbierto] = useState(false)
   const [manzanas, setManzanas] = useState<Manzana[]>([])
   // Un territorio que todavia no se dibujo y otro que ya se recorrio entero
   // llegan los dos con cero manzanas por recorrer. Sin esta bandera, "faltan
@@ -727,6 +776,40 @@ export function PredicacionPage() {
   // Recuperar una asignación o cambiar de territorio nunca reactiva por sí
   // solo el modo de escritura que se abrió sobre otro contexto.
   useEffect(() => { setMarcando(false) }, [miTerritorio?.id, asignado, profile?.id])
+
+  // La pantalla no se apaga mientras el mapa propio está a la vista en modo
+  // marcar. (El mapa grande solo se abre desde esta misma pestaña.)
+  usePantallaEncendida(editando && vista === 'territorio')
+
+  useEffect(() => { if (vista === 'territorio') setTerritorioAbierto(true) }, [vista])
+
+  // El mapa de la copia vale solo para el territorio que se guardó.
+  const copiaVisible = desdeCopia && desdeCopia.territorioId === miTerritorio?.id ? desdeCopia : null
+
+  // Guardar las teselas para usar sin señal. Si el mapa está saliendo de la
+  // copia es que no hay red: no hay nada que bajar.
+  const mapaSinSenal = useMapaSinSenal({
+    activo: asignado && territorioAbierto && dibujoListo && !copiaVisible && manzanas.length > 0,
+    userId: profile?.id,
+    territorioId: miTerritorio?.id,
+    manzanas,
+  })
+
+  // Marcas que esperan señal, con "Todo enviado" cuando se vacía la cola.
+  const { cantidad: marcasEnCola, conError: marcasConError } = resumirCola(cola.events)
+  const modoDeEnvio = useModoDeEnvio(marcasEnCola)
+
+  // Deshacer dura ocho segundos; la confirmación, unos pocos. No hay aviso si
+  // ya no se puede marcar.
+  useEffect(() => {
+    if (!reciente) return
+    const timer = window.setTimeout(
+      () => setReciente(null),
+      reciente.fase === 'reciente' ? DURACION_DESHACER_MS : DURACION_DESHECHA_MS,
+    )
+    return () => window.clearTimeout(timer)
+  }, [reciente])
+  useEffect(() => { if (!puedeMarcar) setReciente(null) }, [puedeMarcar])
 
   // ------------------------------------------------------------ derivados
   const ladosPorManzana = useMemo(() => {
@@ -815,6 +898,19 @@ export function PredicacionPage() {
       const mio = propias.find((r) => r.status === 'activa' && r.assigned_to === profile?.id)
       setMiTerritorio((actual) => actual ?? lista.find((t) => t.id === mio?.territory_id) ?? null)
 
+      // Lo que se asignó queda guardado en el teléfono: si la próxima vez que
+      // se abra no hay señal, el territorio propio se puede abrir igual.
+      if (profile?.id) {
+        const activas = propias.filter((r) => r.status === 'activa' && r.assigned_to === profile.id)
+        void guardarAsignaciones(almacenDelTelefono(), {
+          version: VERSION_COPIA,
+          userId: profile.id,
+          guardadoEl: new Date().toISOString(),
+          reservas: activas,
+          territorios: lista.filter((t) => activas.some((r) => r.territory_id === t.id)),
+        })
+      }
+
       const filas = salRes.data ?? []
       if (filas.length) {
         setOrigenSalidas('base')
@@ -847,6 +943,17 @@ export function PredicacionPage() {
             ? 'El programa tardó demasiado en cargar. Revisá la conexión y tocá Actualizar programa.'
             : 'No pudimos actualizar el programa y tus asignaciones. Revisá la conexión y tocá Actualizar programa.',
         )
+        // Sin señal, el territorio propio se abre con lo último que se guardó.
+        const guardadas = vivo && profile?.id
+          ? await leerAsignacionesGuardadas<ReservaPropia, Territorio>(almacenDelTelefono(), profile.id)
+          : null
+        if (vivo && guardadas?.reservas.length) {
+          setTerritorios((actual) => (actual.length ? actual : guardadas.territorios))
+          setReservas((actual) => (actual.length ? actual : guardadas.reservas))
+          setMiTerritorio((actual) =>
+            actual ?? guardadas.territorios.find((t) => t.id === guardadas.reservas[0].territory_id) ?? null,
+          )
+        }
       } finally {
         if (vivo) setCargando(false)
       }
@@ -875,18 +982,22 @@ export function PredicacionPage() {
   useEffect(() => {
     let vivo = true
     if (!supabase || !miTerritorio) {
+      territorioCargado.current = null
       setManzanas([])
       setLados([])
       setEstadosBase({})
       setDibujoListo(false)
       return
     }
-    setDibujoListo(false)
+    // Volver a pedir el mismo territorio no apaga el mapa que ya está a la vista.
+    if (territorioCargado.current !== miTerritorio.id) setDibujoListo(false)
 
     void (async () => {
       try {
       const checkpoint = checkpointCola()
-      const [mzRes, ldRes, cbRes] = await Promise.all([
+      // Sin conexión no hay nada que esperar: se pasa directo a la copia.
+      if (!navigator.onLine) throw new Error('Sin conexión')
+      const [mzRes, ldRes, cbRes] = await conLimiteDeCarga(Promise.all([
         manzanasVigentes(supabase, miTerritorio.id),
         readAllRows<Lado>((from,to) => supabase!
           .from('manzana_lados')
@@ -898,15 +1009,56 @@ export function PredicacionPage() {
           .from('cobertura_lado_actual')
           .select('lado_id, estado')
           .eq('territory_id', miTerritorio.id).order('lado_id').range(from,to)).then(data=>({data,error:null})),
-      ])
+      ]), LIMITE_CARGA_MAPA_MS)
       if (!vivo) return
       if (mzRes.error) throw mzRes.error
-      setManzanas((mzRes.data as Manzana[]) ?? [])
-      setLados((ldRes.data as Lado[]) ?? [])
-      setEstadosBase(Object.fromEntries(cbRes.data.map((c)=>[c.lado_id,c.estado])))
+      const manzanasNuevas = (mzRes.data as Manzana[]) ?? []
+      const ladosNuevos = (ldRes.data as Lado[]) ?? []
+      const estadosNuevos: Record<string, string> = Object.fromEntries(cbRes.data.map((c)=>[c.lado_id,c.estado]))
+      setManzanas(manzanasNuevas)
+      setLados(ladosNuevos)
+      setEstadosBase(estadosNuevos)
+      setDesdeCopia(null)
       acknowledgeSnapshot(checkpoint)
+      territorioCargado.current = miTerritorio.id
       setDibujoListo(true)
-      } catch { if (vivo) setAviso('No pudimos cargar la cobertura. Tocá Actualizar para volver a intentar.') }
+      // Lo que acaba de llegar queda en el teléfono, con la fecha, para poder
+      // abrir el mapa sin señal. Solo el territorio propio: el de consulta no.
+      if (asignadoRef.current && perfilIdRef.current) {
+        void guardarCopiaDeMapa(almacenDelTelefono(), {
+          version: VERSION_COPIA,
+          userId: perfilIdRef.current,
+          territorioId: miTerritorio.id,
+          territorioNombre: miTerritorio.name,
+          guardadoEl: new Date().toISOString(),
+          manzanas: manzanasNuevas,
+          lados: ladosNuevos,
+          estados: estadosNuevos,
+        })
+      }
+      } catch (falla) {
+        if (!vivo) return
+        const idPerfil = perfilIdRef.current
+        const copia = idPerfil
+          ? await leerCopiaDeMapa<Manzana, Lado>(almacenDelTelefono(), idPerfil, miTerritorio.id)
+          : null
+        if (!vivo) return
+        if (copia) {
+          // El avance que se marcó sin señal sigue en la cola y se le suma encima.
+          setManzanas(copia.manzanas)
+          setLados(copia.lados)
+          setEstadosBase(copia.estados)
+          setDesdeCopia({
+            territorioId: miTerritorio.id,
+            guardadoEl: copia.guardadoEl,
+            causa: pareceFaltaDeRed(falla, navigator.onLine) ? 'red' : 'otra',
+          })
+          territorioCargado.current = miTerritorio.id
+          setDibujoListo(true)
+        } else {
+          setAviso('No pudimos cargar la cobertura. Tocá Actualizar para volver a intentar.')
+        }
+      }
     })()
 
     return () => {
@@ -918,17 +1070,21 @@ export function PredicacionPage() {
   // La bitácora es de solo agregar: desmarcar no borra el evento anterior,
   // informa uno nuevo que dice "sin_dato". La historia queda.
   const informar = useCallback(
-    async (afectados: Lado[]) => {
+    async (afectados: Lado[], alcance: Alcance) => {
       if (!editando || !miTerritorio || !profile?.id || !afectados.length || encolando.current) return
       encolando.current = true
       try {
-        for (const lado of afectados) {
-          if (estados[lado.id] === estadoElegido) continue
-          if (!lado.geometry_version) throw new Error('Falta la versión del dibujo. Actualizá antes de marcar.')
-          await enqueue({ lado_id: lado.id, manzana_id: lado.manzana_id, territory_id: miTerritorio.id,
-            geometry_version: lado.geometry_version, estado: estadoElegido, origen: 'app_hermano', informado_por: profile.id })
+        // Se revisan todas antes de encolar la primera: una cuadra sin versión
+        // de dibujo no deja la manzana a medio marcar.
+        const cambios = cambiosParaMarcar(afectados, estadoElegido, estados)
+        for (const entrada of entradasDeMarca(cambios, estadoElegido, miTerritorio.id, profile.id)) {
+          await enqueue(entrada)
         }
         setAviso(null)
+        // Un toque de más se arregla en el momento: "Marcaste ... · Deshacer".
+        if (cambios.length) {
+          setReciente({ id: ++numeroDeMarca.current, texto: textoDeMarca(estadoElegido, alcance), cambios, fase: 'reciente' })
+        }
       } catch (failure) {
         setAviso(failure instanceof Error ? failure.message : 'No se pudo conservar la marca. Las anteriores siguen pendientes.')
       } finally {
@@ -939,17 +1095,44 @@ export function PredicacionPage() {
     [editando, miTerritorio, profile?.id, estados, estadoElegido, enqueue, sync],
   )
 
+  // Deshacer es otro evento por cada cuadra que la marca cambió, devolviéndola
+  // al estado que tenía (casi siempre "sin dato", igual que al desmarcar). No
+  // se borra nada: la bitácora es de solo agregar.
+  const deshacerUltima = useCallback(async () => {
+    if (reciente?.fase !== 'reciente' || !puedeMarcar || !miTerritorio || !profile?.id || encolando.current) return
+    encolando.current = true
+    try {
+      for (const entrada of entradasParaDeshacer(reciente.cambios, miTerritorio.id, profile.id)) {
+        await enqueue(entrada)
+      }
+      setAviso(null)
+      setReciente({ ...reciente, fase: 'deshecha' })
+    } catch (failure) {
+      setAviso(failure instanceof Error ? failure.message : 'No se pudo deshacer la marca. Probá de nuevo.')
+    } finally {
+      encolando.current = false
+      void sync()
+    }
+  }, [reciente, puedeMarcar, miTerritorio, profile?.id, enqueue, sync])
+
   const marcarManzana = useCallback(
     (mz: Manzana) => {
       const propios = ladosDe(mz)
-      void informar(propios)
+      void informar(propios, { tipo: 'manzana', etiqueta: mz.label })
     },
     [ladosDe, informar],
   )
 
   const marcarLado = useCallback(
-    (lado: Lado) => void informar([lado]),
-    [informar],
+    (lado: Lado) => void informar(
+      [lado],
+      {
+        tipo: 'cuadra',
+        numero: lado.orden + 1,
+        etiqueta: manzanas.find((mz) => mz.id === lado.manzana_id)?.label ?? '',
+      },
+    ),
+    [informar, manzanas],
   )
 
   // ----------------------------------------------------------- mapas
@@ -1117,6 +1300,24 @@ export function PredicacionPage() {
       : // Sin programa cargado no se dice "no hay salidas", que suena a que
         // la congregación no sale. Se dice que falta cargarlo.
         'Todavía no está cargado el programa de las próximas salidas.'
+
+  // Los tres avisos de abajo. Son siempre los mismos y se muestran en la
+  // pagina o dentro del mapa grande, segun cual este a la vista. El estado
+  // vive aca arriba, asi que cambiarlos de lugar no los reinicia.
+  const enMapa = vista === 'territorio' || Boolean(hoja)
+  const avisosCalle = (
+    <>
+      <AvisoDeCopia copia={enMapa ? copiaVisible : null} />
+      <MarcasPendientes
+        modo={modoDeEnvio}
+        cantidad={marcasEnCola}
+        conError={marcasConError}
+        enLinea={online}
+        onReintentar={() => void cola.retry()}
+      />
+      <AvisoDeshacer marca={enMapa ? reciente : null} onDeshacer={() => void deshacerUltima()} />
+    </>
+  )
 
   return (
     <div className="vh" style={escala}>
@@ -1604,6 +1805,11 @@ export function PredicacionPage() {
                   ))}
                 </div>
               )}
+              {/* Cómo va el guardado del mapa para usar sin señal. Solo en el
+                  territorio propio: el de consulta no se guarda. */}
+              {asignado && (
+                <EstadoMapaSinSenal estado={mapaSinSenal.estado} onReintentar={mapaSinSenal.reintentar} />
+              )}
               <div id="mapa" ref={cajaMapa} />
               {/* En el mapa el estado lo lleva el color y nada mas. Abajo va
                   dicho con palabras, que es la regla 3. */}
@@ -1654,6 +1860,13 @@ export function PredicacionPage() {
         )}
       </section>
 
+      {/* Avisos de la calle: sin señal, marcas pendientes y deshacer. Con el
+          mapa grande abierto viven adentro de él; con otra hoja abierta no
+          se muestran para no pisar sus botones. */}
+      {!hoja && !historial && !informe && !hojaGrupo && (
+        <div className="avisosCalle">{avisosCalle}</div>
+      )}
+
       {/* ------------------------------------------------------- pestañas */}
       <nav className="pestanias" aria-label="Secciones">
         {([
@@ -1698,6 +1911,7 @@ export function PredicacionPage() {
           territorio={miTerritorio}
           manzanas={manzanas}
           dibujarPropio={dibujarPropio}
+          avisos={avisosCalle}
           onCerrar={() => setHoja(null)}
         />
       )}
@@ -2508,6 +2722,7 @@ function HojaMapa({
   territorio,
   manzanas,
   dibujarPropio,
+  avisos,
   onCerrar,
 }: {
   salida?: Salida
@@ -2518,6 +2733,8 @@ function HojaMapa({
   territorio: Territorio | null
   manzanas: Manzana[]
   dibujarPropio: (capa: L.LayerGroup) => void
+  /** Avisos de la calle (marcas pendientes, deshacer), pegados al borde de abajo del mapa. */
+  avisos?: ReactNode
   onCerrar: () => void
 }) {
   const cerrarRef = useRef<HTMLButtonElement | null>(null)
@@ -2636,6 +2853,7 @@ function HojaMapa({
       )}
       <div className="sobreCuerpo">
         <div className="mapaGrande" ref={caja} />
+        {propio && avisos && <div className="avisosCalle enMapa">{avisos}</div>}
       </div>
       <p className="sobrePie">
         {leyenda.llave ? (
