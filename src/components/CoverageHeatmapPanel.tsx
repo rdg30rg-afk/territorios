@@ -17,7 +17,8 @@ function localDateValue(date: Date) {
 
 export function CoverageHeatmapPanel({initialTerritoryId=null}:{initialTerritoryId?:string|null}) {
   const [selected,setSelected]=useState(initialTerritoryId ?? '')
-  // Ver los 70 juntos cuesta 1,3 MB. Se puede, pero se pide.
+  // Ver todos juntos baja los dibujos y la bitácora de todos los territorios, y
+  // crece con los datos. Se puede, pero se pide.
   const [verTodo,setVerTodo]=useState(false)
   const [busqueda,setBusqueda]=useState('')
   const [lista,setLista]=useState<{id:string;name:string}[]>([])
@@ -53,9 +54,10 @@ export function CoverageHeatmapPanel({initialTerritoryId=null}:{initialTerritory
   },[])
 
   // Sin territorio elegido no se pide nada. Antes esta pantalla abría
-  // descargando los 2.735 lados de los 70 territorios -1,3 MB en diez
-  // páginas- para pintarlos todos juntos en un mapa de la ciudad entera,
-  // donde un lado mide dos píxeles y ninguno se distingue del vecino.
+  // descargando los lados de todos los territorios, y toda la bitácora de
+  // cobertura, para pintarlos juntos en un mapa de la ciudad entera, donde un
+  // lado mide dos píxeles y ninguno se distingue del vecino. Con uno elegido
+  // se pide sólo ese (ver `loadCoverageHeatmap`).
   useEffect(()=>{
     if(!selected&&!verTodo){setSnapshot(null);setError(null);setLoading(false);return}
     let live=true

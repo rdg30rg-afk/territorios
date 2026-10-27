@@ -15,14 +15,20 @@
  * carteles de comercios pelea con ellos y no se entiende ninguno de los dos.
  */
 
+import { crearCargadorDeTeselas } from './teselasExportacion.ts'
+
 const clave = import.meta.env.VITE_MAPTILER_KEY as string | undefined
+
+// El estilo vive en un solo lugar: el mapa de Leaflet, el de MapLibre y la
+// imagen que se exporta lo comparten. Cambiarlo es cambiar esta línea.
+const ESTILO_MAPTILER = 'dataviz-light'
 
 // Leaflet reemplaza {r} por "@2x" en pantallas retina, y sirve esa imagen del
 // doble de tamano en el mismo espacio. Es lo que hace que se lean los nombres
 // de calle en la pantalla del telefono.
 export const FONDO_MAPA = clave
   ? {
-      url: `https://api.maptiler.com/maps/dataviz-light/256/{z}/{x}/{y}{r}.png?key=${clave}`,
+      url: `https://api.maptiler.com/maps/${ESTILO_MAPTILER}/256/{z}/{x}/{y}{r}.png?key=${clave}`,
       // Nombrar a quien hace el mapa es condicion de uso, tanto de MapTiler
       // como de OpenStreetMap, que es de donde sale el dato.
       credito:
@@ -43,7 +49,7 @@ export const HAY_CLAVE_DE_MAPAS = Boolean(clave)
 export function teselasMapLibre() {
   return clave
     ? {
-        url: `https://api.maptiler.com/maps/dataviz-light/256/{z}/{x}/{y}.png?key=${clave}`,
+        url: `https://api.maptiler.com/maps/${ESTILO_MAPTILER}/256/{z}/{x}/{y}.png?key=${clave}`,
         credito:
           '&copy; <a href="https://www.maptiler.com/copyright/">MapTiler</a> · <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
       }
@@ -95,4 +101,24 @@ export function ponerFondo(L: typeof import('leaflet'), mapa: L.Map) {
     console.warn('El fondo de MapTiler no responde. Se vuelve a OpenStreetMap.')
   })
   return capa
+}
+
+/**
+ * Las teselas para la imagen que se exporta (el plano a JPG y a PDF).
+ *
+ * Misma regla que `ponerFondo`: con clave de MapTiler se pide a MapTiler y, si
+ * falla seis teselas seguidas, el resto se pide a OpenStreetMap. Sin clave, a
+ * OpenStreetMap directo. Cada tesela que falla en MapTiler se reintenta en OSM
+ * para que no quede un hueco. `credito()` dice a quién hay que nombrar en la
+ * imagen según de dónde salieron las teselas que sí se usaron.
+ *
+ * `cargar` baja una imagen y rechaza si no puede.
+ */
+export function crearCargadorTeselasExportacion<T>(cargar: (url: string) => Promise<T>) {
+  return crearCargadorDeTeselas({
+    clave,
+    estilo: ESTILO_MAPTILER,
+    cargar,
+    avisar: (mensaje) => console.warn(mensaje),
+  })
 }
