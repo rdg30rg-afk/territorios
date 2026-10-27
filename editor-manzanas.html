@@ -87,6 +87,36 @@
   .b:disabled{opacity:.45;cursor:not-allowed}
   .fila{display:flex;gap:8px;flex-wrap:wrap}
 
+  /* Lo destructivo (Vaciar) vive detrás de "Más": sin el peso de un botón
+     más en la fila de Exportar e Importar. */
+  .mas{position:relative}
+  .mas summary{list-style:none;display:inline-flex;align-items:center;gap:6px;min-height:38px;padding:0 16px;
+    border-radius:999px;background:var(--surface);color:var(--azul);cursor:pointer;user-select:none;
+    font:500 13px/1 'Plus Jakarta Sans',sans-serif;transition:all .18s}
+  .mas summary::-webkit-details-marker{display:none}
+  .mas summary:hover,.mas[open] summary{background:rgba(64,125,254,.12)}
+  .mas summary:focus-visible{outline:3px solid var(--azul);outline-offset:2px}
+  .mas[open] summary svg{transform:rotate(180deg)}
+  .mas-menu{position:absolute;right:0;bottom:calc(100% + 6px);z-index:5;min-width:220px;padding:6px;
+    background:var(--canvas);border:1px solid var(--linea);border-radius:var(--r);box-shadow:var(--sombra)}
+  button.b.suelto{display:flex;width:100%;align-items:center;gap:8px;min-height:38px;padding:0 12px;
+    border-radius:9px;background:transparent;color:var(--naranja);text-align:left;font-size:14px}
+  button.b.suelto:hover{background:rgba(250,93,39,.09)}
+
+  /* Selector de color de la ficha: las muestras de 38 px llevan una raya
+     cuando algún vecino ya usa ese color. La raya acompaña al texto de abajo:
+     el color solo nunca es el único aviso. */
+  .muestra{position:relative;width:38px;height:38px;padding:0;border:2px solid var(--canvas);border-radius:50%;
+    cursor:pointer;outline-offset:1px}
+  .muestra:disabled{opacity:.45;cursor:not-allowed}
+  .muestra.al-lado::after{content:'';position:absolute;inset:4px;border-radius:50%;pointer-events:none;
+    background:linear-gradient(to top right,transparent calc(50% - 1.5px),#fff calc(50% - 1.5px),#fff calc(50% + 1.5px),transparent calc(50% + 1.5px));
+    filter:drop-shadow(0 0 1px rgba(0,0,0,.6))}
+  .color-vecinos{margin:8px 0 0;font-size:15px;line-height:1.45;color:var(--texto)}
+  .color-vecinos:empty{display:none}
+  .color-vecinos .alerta{color:var(--naranja);font-weight:500}
+  .color-vecinos i{display:inline-block;width:.8em;height:.8em;border-radius:50%;margin-right:.3em;vertical-align:-.05em;border:1px solid rgba(0,0,0,.25)}
+
   input,select{width:100%;font:300 13px 'Plus Jakarta Sans',sans-serif;padding:9px 11px;
     border:1px solid var(--linea);border-radius:var(--r);background:var(--canvas);color:var(--texto)}
   input:focus,select:focus{outline:none;border-color:var(--azul);box-shadow:0 0 0 4px rgba(64,125,254,.14)}
@@ -107,6 +137,11 @@
   .herr button.quita{color:var(--naranja)}
   .herr button.quita.on{background:var(--naranja);color:#fff}
   .herr button .k{font-size:10px;opacity:.5;margin-left:auto}
+  /* Dibujo / Territorio: dos grupos con rótulo, no una lista plana de diez. */
+  .herr-grupo{display:flex;flex-direction:column;gap:6px}
+  .herr-grupo + .herr-grupo{border-top:1px solid var(--linea);padding-top:6px}
+  .herr-rotulo{margin:2px 12px 0;font-weight:500;font-size:11px;line-height:1;letter-spacing:.06em;
+    text-transform:uppercase;color:var(--suave)}
   .ctx{bottom:12px;left:12px;display:flex;align-items:center;gap:10px;font-size:12.5px;max-width:calc(100% - 24px);overflow-x:auto;overscroll-behavior:contain}
   .ctx .chips{display:flex;gap:4px}
   .chips button{border:1px solid var(--linea);background:var(--canvas);border-radius:999px;
@@ -208,6 +243,10 @@
     .herr::-webkit-scrollbar { display: none; }
     .herr button { white-space: nowrap; flex: 0 0 auto; padding: 9px 12px; }
     .herr .k { display: none; }
+    /* En la tira horizontal cada grupo es un tramo con su rótulo adelante. */
+    .herr-grupo { flex-direction: row; align-items: center; flex: 0 0 auto; gap: 6px; }
+    .herr-grupo + .herr-grupo { border-top: 0; padding-top: 0; border-left: 1px solid var(--linea); padding-left: 6px; }
+    .herr-rotulo { margin: 0 2px 0 4px; white-space: nowrap; }
 
     .ctx { left: 8px; right: 8px; bottom: calc(66px + env(safe-area-inset-bottom, 0px));
       max-width:none; overflow-x: auto; white-space: nowrap; }
@@ -243,6 +282,7 @@
     .seccion { padding-top:11px; padding-bottom:11px; }
     .lateral-cuerpo .b { padding-top:9px; padding-bottom:9px; }
     .herr { gap:2px; }
+    .herr-grupo { gap:2px; }
     .herr button { padding-top:7px; padding-bottom:7px; }
   }
 </style>
@@ -280,9 +320,11 @@
       <div style="margin-top:12px">
         <label for="colorTerritorio">Color del territorio</label>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <input id="colorTerritorio" type="color" aria-label="Elegir un color personalizado" style="width:44px;height:36px;padding:3px;cursor:pointer">
+          <input id="colorTerritorio" type="color" aria-label="Elegir un color personalizado" aria-describedby="coloresAlLado" style="width:44px;height:38px;padding:3px;cursor:pointer">
           <div id="paletaTerritorio" style="display:flex;gap:5px;flex-wrap:wrap" aria-label="Colores del territorio"></div>
         </div>
+        <button class="b sec" id="bSugerirColor" type="button" style="width:100%;margin-top:8px;min-height:38px"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#marcar"></use></svg> Sugerir color</button>
+        <p class="color-vecinos" id="coloresAlLado" aria-live="polite"></p>
       </div>
       <div class="chips" id="chipsLetras" style="display:flex;gap:4px;align-items:center;margin-top:9px">
         <span style="font-size:11.5px;color:var(--suave);margin-right:2px">Letras</span>
@@ -344,7 +386,13 @@
         <button class="b sec" id="bComparar" style="width:100%;margin-bottom:8px"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#buscar"></use></svg> Ver qué falta guardar</button>
         <button class="b sec" id="bExport"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#descargar"></use></svg> Exportar</button>
         <button class="b sec" id="bImport"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#guardar"></use></svg> Importar</button>
-        <button class="b dan" id="bReset"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#eliminar"></use></svg> Vaciar</button>
+        <!-- Lo destructivo vive aparte: sin el peso de un botón más en la fila. -->
+        <details class="mas" id="menuMas">
+          <summary aria-label="Más acciones">Más <svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#chevron-abajo"></use></svg></summary>
+          <div class="mas-menu">
+            <button class="b suelto" id="bReset" type="button"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#eliminar"></use></svg> Vaciar el editor…</button>
+          </div>
+        </details>
       </div>
       <input type="file" id="fImport" accept="application/json" class="oculto">
     </div>
@@ -357,15 +405,23 @@
 
     <div class="flot herr">
       <button data-h="ver" class="neutro on"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#territorios"></use></svg> Solo mirar <span class="k">esc</span></button>
-      <button data-h="dibujar"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#dibujar"></use></svg> Dibujar manzana <span class="k">1</span></button>
-      <button data-h="dividir"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#dividir"></use></svg> Dividir manzana <span class="k">2</span></button>
-      <button data-h="fusionar"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#fusionar"></use></svg> Fusionar manzanas <span class="k">3</span></button>
-      <button data-h="mover"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#mover"></use></svg> Mover a territorio <span class="k">4</span></button>
-      <button data-h="editar"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#vertices"></use></svg> Editar vértices <span class="k">5</span></button>
-      <button data-h="marcar"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#marcar"></use></svg> Marcar manzanas <span class="k">6</span></button>
-      <button data-h="borrar" class="quita"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#eliminar"></use></svg> Borrar manzana <span class="k">7</span></button>
-      <button data-h="caras"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#caras"></use></svg> Arreglar caras <span class="k">8</span></button>
-      <button data-h="letras"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#letras"></use></svg> Poner las letras <span class="k">9</span></button>
+      <!-- Dos grupos con rótulo. Los números de los atajos (1-9) no cambian:
+           siguen atados a la herramienta, no al lugar que ocupa en el menú. -->
+      <div class="herr-grupo" role="group" aria-labelledby="rotDibujo">
+        <p class="herr-rotulo" id="rotDibujo">Dibujo</p>
+        <button data-h="dibujar"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#dibujar"></use></svg> Dibujar manzana <span class="k">1</span></button>
+        <button data-h="dividir"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#dividir"></use></svg> Dividir manzana <span class="k">2</span></button>
+        <button data-h="fusionar"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#fusionar"></use></svg> Fusionar manzanas <span class="k">3</span></button>
+        <button data-h="editar"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#vertices"></use></svg> Editar vértices <span class="k">5</span></button>
+        <button data-h="borrar" class="quita"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#eliminar"></use></svg> Borrar manzana <span class="k">7</span></button>
+      </div>
+      <div class="herr-grupo" role="group" aria-labelledby="rotTerritorio">
+        <p class="herr-rotulo" id="rotTerritorio">Territorio</p>
+        <button data-h="marcar"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#marcar"></use></svg> Marcar manzanas <span class="k">6</span></button>
+        <button data-h="mover"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#mover"></use></svg> Mover a territorio <span class="k">4</span></button>
+        <button data-h="letras"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#letras"></use></svg> Poner las letras <span class="k">9</span></button>
+        <button data-h="caras"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#caras"></use></svg> Arreglar caras <span class="k">8</span></button>
+      </div>
     </div>
 
     <div id="barraMovil">
@@ -456,6 +512,12 @@ let borradorTimer = null            // las escrituras se agrupan, no una por mov
 let baseLeida = false               // la base CONTESTO, aunque haya venido vacia
 let ultimoTextoGuardado = null      // para no escribir cuando no cambio nada
 let sesionVencida = false           // el token de la app se vencio; lo renueva la app, no esta pagina
+// "Vaciar" deja el editor en blanco SOLO en esta pestaña: mientras este
+// encendido guardar() no escribe nada -ni la base, ni el navegador, ni el
+// archivo-, asi el borrador compartido y la copia de este navegador quedan
+// como estaban. Se apaga recargando la pagina.
+let vaciadoSinBase = false
+let estadoVaciado = null            // como quedo el editor al vaciarlo: sirve para saber si despues se trabajo
 let sesionEmbebida = null
 let resolverSesionEmbebida = null
 const ORIGEN_APP = (() => {
@@ -516,7 +578,61 @@ function puntoDeRotulo (geom) {
 }
 const feat = (geom) => ({ type: 'Feature', properties: {}, geometry: geom })
 
+// Donde poner el NUMERO del territorio.
+//
+// Iba en el promedio de los vertices de todas sus manzanas dibujadas. Con un
+// territorio en L, o con dos tramos separados por una calle, ese promedio cae
+// en el hueco o encima del vecino (el 9 y el 20 de la captura). Ahora va sobre
+// la manzana MAS GRANDE del territorio, con el mismo puntoDeRotulo de las
+// letras: un punto que siempre cae adentro de una manzana propia.
+//
+// Se cachea por territorio. La geometria de una manzana nunca se muta, se
+// reemplaza por un objeto nuevo, asi que comparar las referencias alcanza para
+// saber si cambio algo: pan y zoom no recalculan nada, y una edicion solo
+// recalcula el territorio que se toco.
+const areaDeGeom = new WeakMap()     // geom -> m2
+const puntoNumero = new Map()        // id de territorio -> { geoms, punto, idManzana }
+
+function areaCacheada (geom) {
+  if (!geom || typeof geom !== 'object') return 0
+  let a = areaDeGeom.get(geom)
+  if (a === undefined) {
+    try { a = area(feat(geom)) } catch (e) { a = 0 }
+    areaDeGeom.set(geom, a)
+  }
+  return a
+}
+
+// `propias` son TODAS las manzanas del territorio, no solo las que se ven: si
+// no, el numero saltaria de lugar al mover el mapa.
+function puntoDeNumero (idTerr, propias) {
+  const previo = puntoNumero.get(idTerr)
+  if (previo && previo.geoms.length === propias.length && propias.every((m, i) => m.geom === previo.geoms[i])) return previo
+
+  let mayor = null, mayorArea = -1
+  for (const m of propias) {
+    const a = areaCacheada(m.geom)
+    if (a > mayorArea) { mayorArea = a; mayor = m }
+  }
+  let punto = null
+  if (mayor) {
+    try { punto = puntoDeRotulo(mayor.geom) } catch (e) {
+      // Geometria imposible de rotular: el promedio de sus vertices, que es lo
+      // de antes, es mejor que dejar el territorio sin numero.
+      const anillo = mayor.geom.coordinates?.[0] || []
+      if (anillo.length) punto = [anillo.reduce((s, p) => s + p[0], 0) / anillo.length, anillo.reduce((s, p) => s + p[1], 0) / anillo.length]
+    }
+  }
+  const nuevo = { geoms: propias.map(m => m.geom), punto, idManzana: mayor ? mayor.id : null }
+  puntoNumero.set(idTerr, nuevo)
+  return nuevo
+}
+
 function guardar () {
+  // Editor vaciado a proposito: nada de lo que pase desde aca se escribe, ni
+  // siquiera en este navegador. Lo que habia antes sigue intacto en la base y
+  // en el localStorage, y recargar la pagina lo trae de vuelta.
+  if (vaciadoSinBase) return
   const datos = {
     territorios: [...territorios.values()],
     asignacion: [...manzanas.values()].filter(m => m.territorio).map(m => [m.id, m.territorio, m.orden ?? null]),
@@ -700,7 +816,8 @@ function refrescarMapa () {
   capaManzanas.clearLayers()
   capaLetras.clearLayers()
   capaNumeros.clearLayers()
-  // Para poner el numero del territorio flotando en el medio de sus manzanas.
+  // Territorios con algo dibujado en pantalla: cada uno lleva su numero encima
+  // (ver puntoDeNumero).
   const centros = new Map()
   const limites = mapa.getBounds().pad(0.25)
   const zoom = mapa.getZoom()
@@ -733,12 +850,8 @@ function refrescarMapa () {
 
     const esActivo = t && t.id === activo
 
-    if (t) {
-      let acum = centros.get(t.id)
-      if (!acum) { acum = { sx: 0, sy: 0, n: 0, t, esActivo }; centros.set(t.id, acum) }
-      // Promedio de los vertices: alcanza para ubicar la etiqueta y es barato.
-      for (const [x, y] of c) { acum.sx += x; acum.sy += y; acum.n++ }
-    }
+    // Un numero por territorio con algo dibujado. Donde va se decide abajo.
+    if (t && !centros.has(t.id)) centros.set(t.id, { t, esActivo })
     const enFusion = paraFusionar.includes(m.id)
 
     const diag = verRevision && t ? diagnosticar(m) : null
@@ -779,17 +892,32 @@ function refrescarMapa () {
     }
   }
 
-  for (const { sx, sy, n, t, esActivo } of centros.values()) {
-    if (!n) continue
+  // Las manzanas de cada territorio con numero, enteras: la mas grande puede
+  // estar fuera de la pantalla y aun asi es donde va el numero.
+  const propiasDe = new Map()
+  if (centros.size) {
+    for (const m of manzanas.values()) {
+      if (!m.territorio || !centros.has(m.territorio)) continue
+      const lista = propiasDe.get(m.territorio)
+      if (lista) lista.push(m); else propiasDe.set(m.territorio, [m])
+    }
+  }
+  for (const { t, esActivo } of centros.values()) {
+    const { punto, idManzana } = puntoDeNumero(t.id, propiasDe.get(t.id) || [])
+    if (!punto) continue
     const lado = esActivo ? 34 : 26
-    L.marker([sy / n, sx / n], {
+    // Con las letras a la vista, la de la manzana mas grande esta justo en este
+    // punto: el numero sube por encima de ella en vez de taparla.
+    const sobreLetra = esActivo && verLetras && zoom >= ZOOM_LETRAS && manzanas.get(idManzana)?.letra
+    const subir = sobreLetra ? lado / 2 + 11 : 0
+    L.marker([punto[1], punto[0]], {
       interactive: false,
       zIndexOffset: esActivo ? 1000 : 0,
       icon: L.divIcon({
         className: '',
         html: `<div class="terr-num${esActivo ? '' : ' suave'}" style="width:${lado}px;height:${lado}px;background:${t.color}">${t.numero}</div>`,
         iconSize: [lado, lado],
-        iconAnchor: [lado / 2, lado / 2],
+        iconAnchor: [lado / 2, lado / 2 + subir],
       }),
     }).addTo(capaNumeros)
   }
@@ -828,23 +956,63 @@ function dentro (anillo, limites) {
   return false
 }
 
-// "Vecinos": cuántos territorios de contexto se muestran alrededor del activo.
-function calcularVisibles () {
-  if (!activo || vecinos >= 99) return null
-  const act = [...manzanas.values()].filter(m => m.territorio === activo)
-  if (!act.length) return new Set([activo])
+// Quien se toca con quien: para cada OTRO territorio, cuantas de sus manzanas
+// tocan alguna manzana de `idTerr` (booleanIntersects). Es la cuenta de
+// "Alrededor" y tambien la que usa el selector de color de la ficha.
+//
+// Son unos miles de booleanIntersects y el panel se repinta en cada cambio, asi
+// que se guarda el ultimo resultado atado a una firma barata de quien es dueño
+// de que manzana y con que forma. La forma de una manzana nunca se muta, se
+// reemplaza: por eso alcanza con el numero de referencia de su geometria.
+const idsDeGeom = new WeakMap()
+let proximoIdGeom = 1
+const idDeGeom = (g) => {
+  if (!g || typeof g !== 'object') return 0
+  let i = idsDeGeom.get(g)
+  if (!i) { i = proximoIdGeom++; idsDeGeom.set(g, i) }
+  return i
+}
+const cajasSeCruzan = (a, b) => a[0] <= b[2] && a[2] >= b[0] && a[1] <= b[3] && a[3] >= b[1]
 
+function firmaDeAsignacion () {
+  let f = ''
+  for (const m of manzanas.values()) if (m.territorio) f += m.id + '>' + m.territorio + '@' + idDeGeom(m.geom) + ';'
+  return f
+}
+
+let vecinosGuardados = null   // { id, firma, mapa }
+
+function vecinosDe (idTerr) {
+  const firma = firmaDeAsignacion()
+  if (vecinosGuardados && vecinosGuardados.id === idTerr && vecinosGuardados.firma === firma) return vecinosGuardados.mapa
+
+  const propias = [...manzanas.values()].filter(m => m.territorio === idTerr)
+  const cajas = propias.map(a => bbox(a.geom.coordinates[0]))
   const puntuacion = new Map()
   for (const m of manzanas.values()) {
-    if (!m.territorio || m.territorio === activo) continue
-    for (const a of act) {
-      if (booleanIntersects(feat(m.geom), feat(a.geom))) {
+    if (!m.territorio || m.territorio === idTerr) continue
+    const caja = bbox(m.geom.coordinates[0])
+    for (let i = 0; i < propias.length; i++) {
+      // Dos manzanas cuyas cajas no se cruzan no pueden tocarse: se evita el
+      // booleanIntersects, que es lo caro.
+      if (!cajasSeCruzan(caja, cajas[i])) continue
+      let toca = false
+      try { toca = booleanIntersects(feat(m.geom), feat(propias[i].geom)) } catch (e) { toca = false }
+      if (toca) {
         puntuacion.set(m.territorio, (puntuacion.get(m.territorio) || 0) + 1)
         break
       }
     }
   }
-  const cercanos = [...puntuacion.entries()].sort((a, b) => b[1] - a[1]).slice(0, vecinos).map(x => x[0])
+  vecinosGuardados = { id: idTerr, firma, mapa: puntuacion }
+  return puntuacion
+}
+
+// "Vecinos": cuántos territorios de contexto se muestran alrededor del activo.
+function calcularVisibles () {
+  if (!activo || vecinos >= 99) return null
+  if (vecinos <= 0) return new Set([activo])
+  const cercanos = [...vecinosDe(activo).entries()].sort((a, b) => b[1] - a[1]).slice(0, vecinos).map(x => x[0])
   return new Set([activo, ...cercanos])
 }
 
@@ -1023,6 +1191,11 @@ function fusionar () {
   a.geom = juntas.geometry
   a.editada = true
   limpiarDiag(a)
+  // Las caras corregidas a mano eran de OTRA forma: se guardan por indice de
+  // vertice y, si la cuenta coincide de casualidad, valdrian para cualquier
+  // cosa. La manzana vuelve al calculo automatico.
+  delete a.caras
+  delete a.carasN
   a.territorio = a.territorio || b.territorio
   manzanas.delete(b.id)
   if (a.territorio) reletrar(a.territorio)
@@ -1061,6 +1234,10 @@ function dividir (idManzana) {
   m.geom = uno.geometry
   m.editada = true
   limpiarDiag(m)
+  // Igual que al fusionar: las caras a mano eran de la forma entera. La mitad
+  // que se queda vuelve al automatico y la nueva (abajo) nace sin ellas.
+  delete m.caras
+  delete m.carasN
   const nuevoId = 'm' + Date.now().toString(36)
   manzanas.set(nuevoId, {
     id: nuevoId, geom: dos.geometry, territorio: m.territorio, editada: true,
@@ -1284,12 +1461,12 @@ function refrescarPanel () {
     // Lo que dice la base, si se pudo consultar. Sin esto no hay forma de
     // saber que territorios ya se guardaron y cuales quedaron a medias: son
     // 69 y se guardan de a uno.
-    const enBase = enLaBase ? enLaBase.get(String(t.numeroBase ?? t.numero)) : undefined
+    const base = contraLaBase(t, n)
     let estado = n ? 'ver' : 'vacío'
     let color = 'var(--suave)'
-    if (enLaBase && n) {
-      if (enBase === undefined || enBase === 0) { estado = 'sin cargar'; color = '#b45309' }
-      else if (enBase !== n) { estado = `base: ${enBase}`; color = '#b45309' }
+    if (base) {
+      if (base.clase === 'sin-cargar') { estado = 'sin cargar'; color = '#b45309' }
+      else if (base.clase === 'distinto') { estado = `base: ${base.enBase}`; color = '#b45309' }
       else { estado = 'guardado'; color = '#0f6b47' }
     }
     // Una mudanza de manzana no siempre cambia la cuenta: si el 12 le paso una
@@ -1329,6 +1506,8 @@ function refrescarPanel () {
     })
     const propias = [...manzanas.values()].filter(m => m.territorio === t.id)
     const m2 = propias.reduce((s, m) => s + area(feat(m.geom)), 0)
+    pintarColoresVecinos(t, propias.length)
+    document.getElementById('bSugerirColor').disabled = document.getElementById('bGuardarBD').disabled
     sel.style.display = ''
     document.querySelectorAll('#chipsLetras button').forEach(b =>
       b.classList.toggle('on', b.dataset.l === (t.letras || 'orden')))
@@ -1369,14 +1548,17 @@ function avisar (html) { document.getElementById('aviso').innerHTML = html }
 
 // El navegador integrado del editor devuelve siempre false en confirm() y
 // rompe en prompt(). Estos dos los reemplazan con un dialogo de la propia pagina.
-function dialogo ({ titulo, cuerpo, campo, aceptar = 'Aceptar', peligro = false }) {
+// `exigir`: una palabra que hay que escribir en el campo para poder aceptar
+// (por ejemplo "vaciar"). Mientras no coincida, Aceptar queda apagado y Enter
+// no hace nada.
+function dialogo ({ titulo, cuerpo, campo, aceptar = 'Aceptar', peligro = false, exigir = null }) {
   return new Promise((resolver) => {
     const velo = document.createElement('div')
     velo.className = 'velo'
     velo.innerHTML = `<div class="dlg">
       <h4>${titulo}</h4>
       <p>${cuerpo}</p>
-      ${campo !== undefined ? `<input id="dlgCampo" value="${String(campo).replace(/"/g, '&quot;')}">` : ''}
+      ${campo !== undefined ? `<input id="dlgCampo" value="${String(campo).replace(/"/g, '&quot;')}"${exigir ? ` placeholder="Escribí ${escHtml(exigir)}" autocomplete="off" aria-label="Escribí ${escHtml(exigir)} para confirmar"` : ''}>` : ''}
       <div class="acc" style="margin-top:14px">
         <button class="b sec" data-r="0">${icono('cerrar')} Cancelar</button>
         <button class="b ${peligro ? 'dan' : 'pri'}" data-r="1">${icono(peligro ? 'eliminar' : 'completo')} ${aceptar}</button>
@@ -1384,6 +1566,12 @@ function dialogo ({ titulo, cuerpo, campo, aceptar = 'Aceptar', peligro = false 
     document.body.appendChild(velo)
     const entrada = velo.querySelector('#dlgCampo')
     if (entrada) { entrada.focus(); entrada.select() }
+    const coincide = () => !exigir || Boolean(entrada && entrada.value.trim().toLowerCase() === String(exigir).toLowerCase())
+    if (exigir && entrada) {
+      const aceptarBtn = velo.querySelector('[data-r="1"]')
+      aceptarBtn.disabled = true
+      entrada.addEventListener('input', () => { aceptarBtn.disabled = !coincide() })
+    }
 
     const cerrar = (ok) => {
       velo.remove()
@@ -1392,7 +1580,7 @@ function dialogo ({ titulo, cuerpo, campo, aceptar = 'Aceptar', peligro = false 
     }
     const teclas = (e) => {
       if (e.key === 'Escape') { e.stopPropagation(); cerrar(false) }
-      if (e.key === 'Enter' && entrada) { e.stopPropagation(); cerrar(true) }
+      if (e.key === 'Enter' && entrada) { e.stopPropagation(); if (coincide()) cerrar(true) }
     }
     addEventListener('keydown', teclas, true)
     velo.onclick = (e) => { if (e.target === velo) cerrar(false) }
@@ -1879,6 +2067,9 @@ document.getElementById('bRedibujar').onclick = async () => {
     m.geom = GEOM_ORIGINAL.get(m.id)
     delete m.editada
     delete m.__diag
+    // Vuelve la forma original: las caras a mano de la forma editada ya no valen.
+    delete m.caras
+    delete m.carasN
     m.territorio = null
     delete m.letra
     delete m.orden
@@ -2031,14 +2222,106 @@ const nombresColores = ['Azul', 'Verde', 'Naranja', 'Violeta', 'Índigo', 'Lima'
 PALETA.forEach((color, i) => {
   const b = document.createElement('button')
   b.type = 'button'
+  b.className = 'muestra'
   b.dataset.color = color
+  b.dataset.nombre = nombresColores[i]
   b.setAttribute('aria-label', nombresColores[i])
   b.setAttribute('aria-pressed', 'false')
   b.title = nombresColores[i]
-  b.style.cssText = `width:28px;height:28px;padding:0;border:2px solid var(--canvas);border-radius:50%;background:${color};cursor:pointer;outline-offset:1px`
+  b.style.background = color
   b.onclick = () => cambiarColorTerritorio(color)
   document.getElementById('paletaTerritorio').appendChild(b)
 })
+
+// ------------------------------------------- colores de los territorios de al lado
+// Dos territorios que se tocan y llevan el mismo color se leen como uno solo
+// (en la captura habia rojos pegados). La ficha marca, con texto y no solo con
+// color, cuales de la paleta ya usan los vecinos, y puede sugerir uno libre.
+function escHtml (s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+}
+function esColorHex (c) { return /^#[0-9a-f]{6}$/i.test(String(c)) }
+function numerosEnTexto (xs) {
+  return xs.length < 2 ? xs.join('') : xs.slice(0, -1).join(', ') + ' y ' + xs[xs.length - 1]
+}
+
+// color en minuscula -> numeros de los vecinos que lo usan (de menor a mayor).
+function coloresAlLado (t) {
+  const usados = new Map()
+  for (const idOtro of vecinosDe(t.id).keys()) {
+    const otro = territorios.get(idOtro)
+    if (!otro || !esColorHex(otro.color)) continue
+    const c = String(otro.color).toLowerCase()
+    if (!usados.has(c)) usados.set(c, [])
+    usados.get(c).push(String(otro.numero))
+  }
+  for (const nums of usados.values()) nums.sort((a, b) => (parseInt(a) || 0) - (parseInt(b) || 0) || a.localeCompare(b))
+  return usados
+}
+
+function nombreDeColor (c) {
+  const i = PALETA.findIndex(p => p.toLowerCase() === String(c).toLowerCase())
+  return i >= 0 ? nombresColores[i] : String(c).toUpperCase()
+}
+
+function pintarColoresVecinos (t, cuantasManzanas) {
+  const usados = coloresAlLado(t)
+  document.querySelectorAll('#paletaTerritorio button').forEach(b => {
+    const nums = usados.get(b.dataset.color.toLowerCase())
+    const texto = nums
+      ? `${b.dataset.nombre}, en uso al lado (territorio${nums.length === 1 ? '' : 's'} ${numerosEnTexto(nums)})`
+      : b.dataset.nombre
+    b.classList.toggle('al-lado', Boolean(nums))
+    b.title = texto
+    b.setAttribute('aria-label', texto)
+  })
+
+  const leyenda = document.getElementById('coloresAlLado')
+  if (!cuantasManzanas) {
+    leyenda.textContent = 'Sumale manzanas para ver qué colores usan los territorios de al lado.'
+    return
+  }
+  if (!usados.size) {
+    leyenda.textContent = vecinosDe(t.id).size
+      ? 'Los territorios de al lado no tienen un color válido: cualquiera sirve.'
+      : 'Este territorio no toca a ningún otro: cualquier color sirve.'
+    return
+  }
+  const lista = [...usados.entries()].map(([c, nums]) =>
+    `<i style="background:${c}"></i>${escHtml(nombreDeColor(c))} (territorio${nums.length === 1 ? '' : 's'} ${escHtml(numerosEnTexto(nums))})`).join(' · ')
+  const choca = usados.get(String(t.color).toLowerCase())
+  leyenda.innerHTML = `<b style="font-weight:500">En uso al lado:</b> ${lista}.` +
+    (choca
+      ? `<br><span class="alerta">${icono('error')} El color de este territorio ya lo usa el ${choca.length === 1 ? 'territorio' : 'territorios'} ${escHtml(numerosEnTexto(choca))}. Tocá <b>Sugerir color</b>.</span>`
+      : '')
+}
+
+// Elige de la paleta un color que ningun vecino use. Si el actual ya esta
+// libre no lo toca; entre los libres prefiere el menos repetido en todo el mapa
+// para que los colores se repartan parejo.
+function sugerirColor () {
+  if (!activo || !territorios.has(activo)) return
+  const t = territorios.get(activo)
+  if (!vecinosDe(t.id).size) return avisar('Este territorio no toca a ningún otro, así que cualquier color sirve. Lo dejé como está.')
+  const usados = coloresAlLado(t)
+  if (!usados.has(String(t.color).toLowerCase())) return avisar('Ningún territorio de al lado usa este color. Lo dejé como está.')
+  const libres = PALETA.filter(c => !usados.has(c.toLowerCase()))
+  if (!libres.length) return avisar('Los territorios de al lado ya usan los ocho colores de la paleta. Elegí uno propio con el selector de color.')
+  const reparto = new Map()
+  for (const x of territorios.values()) {
+    const c = String(x.color).toLowerCase()
+    reparto.set(c, (reparto.get(c) || 0) + 1)
+  }
+  libres.sort((a, b) => (reparto.get(a.toLowerCase()) || 0) - (reparto.get(b.toLowerCase()) || 0))
+  const elegido = libres[0]
+  cambiarColorTerritorio(elegido)
+  // cambiarColorTerritorio avisa o se niega (guardado en curso): el mensaje
+  // propio solo va si el color de verdad cambio.
+  if (String(t.color).toLowerCase() === elegido.toLowerCase()) {
+    avisar(`Color cambiado a <b>${nombreDeColor(elegido)}</b>: ningún territorio de al lado lo usa. Guardá en la base para aplicarlo. <b>Cmd+Z</b> deshace.`)
+  }
+}
+document.getElementById('bSugerirColor').onclick = sugerirColor
 
 // El número original identifica el registro hasta publicar el cambio completo.
 function cambiarNumeroTerritorio (t, numero) {
@@ -2166,9 +2449,24 @@ document.getElementById('cRevisar').onchange = (e) => {
 document.getElementById('bVincular').onclick = () => vincularArchivo()
 
 // Cortar sin haber vinculado archivo es la forma de perder el trabajo: se avisa.
+//
+// Hay dos formas de perderlo. Una es no tener ninguna copia fuera de este
+// navegador (lo de siempre). La otra es que lo ultimo que se hizo todavia no
+// llego al borrador de la base: la escritura espera su turno (se agrupan 1,2 s),
+// va en viaje, o fallo / no hay sesion / hubo un choque con otra persona. En
+// todos esos casos borradorPendiente sigue lleno, y una copia en disco no
+// cambia lo que la base NO tiene.
+function hayTrabajoSinGuardar () {
+  // Sin base configurada (desarrollo local) no hay a donde mandarlo.
+  if (BD_URL && BD_KEY && (borradorPendiente || borradorEnVuelo)) return true
+  // Vaciado a proposito: lo que se haga despues no se escribe en ningun lado.
+  if (vaciadoSinBase) return estadoActual() !== estadoVaciado
+  if (manejadorArchivo) return false
+  return Boolean(descartadas.size || revisadas.size || [...manzanas.values()].some(m => m.editada))
+}
+
 addEventListener('beforeunload', (e) => {
-  if (manejadorArchivo) return
-  if (!descartadas.size && !revisadas.size && ![...manzanas.values()].some(m => m.editada)) return
+  if (!hayTrabajoSinGuardar()) return
   e.preventDefault()
   e.returnValue = ''
 })
@@ -2187,38 +2485,235 @@ document.getElementById('bExport').onclick = () => {
   a.click()
 }
 
-document.getElementById('bImport').onclick = () => document.getElementById('fImport').click()
-document.getElementById('fImport').onchange = async (e) => {
-  const f = e.target.files[0]; if (!f) return
-  const d = JSON.parse(await f.text())
-  instantanea()
-  territorios = new Map((d.territorios || []).map(t => [t.id, t]))
-  for (const m of manzanas.values()) { m.territorio = null; delete m.letra }
-  for (const mm of d.manzanas || []) {
-    const m = manzanas.get(mm.id) || { id: mm.id, geom: mm.geometria, editada: true }
-    m.geom = mm.geometria; m.territorio = mm.territorio
-    manzanas.set(m.id, m)
+// Importar y Vaciar reemplazan todo el estado de una vez. Un dibujo o unas
+// letras a medias no se tiran en silencio (mismo criterio que al cambiar de
+// herramienta): devuelve el aviso que corresponde, o null si no hay nada a medias.
+function gestoSinCerrar () {
+  if (dibujo.length) {
+    return `Tenés una manzana a medio dibujar con <b>${dibujo.length} punto${dibujo.length === 1 ? '' : 's'}</b>. ` +
+      '<b>Enter</b> la cierra, <b>Esc</b> la descarta. Después volvé a intentar.'
   }
-  territorios.forEach(t => reletrar(t.id))
-  activo = null; refrescar()
+  if (letrasNuevas.length) {
+    return `Llevás <b>${letrasNuevas.length}</b> manzana${letrasNuevas.length === 1 ? '' : 's'} con letra nueva. ` +
+      '<b>Enter</b> aplica, <b>Esc</b> cancela. Después volvé a intentar.'
+  }
+  return null
 }
 
+// Suelta lo que el estado viejo dejo abierto. Lo que quede colgando apunta a
+// objetos del mapa anterior (los tiradores de una edicion escribirian en una
+// manzana que ya no es la misma). Mismo criterio que aplicarEstado().
+function cortarGestos () {
+  terminarEdicion()
+  cancelarDibujo()
+  mzSel.clear()
+  paraFusionar = []
+  cortePuntos = []
+  capaCorte.clearLayers()
+  letrasNuevas = []
+  capaLetrasNuevas.clearLayers()
+  resaltarEnMapa(null)
+}
+
+// Un anillo exterior de al menos 3 vertices distintos, con numeros de verdad.
+// Devuelve un poligono nuevo (nunca el del archivo) o null si no sirve.
+function geometriaValida (g) {
+  if (!g || g.type !== 'Polygon' || !Array.isArray(g.coordinates) || !Array.isArray(g.coordinates[0])) return null
+  const pts = []
+  for (const p of g.coordinates[0]) {
+    if (!Array.isArray(p) || !Number.isFinite(p[0]) || !Number.isFinite(p[1])) return null
+    if (Math.abs(p[0]) > 180 || Math.abs(p[1]) > 90) return null
+    pts.push([p[0], p[1]])
+  }
+  if (!pts.length) return null
+  const cerrado = pts[0][0] === pts[pts.length - 1][0] && pts[0][1] === pts[pts.length - 1][1]
+  if (!cerrado) pts.push([...pts[0]])
+  if (pts.length < 4) return null
+  return { type: 'Polygon', coordinates: [pts] }
+}
+
+// La forma minima que tiene que tener un respaldo hecho con Exportar. Se mira
+// ANTES de tocar nada: si algo no cierra, no se cambia una sola cosa.
+// Devuelve { ok: true, territorios, manzanas, pendientes } con copias limpias
+// (solo los campos que el editor conoce) o { ok: false, motivo }.
+function validarImportacion (d) {
+  const mal = (motivo) => ({ ok: false, motivo })
+  if (!d || typeof d !== 'object' || Array.isArray(d)) return mal('No es un respaldo de territorios: elegí un archivo que hayas bajado con <b>Exportar</b>.')
+  if (!Array.isArray(d.territorios) || !d.territorios.length) return mal('No trae ningún territorio.')
+  if (!Array.isArray(d.manzanas)) return mal('No trae la lista de manzanas.')
+
+  const lista = []
+  const ids = new Set()
+  const numeros = new Set()
+  let pendientes = 0
+  for (let i = 0; i < d.territorios.length; i++) {
+    const t = d.territorios[i]
+    if (!t || typeof t !== 'object') return mal(`El territorio ${i + 1} del archivo está mal formado.`)
+    const id = typeof t.id === 'string' ? t.id.trim() : ''
+    if (!id || id.length > 64) return mal(`El territorio ${i + 1} del archivo no tiene identificador.`)
+    if (ids.has(id)) return mal(`Hay dos territorios con el mismo identificador (${escHtml(id)}).`)
+    // Los numeros van tal cual al panel y al mapa: cortos y sin marcado.
+    const numero = (typeof t.numero === 'number' ? String(t.numero) : typeof t.numero === 'string' ? t.numero.trim() : '')
+    if (!numero || numero.length > 16 || /[<>&"'`]/.test(numero)) return mal(`El territorio ${i + 1} del archivo no tiene un número válido.`)
+    if (numeros.has(numero.toLowerCase())) return mal(`El número ${escHtml(numero)} está repetido en el archivo.`)
+    ids.add(id)
+    numeros.add(numero.toLowerCase())
+    if (t.numeroBase != null || t.colorBase != null) pendientes++
+    const limpio = {
+      id, numero,
+      sector: typeof t.sector === 'string' && /^[IVX]{1,4}$/.test(t.sector) ? t.sector : 'I',
+      color: esColorHex(t.color) ? t.color : PALETA[lista.length % PALETA.length],
+    }
+    if (t.letras === 'orden' || t.letras === 'proximidad') limpio.letras = t.letras
+    lista.push(limpio)
+  }
+
+  const vistas = new Set()
+  const manzanasOk = []
+  for (let i = 0; i < d.manzanas.length; i++) {
+    const mm = d.manzanas[i]
+    if (!mm || typeof mm !== 'object') return mal(`La manzana ${i + 1} del archivo está mal formada.`)
+    if (typeof mm.id !== 'string' || !mm.id || mm.id.length > 128) return mal(`La manzana ${i + 1} del archivo no tiene identificador.`)
+    if (vistas.has(mm.id)) return mal(`La manzana ${escHtml(mm.id)} aparece dos veces en el archivo.`)
+    if (!ids.has(mm.territorio)) return mal(`La manzana ${escHtml(mm.id)} apunta a un territorio que no está en el archivo.`)
+    const geometria = geometriaValida(mm.geometria)
+    if (!geometria) return mal(`La manzana ${escHtml(mm.id)} no tiene una forma válida.`)
+    vistas.add(mm.id)
+    manzanasOk.push({ id: mm.id, territorio: mm.territorio, geometria })
+  }
+  return { ok: true, territorios: lista, manzanas: manzanasOk, pendientes }
+}
+
+document.getElementById('bImport').onclick = () => {
+  const medias = gestoSinCerrar()
+  if (medias) return avisar(medias)
+  document.getElementById('fImport').click()
+}
+document.getElementById('fImport').onchange = async (e) => {
+  const entrada = e.target
+  const f = entrada.files[0]; if (!f) return
+  try {
+    const medias = gestoSinCerrar()
+    if (medias) return avisar(medias)
+
+    let d
+    try { d = JSON.parse(await f.text()) } catch (err) {
+      return avisar('<b>No pude leer ese archivo.</b> No es un JSON válido: elegí uno que hayas bajado con <b>Exportar</b>. No se cambió nada.')
+    }
+    const v = validarImportacion(d)
+    if (!v.ok) return avisar(`<b>Ese archivo no sirve para importar.</b> ${v.motivo} No se cambió nada.`)
+
+    // Reemplaza TODO, incluido el borrador compartido que se escribe enseguida:
+    // se dice con todas las letras y se pide un si.
+    const antes = territorios.size
+    if (antes && !await confirmar('Importar el archivo',
+      `Se reemplazan los <b>${antes}</b> territorios de este editor por los <b>${v.territorios.length}</b> del archivo, con sus <b>${v.manzanas.length}</b> manzanas. ` +
+      'También se reemplaza el borrador compartido que ven los demás administradores. Lo ya publicado en la base no se toca.' +
+      '<br><br>Se deshace con Cmd+Z mientras no cierres la página.',
+      'Importar', true)) return
+
+    // Recién acá, con el archivo ya validado y confirmado, se toca el estado.
+    cortarGestos()
+    instantanea()
+    territorios = new Map(v.territorios.map(t => [t.id, t]))
+    // Los cambios sin publicar eran de los territorios de antes. Los
+    // numeroBase / colorBase que el archivo pudiera traer tampoco se arrastran:
+    // la base conoce a cada territorio por el nombre con el que se publico, y
+    // uno de otra fecha podria renombrar el territorio equivocado.
+    tocados = new Set()
+    for (const m of manzanas.values()) { m.territorio = null; delete m.letra; delete m.orden }
+    for (const mm of v.manzanas) {
+      // Si el archivo la trae, vuelve aunque se la hubiera borrado a mano.
+      descartadas.delete(mm.id)
+      const m = manzanas.get(mm.id)
+      if (!m) {
+        manzanas.set(mm.id, { id: mm.id, geom: mm.geometria, territorio: mm.territorio, editada: true })
+        continue
+      }
+      if (JSON.stringify(m.geom) !== JSON.stringify(mm.geometria)) {
+        // Forma distinta de la que habia: hay que guardarla como editada (si no,
+        // al recargar vuelve la de OpenStreetMap) y sus caras a mano ya no valen.
+        m.geom = mm.geometria
+        m.editada = true
+        limpiarDiag(m)
+        delete m.caras
+        delete m.carasN
+      }
+      m.territorio = mm.territorio
+    }
+    territorios.forEach(t => reletrar(t.id))
+    activo = null
+    refrescar()
+    // El imán guarda los vecinos ya pasados a pixeles: con formas nuevas, hay que rehacerlos.
+    prepararIman()
+    avisar(`Importados <b>${v.territorios.length}</b> territorios y <b>${v.manzanas.length}</b> manzanas. <b>Cmd+Z</b> lo deshace.` +
+      (v.pendientes
+        ? `<br>${icono('error')} El archivo traía <b>${v.pendientes}</b> territorio${v.pendientes === 1 ? '' : 's'} con número o color sin publicar: no se arrastran. Revisalos con <b>Ver qué falta guardar</b>.`
+        : ''))
+  } finally {
+    // Sin esto, elegir de nuevo el mismo archivo no dispara nada.
+    entrada.value = ''
+  }
+}
+
+// Vaciar deja el editor en blanco SOLO en esta pestaña. Antes borraba el
+// localStorage y llamaba a refrescar(), y refrescar() guarda: el estado vacio
+// terminaba escrito en el borrador compartido de la base (editor_estado) con un
+// cartel que decia "la base no se toca". Ahora no se escribe nada hasta que se
+// recargue la pagina, y se pide escribir "vaciar" para confirmar.
 document.getElementById('bReset').onclick = async () => {
-  if (!await confirmar('Vaciar el editor',
-    'Se borran <b>todos</b> los territorios de este editor. La base de datos de la app no se toca.',
-    'Vaciar todo', true)) return
+  document.getElementById('menuMas').open = false
+  if (vaciadoSinBase) return avisar('El editor ya está vaciado. Recargá la página para volver a tu borrador.')
+  const medias = gestoSinCerrar()
+  if (medias) return avisar(medias)
+  const respuesta = await dialogo({
+    titulo: 'Vaciar el editor',
+    cuerpo: 'El editor queda en blanco <b>solo en esta pestaña</b>: todos los territorios desaparecen de la pantalla.<br><br>' +
+      '<b>No se escribe nada</b>: ni el borrador compartido de la base, ni la copia de este navegador, ni lo ya publicado. ' +
+      'A cambio, mientras esté vaciado <b>nada de lo que hagas se guarda</b>. Recargando la página volvés a tu borrador tal cual estaba.' +
+      '<br><br>Para seguir, escribí <b>vaciar</b>.',
+    campo: '', exigir: 'vaciar', aceptar: 'Vaciar', peligro: true,
+  })
+  if (respuesta === null) return
+  cortarGestos()
   instantanea()
-  territorios.clear()
-  for (const m of manzanas.values()) { m.territorio = null; delete m.letra }
+  territorios = new Map()
+  tocados = new Set()
+  for (const m of manzanas.values()) { m.territorio = null; delete m.letra; delete m.orden }
   activo = null
-  localStorage.removeItem(CLAVE)
+  vaciadoSinBase = true
+  estadoVaciado = estadoActual()
   refrescar()
+  pintarEstadoBorrador()
+  avisar('<b>Editor vaciado, solo en esta pestaña.</b> Nada de lo que hagas desde acá se guarda. ' +
+    'Recargá la página para volver a tu borrador. <b>Cmd+Z</b> trae los territorios de vuelta a la pantalla, pero tampoco se guardan.')
+}
+
+// "Más": se cierra tocando afuera, y con Esc si el foco esta adentro.
+document.addEventListener('click', (e) => {
+  const menu = document.getElementById('menuMas')
+  if (menu.open && !menu.contains(e.target)) menu.open = false
+}, true)
+
+// Donde se escribe o se elige, las teclas son de quien escribe: un 1 en un
+// campo no puede cambiar de herramienta ni un Retroceso borrar un punto.
+function esCampoDeTexto (el) {
+  if (!el) return false
+  const tag = el.tagName
+  return tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || el.isContentEditable === true
 }
 
 addEventListener('keydown', (e) => {
-  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return
+  if (esCampoDeTexto(e.target)) return
   // Con un dialogo abierto el teclado es del dialogo, no del mapa.
   if (document.querySelector('.velo')) return
+
+  // El menu "Más" abierto y con el foco adentro: Esc lo cierra, y nada mas.
+  // No se pierde ningun gesto: solo se cierra una lista.
+  if (e.key === 'Escape' && e.target.closest?.('#menuMas') && document.getElementById('menuMas').open) {
+    document.getElementById('menuMas').open = false
+    return
+  }
 
   const conMando = e.metaKey || e.ctrlKey
 
@@ -3022,6 +3517,26 @@ function cancelarLetras () {
    sin esto no hay forma de saber cual ya se subio, cual quedo a medias y
    cual todavia no existe alla. La vista cobertura_territorio ya trae la
    cuenta de manzanas vigentes por territorio, asi que es una consulta. */
+
+// Que dice la base de un territorio frente a lo que hay en el editor. Lo usan
+// el panel y "Ver que falta guardar": si cada uno hiciera su cuenta, un
+// territorio renumerado y sin publicar salia "guardado" en uno y "sin guardar
+// nunca" en el otro. La base conoce al territorio por el numero con el que se
+// publico (numeroBase), no por el nuevo; n es la cantidad de manzanas del editor.
+function contraLaBase (t, n) {
+  if (!enLaBase || !n) return null
+  const enBase = enLaBase.get(String(t.numeroBase ?? t.numero))
+  if (enBase === undefined || enBase === 0) return { clase: 'sin-cargar', enBase }
+  if (enBase !== n) return { clase: 'distinto', enBase }
+  return { clase: 'guardado', enBase }
+}
+
+// Algo que publicar que la cuenta de manzanas no ve: una mudanza, un color o
+// un numero nuevo.
+function tienePendiente (t) {
+  return tocados.has(t.id) || t.colorBase != null || t.numeroBase != null
+}
+
 async function traerDeLaBase (avisando = false) {
   const token = tokenDeSesion()
   if (!BD_URL || !BD_KEY || !token) {
@@ -3041,9 +3556,11 @@ async function traerDeLaBase (avisando = false) {
       for (const t of territorios.values()) {
         const n = [...manzanas.values()].filter((m) => m.territorio === t.id).length
         if (!n) continue
-        const b = enLaBase.get(String(t.numero))
-        if (!b) sinCargar++
-        else if (b !== n) distintos++
+        const base = contraLaBase(t, n)
+        if (base.clase === 'sin-cargar') sinCargar++
+        // Igual cuenta de manzanas, pero con un numero, un color o una mudanza
+        // sin publicar: tampoco esta guardado, y el panel lo marca igual.
+        else if (base.clase === 'distinto' || tienePendiente(t)) distintos++
         else iguales++
       }
       avisar(`<b>${iguales}</b> territorio${iguales === 1 ? '' : 's'} ya guardado${iguales === 1 ? '' : 's'}, ` +
@@ -3110,8 +3627,12 @@ function pintarEstadoBorrador () {
     vacio: ['Todavía no se guardó nada. Se guarda solo con tu primer cambio.', false],
     conflicto: ['Otra persona guardó después que vos. Recargá antes de seguir.', true],
   }
-  const [texto, alarma] = mapa[borradorEstado] || mapa.local
-  txt.innerHTML = texto + (manejadorArchivo ? ` · copia en <b>${manejadorArchivo.name}</b>` : '')
+  // Vaciado a proposito: manda sobre cualquier otro estado, porque lo que
+  // importa saber es que NADA de lo que se haga ahora se esta guardando.
+  const [texto, alarma] = vaciadoSinBase
+    ? ['Editor vaciado solo en esta pestaña: lo que hagas acá no se guarda. Recargá para volver a tu borrador.', true]
+    : (mapa[borradorEstado] || mapa.local)
+  txt.innerHTML = texto + (manejadorArchivo && !vaciadoSinBase ? ` · copia en <b>${manejadorArchivo.name}</b>` : '')
   barra.style.background = alarma ? 'var(--malo-bg, #fdecea)' : 'var(--bien-bg, #e8f5ee)'
   barra.style.color = alarma ? '#8a2b1c' : '#0f6b47'
 }
