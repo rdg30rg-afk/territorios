@@ -1106,8 +1106,18 @@ function alClic (idManzana, ev) {
   const m = manzanas.get(idManzana)
   if (!m) return
 
-  // Modo neutro: mirar no modifica nada. Se abre la ficha con los datos.
-  if (herramienta === 'ver') { abrirBurbuja(idManzana, ev.latlng, true); return }
+  // Modo neutro: mirar no modifica nada. Sin territorio abierto, tocar una
+  // manzana abre su territorio, como elegirlo en la lista; la ficha de la
+  // manzana queda para cuando ya se está trabajando adentro de uno.
+  if (herramienta === 'ver') {
+    if (!activo && m.territorio && territorios.has(m.territorio)) {
+      cerrarBurbuja()
+      abrirTerritorio(m.territorio)
+      return
+    }
+    abrirBurbuja(idManzana, ev.latlng, true)
+    return
+  }
 
   if (herramienta === 'borrar') {
     instantanea()
@@ -1445,6 +1455,18 @@ function refrescarListaMz () {
   document.getElementById('bMzBorrar').innerHTML = `${icono('eliminar')} Borrar ${mzSel.size}`
 }
 
+// Lo mismo que elegirlo en la lista: lo abre, lo encuadra y muestra su ficha.
+function abrirTerritorio (id) {
+  activo = id
+  mzSel.clear()
+  enfocar(id)
+  refrescar()
+  // El detalle vive arriba de esta misma zona desplazable. Si el usuario
+  // eligió un territorio desde abajo de la lista, lo llevamos a sus
+  // acciones para que no parezca que desaparecieron.
+  document.querySelector('.lateral-cuerpo')?.scrollTo({ top: 0 })
+}
+
 function refrescarPanel () {
   const cont = document.getElementById('listaT')
   cont.innerHTML = ''
@@ -1478,16 +1500,7 @@ function refrescarPanel () {
     b.innerHTML = `<span class="num" style="background:${t.color}">${t.numero}</span>
       <span><strong>Territorio ${t.numero}</strong><small>Sector ${t.sector} · ${n} manzana${n === 1 ? '' : 's'}</small></span>
       <span style="color:${color};font-size:11px">${estado === 'guardado' ? icono('completo') + ' guardado' : estado}</span>`
-    b.onclick = () => {
-      activo = t.id
-      mzSel.clear()
-      enfocar(t.id)
-      refrescar()
-      // El detalle vive arriba de esta misma zona desplazable. Si el usuario
-      // eligió un territorio desde abajo de la lista, lo llevamos a sus
-      // acciones para que no parezca que desaparecieron.
-      document.querySelector('.lateral-cuerpo')?.scrollTo({ top: 0 })
-    }
+    b.onclick = () => abrirTerritorio(t.id)
     cont.appendChild(b)
   }
 
@@ -1534,7 +1547,7 @@ function deseleccionar () {
   resaltarEnMapa(null)
   terminarEdicion()
   refrescar()
-  avisar('Sin territorio seleccionado. Elegí uno en la lista o creá uno nuevo.')
+  avisar('Sin territorio seleccionado. Tocá uno en el mapa, elegilo en la lista o creá uno nuevo.')
 }
 
 function enfocar (idTerr) {
@@ -2798,7 +2811,9 @@ mapa.on('moveend zoomend', () => {
     ? 'Vista de <b>ciudad</b>: se ven solo los territorios armados. <b>Acercá</b> para ver y marcar las manzanas.'
     : TOCAN_LIBRES.has(herramienta)
       ? `Las <b>azules</b> son manzanas sin territorio. Hacé clic para sumarlas al activo.`
-      : `<b>${[...territorios.values()].length} territorios</b>. Elegí uno en la lista para trabajarlo.`)
+      : activo && territorios.has(activo)
+        ? `Territorio <b>${territorios.get(activo).numero}</b> abierto. Tocá una manzana para ver su ficha.`
+        : `<b>${[...territorios.values()].length} territorios</b>. Tocá uno en el mapa o elegilo en la lista para trabajarlo.`)
 })
 
 // Se restablece la ultima herramienta usada, antes de cargar las manzanas.
