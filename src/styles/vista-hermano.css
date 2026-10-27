@@ -112,10 +112,7 @@
 }
 .vh .marca { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: var(--t-label); }
 .vh .barra-controles { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
-.vh .marca .logo {
-  width: 36px; height: 36px; border-radius: 11px; background: var(--ink); color: var(--lime);
-  display: grid; place-items: center; font-size: 19px;
-}
+.vh .marca .simbolo-territorios { flex: 0 0 auto; display: block; }
 .vh .btnIcono {
   width: var(--tap); height: var(--tap); border-radius: 16px; border: 1px solid var(--line);
   background: var(--surface); display: grid; place-items: center; font-size: 21px; cursor: pointer;

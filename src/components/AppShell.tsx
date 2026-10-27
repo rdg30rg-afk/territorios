@@ -6,6 +6,7 @@ import { usePwaInstall } from '../hooks/usePwaInstall'
 import { isDevelopmentEnvironment } from '../lib/supabase'
 import { canOpenAdminPanel } from '../lib/access'
 import { Icono } from './Icono'
+import { SimboloTerritorios } from './SimboloTerritorios'
 
 const moduloNombre: Record<string, string> = {
   mapas: 'Mapas',
@@ -58,9 +59,13 @@ export function AppShell() {
             }
           }}>
         <div className="brand-panel">
-          <p className="eyebrow">Territorios</p>
-          <h1>Gestor territorial</h1>
-          <p className="brand-copy">Congregacion San Juan</p>
+          <div className="marca-territorios">
+            <SimboloTerritorios tamaño={40} />
+            <div>
+              <h1>Territorios</h1>
+              <p className="brand-copy">Congregación San Juan</p>
+            </div>
+          </div>
         </div>
 
         <nav className="module-nav" aria-label="Módulos principales">

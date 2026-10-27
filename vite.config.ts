@@ -58,7 +58,8 @@ export default defineConfig({
             type: 'image/png',
           },
           {
-            src: 'pwa/icon-512.png',
+            // Las manzanas más chicas, dentro del círculo que recorta Android.
+            src: 'pwa/icon-maskable-512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable',

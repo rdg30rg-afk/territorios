@@ -4,6 +4,7 @@ import { useAuth } from '../context/useAuth'
 import { accessLanding } from '../lib/access'
 import { normalizarCodigoGrupo } from '../lib/vistaHermano'
 import { Icono } from '../components/Icono'
+import { SimboloTerritorios } from '../components/SimboloTerritorios'
 
 const getFriendlyAuthError = (error: string | null) => {
   if (!error) {
@@ -112,7 +113,10 @@ export function LoginPage() {
     <div className="auth-layout">
       <section className="auth-card">
         <div className="auth-copy">
-          <p className="eyebrow">Territorios</p>
+          <p className="eyebrow marca-territorios">
+            <SimboloTerritorios tamaño={32} />
+            Territorios
+          </p>
           <h2>Entrá a tu cuenta</h2>
           <p className="lead">
             Usá tu usuario o email y tu contraseña para ver el programa y tu territorio.

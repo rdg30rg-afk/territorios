@@ -131,6 +131,22 @@ button {
   color: #f8bc9c;
 }
 
+/* Símbolo de la marca al lado del nombre (src/lib/marca.ts). */
+.marca-territorios {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.marca-territorios .simbolo-territorios {
+  flex: 0 0 auto;
+  display: block;
+}
+
+.marca-territorios .brand-copy {
+  margin: 0.15rem 0 0;
+}
+
 .module-nav {
   display: flex;
   flex-direction: column;

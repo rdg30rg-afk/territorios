@@ -58,6 +58,7 @@ import { ElegirTerritorio } from '../components/ElegirTerritorio'
 import { CampoCodigoGrupo } from '../components/CampoCodigoGrupo'
 import { HojaMiGrupo } from '../components/HojaMiGrupo'
 import { Icono } from '../components/Icono'
+import { SimboloTerritorios } from '../components/SimboloTerritorios'
 import { AvisoDeshacer } from '../components/AvisoDeshacer'
 import { MarcasPendientes } from '../components/MarcasPendientes'
 import { AvisoDeCopia, EstadoMapaSinSenal } from '../components/MapaSinSenal'
@@ -1323,9 +1324,7 @@ export function PredicacionPage() {
     <div className="vh" style={escala}>
       <header className="barra">
         <span className="marca">
-          <span className="logo" aria-hidden="true">
-            <Icono nombre="territorios" tamaño={21} />
-          </span>
+          <SimboloTerritorios tamaño={36} />
           Territorios
         </span>
         <div className="barra-controles">
