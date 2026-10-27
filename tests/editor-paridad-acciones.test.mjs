@@ -25,9 +25,32 @@ function assertSource (pattern, message) {
 test('el DOM conserva todas las herramientas críticas del editor legado', () => {
   const botones = [...body.matchAll(/<button\b[^>]*data-h="([^"]+)"[^>]*>([\s\S]*?)<\/button>/g)]
   const herramientas = botones.map(([, herramienta]) => herramienta)
-  const esperadas = ['ver', 'dibujar', 'dividir', 'fusionar', 'mover', 'editar', 'marcar', 'borrar', 'caras', 'letras']
+  // El menú va en dos grupos con rótulo (E6): Dibujo y Territorio. El orden
+  // en pantalla sigue a los grupos; los atajos 1-9 no, porque están atados a la
+  // herramienta (se verifican más abajo).
+  const esperadas = ['ver', 'dibujar', 'dividir', 'fusionar', 'editar', 'borrar', 'marcar', 'mover', 'letras', 'caras']
 
   assert.deepEqual(herramientas, esperadas)
+  // Agrupar no puede perder ni sumar herramientas.
+  assert.deepEqual([...herramientas].sort(),
+    ['borrar', 'caras', 'dibujar', 'dividir', 'editar', 'fusionar', 'letras', 'marcar', 'mover', 'ver'])
+
+  const grupos = [...body.matchAll(/<div class="herr-grupo"[^>]*>\s*<p class="herr-rotulo"[^>]*>([^<]+)<\/p>([\s\S]*?)<\/div>/g)]
+    .map(([, rotulo, cuerpo]) => [rotulo, [...cuerpo.matchAll(/data-h="([^"]+)"/g)].map(([, h]) => h)])
+  assert.deepEqual(grupos, [
+    ['Dibujo', ['dibujar', 'dividir', 'fusionar', 'editar', 'borrar']],
+    ['Territorio', ['marcar', 'mover', 'letras', 'caras']],
+  ])
+  assert.match(body, /role="group" aria-labelledby="rotDibujo"/)
+  assert.match(body, /role="group" aria-labelledby="rotTerritorio"/)
+
+  // Los atajos quedan iguales: el número que se ve en el botón y la tabla del teclado.
+  const atajos = Object.fromEntries(botones
+    .map(([, h, contenido]) => [h, contenido.match(/<span class="k">(\d)<\/span>/)?.[1]])
+    .filter(([, k]) => k))
+  assert.deepEqual(atajos, { dibujar: '1', dividir: '2', fusionar: '3', mover: '4', editar: '5', marcar: '6', borrar: '7', caras: '8', letras: '9' })
+  assertSource(/const map = \{ 1: 'dibujar', 2: 'dividir', 3: 'fusionar', 4: 'mover', 5: 'editar', 6: 'marcar', 7: 'borrar', 8: 'caras', 9: 'letras' \}/,
+    'la tabla de atajos del teclado no puede cambiar')
   for (const herramienta of esperadas) {
     assertSource(
       new RegExp(`herramienta === '${herramienta}'|data-h="${herramienta}"`),
@@ -78,9 +101,15 @@ test('importar y exportar conservan controles, JSON y restauración de estado', 
   assertSource(/a\.download\s*=\s*'territorios\.json'/)
   assertSource(/document\.getElementById\('bImport'\)\.onclick\s*=/)
   assertSource(/document\.getElementById\('fImport'\)\.onchange\s*=/)
-  assertSource(/JSON\.parse\(await f\.text\(\)\)/)
-  assertSource(/territorios\s*=\s*new Map\(\(d\.territorios \|\| \[\]\)/)
-  assertSource(/for \(const mm of d\.manzanas \|\| \[\]\)/)
+  // Importar lee con JSON.parse dentro de un try, valida la forma ANTES de
+  // tocar nada y recién después toma la instantánea y reemplaza el estado.
+  assertSource(/try \{ d = JSON\.parse\(await f\.text\(\)\) \} catch/)
+  assertSource(/const v = validarImportacion\(d\)/)
+  assertSource(/territorios\s*=\s*new Map\(v\.territorios\.map/)
+  assertSource(/for \(const mm of v\.manzanas\)/)
+  const importar = source.slice(source.indexOf("document.getElementById('fImport').onchange"))
+  assert.ok(importar.indexOf('validarImportacion(d)') < importar.indexOf('instantanea()'),
+    'la instantánea va después de validar, nunca antes')
 })
 
 test('el borrador remoto se lee, se agrupa y se escribe con control de versión', () => {
