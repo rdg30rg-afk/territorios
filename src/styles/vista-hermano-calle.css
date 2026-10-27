@@ -1,0 +1,90 @@
+/* Vista del hermano, en la calle: los avisos de abajo.
+
+   Vive aparte de vista-hermano.css (que se genera desde vista-hermano.html)
+   y obedece las mismas tres reglas:
+   1. Nada por debajo de 16px.
+   2. Todo lo que se toca mide 56px de alto como minimo.
+   3. El color nunca es el unico portador de significado: cada aviso
+      lleva un icono y palabras. El color solo acompana.
+
+   Lo cubre tests/vista-hermano-calle.test.mjs, que lee este archivo. */
+
+/* -------------------------------------------------- pila de avisos */
+/* Fija arriba de las pestanias. Con el mapa grande abierto (.enMapa) se
+   pega al borde de abajo del mapa, justo arriba de la leyenda. Los avisos
+   se apilan: sin senal, marcas pendientes, deshacer. */
+.vh .avisosCalle {
+  position: fixed; left: 0; right: 0; z-index: 70;
+  bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+  width: 100%; max-width: 560px; margin-inline: auto; padding: 0 12px;
+  display: flex; flex-direction: column; gap: 8px;
+  /* El hueco entre avisos no se come los toques del mapa. */
+  pointer-events: none;
+}
+.vh .avisosCalle.enMapa { position: absolute; bottom: 12px; z-index: 1100; }
+.vh .avisosCalle > * { pointer-events: auto; }
+
+/* ------------------------------------------------------- un aviso */
+.vh .avisoCalle {
+  display: flex; align-items: center; gap: 12px;
+  min-height: var(--tap); padding: 8px 16px;
+  border-radius: 16px; border: 1px solid transparent;
+  font: 600 var(--t-body)/1.25 Urbanist, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  box-shadow: 0 6px 18px rgba(22, 25, 29, .22);
+}
+/* display:flex le gana a [hidden]; sin esto la region vacia se veria. */
+.vh .avisoCalle[hidden] { display: none; }
+.vh .avisoCalle:has(.avisoCalleBoton) { padding-right: 8px; }
+.vh .avisoCalleIcono { flex: 0 0 auto; }
+.vh .avisoCalleTexto { flex: 1; min-width: 0; }
+
+/* El boton de adentro: 56px de alto, con icono y palabra. */
+.vh .avisoCalleBoton {
+  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: var(--tap); padding: 0 18px; border: 0; border-radius: 12px; cursor: pointer;
+  font: 700 var(--t-body)/1 Urbanist, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: var(--lime); color: var(--ink);
+}
+.vh .avisoCalleBoton:active { background: var(--lime-deep); }
+
+/* Deshacer: oscuro, como la tarjeta principal. */
+.vh .avisoDeshacer { background: var(--ink); color: #fff; }
+
+/* Marcas pendientes: ambar mientras esperan, verde cuando se enviaron. */
+.vh .marcasPendientes.pendientes { background: var(--warn-bg); color: var(--warn-fg); border-color: var(--warn-line); }
+.vh .marcasPendientes.enviado { background: var(--good-bg); color: var(--good-fg); border-color: var(--good-line); }
+.vh .marcasPendientes .avisoCalleBoton { background: var(--ink); color: #fff; }
+
+/* Sin senal: lo que se ve es la copia del telefono. */
+.vh .avisoSinSenal { background: var(--surface); color: var(--fg); border-color: var(--line); }
+
+/* ----------------------------- estado del mapa guardado (en el panel) */
+.vh .estadoSinSenal {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px;
+  min-height: var(--tap); margin: 12px 0 0; padding: 10px 14px;
+  border-radius: 14px; border: 1px solid var(--line);
+  background: var(--surface); color: var(--fg-2);
+  font: 600 var(--t-body)/1.3 Urbanist, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+.vh .estadoSinSenal[hidden] { display: none; }
+.vh .estadoSinSenalIcono { flex: 0 0 auto; }
+.vh .estadoSinSenalTexto { flex: 1 1 200px; min-width: 0; }
+.vh .estadoSinSenal.lista { background: var(--good-bg); color: var(--good-fg); border-color: var(--good-line); }
+.vh .estadoSinSenal.incompleta,
+.vh .estadoSinSenal.ahorro-de-datos { background: var(--warn-bg); color: var(--warn-fg); border-color: var(--warn-line); }
+.vh .estadoSinSenalBoton {
+  flex: 1 1 100%; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: var(--tap); padding: 0 18px; border: 0; border-radius: 12px; cursor: pointer;
+  font: 700 var(--t-body)/1 Urbanist, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: var(--ink); color: #fff;
+}
+
+/* ----------------------------------------------- telefonos angostos */
+/* A 360px o menos, el texto y el boton no entran en una fila: el boton pasa
+   abajo y ocupa todo el ancho, que para el pulgar es mejor igual. */
+@media (max-width: 360px) {
+  .vh .avisoCalle { flex-wrap: wrap; padding: 8px 12px; }
+  .vh .avisoCalle:has(.avisoCalleBoton) { padding-right: 8px; padding-left: 12px; }
+  .vh .avisoCalleTexto { flex: 1 1 calc(100% - 40px); }
+  .vh .avisoCalleBoton { flex: 1 1 100%; }
+}
