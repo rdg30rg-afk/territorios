@@ -14,7 +14,30 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      # Los tests de SQL (tests/sql-assertions.test.mjs y los *-rpc) levantan su
+      # propio Postgres descartable con initdb y pg_ctl: no usan ninguna base
+      # remota ni un servicio. Necesitan los binarios de PostgreSQL 15, y
+      # ubuntu-latest no garantiza esa versión ni la deja en el PATH.
+      - name: Instalar PostgreSQL 15
+        run: |
+          # Sin cluster por defecto: los tests crean los suyos.
+          sudo mkdir -p /etc/postgresql-common
+          echo 'create_main_cluster = false' | sudo tee -a /etc/postgresql-common/createcluster.conf
+          sudo apt-get update
+          if ! apt-cache show postgresql-15 > /dev/null 2>&1; then
+            # El repositorio oficial de PostgreSQL (PGDG) no está configurado.
+            sudo apt-get install -y --no-install-recommends postgresql-common
+            sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          fi
+          sudo apt-get install -y --no-install-recommends postgresql-15
+          echo "PG_BIN=/usr/lib/postgresql/15/bin" >> "$GITHUB_ENV"
+      - name: Verificar los binarios de PostgreSQL
+        run: |
+          "$PG_BIN/initdb" --version
+          "$PG_BIN/pg_ctl" --version
+          "$PG_BIN/psql" --version
       - run: npm ci
+      # Incluye las aserciones SQL contra las migraciones reales.
       - run: npm test
       - run: npm run lint
       - run: npm run build
