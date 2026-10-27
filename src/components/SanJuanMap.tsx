@@ -14,7 +14,8 @@ import { canOpenAdminPanel } from '../lib/access'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 import { ordenarTerritorios } from '../lib/ordenarTerritorios'
 import { getTerritoryDeepLinkTransition } from '../lib/territoryDeepLink'
-import { ponerFondo } from '../lib/fondoMapa'
+import { crearCargadorTeselasExportacion, ponerFondo } from '../lib/fondoMapa'
+import { loadManzanaFormas, type ManzanaForma } from '../lib/loadManzanaFormas'
 import {
   createSupabaseEditorTransport,
   loadEditorCandidates,
@@ -120,25 +121,20 @@ type TerritoryRecord = {
 /**
  * Formas de las manzanas.
  *
- * La forma vive en territorio_manzanas.geometry_geojson. El archivo estatico
- * public/datos/manzanas-territorios.json quedo como respaldo para las bases
- * que todavia no tienen esa columna.
+ * La forma vive en territorio_manzanas.geometry_geojson y es lo único que se
+ * dibuja. No hay respaldo: antes se caía a public/datos/manzanas-territorios.json
+ * cuando la base no traía la forma, pero ese archivo se indexa por el `name`
+ * del territorio y sus letras NO son las de la base (se generó reasignando
+ * letras N->S / O->E). Al cruzarlo con la base, 412 de 508 coincidencias por
+ * letra tenían la forma de otra manzana: emparejar por letra daba el
+ * polígono equivocado en cuatro de cada cinco casos, sin fallar.
  *
- * El archivo se indexa por el `name` del territorio y sus letras NO son las
- * de la base: se genero reasignando letras N->S / O->E, y al cruzarlo con el
- * respaldo, 412 de 508 coincidencias por letra tenian la forma de otra
- * manzana. Por eso, cuando la base trae geometria, manda la base y el
- * archivo ni se mira: emparejar por letra da el poligono equivocado en
- * cuatro de cada cinco casos, sin fallar.
+ * Si la base no trae forma, se dice (ver `avisoDeFormas`) y se dejan
+ * los puntos de las manzanas, que sí son de la base. Un mapa que avisa que le
+ * falta algo es mejor que uno que muestra otra cosa.
  *
- * Si no hay ni una cosa ni la otra, se dibujan los puntos, que es el
- * comportamiento de siempre. Nunca es un requisito para operar.
+ * El archivo sigue en public/datos porque lo usan scripts y vista-hermano.html.
  */
-type ManzanaForma = {
-  letra: string
-  geom: { type: 'Polygon'; coordinates: [number, number][][] }
-}
-
 type TerritoryBlockRecord = {
   id: string
   territory_id: string
@@ -194,6 +190,12 @@ type PdfTerritoryHotspot = {
 }
 
 const TILE_SIZE = 256
+
+// El mapa no inventa formas: si la base no trae manzanas dibujadas para el
+// territorio elegido, lo dice con estas palabras.
+const AVISO_SIN_MANZANAS = 'Este territorio todavía no tiene manzanas publicadas.'
+const AVISO_FORMAS_CON_ERROR =
+  'No pudimos traer las manzanas de este territorio. Probá de nuevo en un rato.'
 
 function formatTerritoryDate(value: string) {
   return new Intl.DateTimeFormat('es-AR', {
@@ -620,15 +622,16 @@ async function renderTerritoriesMapSnapshot(
         return [{ tileX, tileY }]
       }),
   )
+  // El mismo fondo que se ve en pantalla (MapTiler con clave, con vuelta a
+  // OpenStreetMap si falla), no OpenStreetMap a ciegas.
+  const teselas = crearCargadorTeselasExportacion(loadTileImage)
   const tiles = await mapWithConcurrency(
     tileCoordinates,
     4,
     async ({ tileX, tileY }) => ({
       tileX,
       tileY,
-      image: await loadTileImage(
-        `https://tile.openstreetmap.org/${zoom}/${tileX}/${tileY}.png`,
-      ),
+      image: (await teselas.cargar(zoom, tileX, tileY)).imagen,
     }),
   )
 
@@ -673,11 +676,15 @@ async function renderTerritoriesMapSnapshot(
 
   drawPdfMapOverlay(context, territories, visibleBlocks, projectCanvasPoint)
 
-  context.fillStyle = 'rgba(255, 255, 255, 0.86)'
-  context.fillRect(12, height - 40, 470, 28)
-  context.fillStyle = '#3f342d'
+  // Se nombra a quien hizo el fondo que quedó en la imagen: con MapTiler son
+  // dos, y el recuadro se ajusta al texto.
+  const credito = teselas.credito()
   context.font = 'bold 20px Arial'
-  context.fillText('© OpenStreetMap contributors', 28, height - 20)
+  const anchoDelCredito = Math.ceil(context.measureText(credito).width)
+  context.fillStyle = 'rgba(255, 255, 255, 0.86)'
+  context.fillRect(12, height - 40, anchoDelCredito + 32, 28)
+  context.fillStyle = '#3f342d'
+  context.fillText(credito, 28, height - 20)
 
   return {
     dataUrl: canvas.toDataURL('image/jpeg', 0.92),
@@ -987,11 +994,14 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false, 
 
   const [territories, setTerritories] = useState<TerritoryRecord[]>([])
   const [territoryBlocks, setTerritoryBlocks] = useState<TerritoryBlockRecord[]>([])
-  const [manzanaFormas, setManzanaFormas] = useState<Record<string, ManzanaForma[]>>({})
   // Las formas de manzana que ya trajimos de la base, por territorio. Se
   // piden de a un territorio y sólo cuando se lo va a dibujar: son el 90%
   // del peso de esta pantalla y sirven a partir del zoom 15.
   const [formasBase, setFormasBase] = useState<Map<string, ManzanaForma[]>>(() => new Map())
+  // Territorios cuya consulta de formas falló. Aparte del "no tiene": una base
+  // que no contestó no es una base que no tiene manzanas, y el aviso tiene
+  // que decir cuál de las dos es.
+  const [formasConError, setFormasConError] = useState<Set<string>>(() => new Set())
   // Cuánto se recorrió de cada territorio. La vista `cobertura_territorio`
   // ya lo tiene calculado y pesa 12 kB para los 70: es lo único por lo que
   // uno elige un territorio y no otro, y la lista no lo decía.
@@ -1110,6 +1120,15 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false, 
         : [],
     [selectedTerritoryId, territoryBlocks],
   )
+
+  // `formasBase` guarda el vacío cuando la base contestó y no hay formas, y no
+  // guarda nada mientras no contestó. Eso permite decir "todavía no tiene
+  // manzanas publicadas" sólo cuando es cierto, y no mientras carga.
+  const avisoDeFormas = useMemo(() => {
+    if (!selectedTerritoryId) return null
+    if (formasConError.has(selectedTerritoryId)) return AVISO_FORMAS_CON_ERROR
+    return formasBase.get(selectedTerritoryId)?.length === 0 ? AVISO_SIN_MANZANAS : null
+  }, [formasBase, formasConError, selectedTerritoryId])
 
   const toggleEditorBlock = useCallback((blockId: string) => {
     setSelectedEditorBlockIds((current) =>
@@ -1719,12 +1738,8 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false, 
     [selectedColor],
   )
 
-  // El respaldo de 281 kB para bases sin la columna de geometria. Se pedia
-  // siempre, incluso cuando la base tiene las formas y el archivo -segun el
-  // comentario de arriba- ni se mira. Ahora se busca cuando hace falta
-  // dibujar manzanas, y detras de las de la base.
+  // Qué territorios ya se pidieron a la base, para no repetir la consulta.
   const formasPedidas = useRef<Set<string>>(new Set())
-  const respaldoPedido = useRef(false)
 
   const territoriosADibujar = useMemo(() => {
     const cerca = mapZoom >= MANZANA_ZOOM
@@ -1770,52 +1785,28 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false, 
 
     // Sin bandera de cancelacion: esto solo llena una cache por id, y
     // aplicarla tarde no descoloca nada.
-    void client
-      .from('territorio_manzanas')
-      .select('territory_id, label, geometry_geojson')
-      .in('territory_id', faltan)
-      .is('vigente_hasta', null)
-      .not('geometry_geojson', 'is', null)
-      .then(({ data, error: fallo }) => {
-        if (fallo) {
-          // Base sin la columna: que caiga en el respaldo del archivo.
-          for (const id of faltan) formasPedidas.current.delete(id)
-          return
-        }
+    void loadManzanaFormas(client, faltan)
+      .then((formas) => {
+        setFormasConError((previos) => {
+          if (!faltan.some((id) => previos.has(id))) return previos
+          const siguiente = new Set(previos)
+          for (const id of faltan) siguiente.delete(id)
+          return siguiente
+        })
+        // Se guarda tambien el vacio (cada id pedido trae su lista, aunque
+        // sea vacia): sin esto, un territorio sin formas vuelve a preguntar
+        // cada vez que entra en pantalla.
         setFormasBase((previas) => {
           const siguiente = new Map(previas)
-          // Se guarda tambien el vacio: sin esto, un territorio sin formas
-          // vuelve a preguntar cada vez que entra en pantalla.
-          for (const id of faltan) siguiente.set(id, [])
-          for (const fila of (data ?? []) as Array<{
-            territory_id: string
-            label: string
-            geometry_geojson: ManzanaForma['geom'] | null
-          }>) {
-            if (!fila.geometry_geojson?.coordinates?.length) continue
-            siguiente.get(fila.territory_id)?.push({
-              letra: fila.label,
-              geom: fila.geometry_geojson,
-            })
-          }
+          for (const [id, lista] of formas) siguiente.set(id, lista)
           return siguiente
         })
       })
-  }, [claveADibujar])
-
-  useEffect(() => {
-    if (claveADibujar === '' || respaldoPedido.current) return
-    respaldoPedido.current = true
-
-    void fetch('/datos/manzanas-territorios.json')
-      .then((respuesta) => (respuesta.ok ? respuesta.json() : null))
-      .then((datos) => {
-        if (datos?.territorios) {
-          setManzanaFormas(datos.territorios as Record<string, ManzanaForma[]>)
-        }
-      })
       .catch(() => {
-        // Sin formas se muestran los puntos, que es el comportamiento previo.
+        // No hay respaldo: se avisa que no se pudo. El id sale de
+        // `formasPedidas` para que se reintente cuando cambie lo que se mira.
+        for (const id of faltan) formasPedidas.current.delete(id)
+        setFormasConError((previos) => new Set([...previos, ...faltan]))
       })
   }, [claveADibujar])
 
@@ -1831,9 +1822,9 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false, 
     // omiten sus puntos, para no mostrar las dos cosas encima.
     const conForma = new Set<string>()
 
-    // La base primero -emparejada por territory_id, que es exacto, y no por
-    // el numero del territorio como el archivo-, y solo para los territorios
-    // que se estan mirando: `formasBase` se llena a pedido.
+    // Las formas salen de la base, emparejadas por territory_id (que es
+    // exacto), y solo para los territorios que se estan mirando:
+    // `formasBase` se llena a pedido.
     const aDibujar = new Set(territoriosADibujar)
 
     territories.forEach((territory, index) => {
@@ -1841,8 +1832,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false, 
         return
       }
 
-      const deLaBase = formasBase.get(territory.id)
-      const formas = deLaBase?.length ? deLaBase : manzanaFormas[territory.name]
+      const formas = formasBase.get(territory.id)
       if (!formas?.length) {
         return
       }
@@ -1918,7 +1908,6 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false, 
     })
   }, [
     formasBase,
-    manzanaFormas,
     mapZoom,
     selectedTerritoryId,
     territories,
@@ -4113,6 +4102,11 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false, 
                       </div>
                     ) : null}
                   </div>
+                ) : null}
+                {avisoDeFormas && !modoEdicion ? (
+                <div className="territory-map-help" role="status" aria-live="polite">
+                  <strong>{avisoDeFormas}</strong>
+                </div>
                 ) : null}
                 {modoEdicion ? (
                 <div className="territory-map-help">
