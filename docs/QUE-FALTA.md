@@ -47,9 +47,11 @@ cuarenta filas, no ocho. En el admin el cuerpo es 15 px y los controles 38 px.
 "Mantén", "Puedes revisar". Los nombres son los de quien usa, no los de la tabla.
 
 **El editor de manzanas.** El algoritmo de caras/cuadras (`TOL_GRADOS = 25`,
-`LARGO_MINIMO = 12`) está duplicado a propósito en tres lugares: el editor,
-`scripts/cargar-geometrias-y-lados.mjs` y `PredicacionPage`. Cualquier cambio va
-en los tres.
+`LARGO_MINIMO = 12`) vive en tres lugares: `src/features/map-editor/geometry/blockGeometry.ts`
+(el canónico, que importa `scripts/cargar-geometrias-y-lados.mjs`), el editor
+(`editor-manzanas.html`) y `vista-hermano.html`. `PredicacionPage` no lo calcula:
+lee `manzana_lados`. Cualquier cambio va en los tres; `tests/caras-paridad.test.mjs`
+los corre juntos sobre las 605 manzanas y falla si se separan.
 
 ---
 
@@ -224,6 +226,45 @@ Quedó fuera de este corte (no hacerlo acá):
 - Notificaciones push o WhatsApp automático al confirmar.
 - Una persona en dos grupos a la vez.
 - Cuenta sin email (solo teléfono / OTP).
+
+### Mapas — tanda del 27 de octubre de 2026
+
+Ver `ANALISIS-MAPAS-2026-10-27.md` y `PLAN-MEJORAS-MAPAS-2026-10-27.md`.
+Quedó hecho en código, sin publicar ni aplicar en ninguna base:
+
+- Build en modo producción (antes salía con el React de desarrollo) y aviso de
+  versión nueva en vez de recargar sola.
+- Mapa del hermano sin señal, deshacer, marcas pendientes y pantalla encendida.
+- Caras: arreglo de la diferencia de ángulos en ±180°.
+- Bugs del editor y del selector de punto.
+- Errores del cliente a una tabla.
+- SQL en CI.
+
+Pendiente:
+
+- [ ] **Aplicar en la base del sitio**, en orden,
+      `20261027151000_renumeracion_tolera_territorio_sin_poligono.sql` y
+      `20261027151500_errores_cliente.sql`.
+- [ ] **Decidir el re-corte de caras.** Con el arreglo de ±180° cambian 44
+      manzanas de 34 territorios (2.715 → 2.667 lados; 117 caras viejas dejan
+      de existir). Detalle en `output/informe-caras-afectadas.json`.
+      - El editor ya calcula el corte nuevo y la base tiene el viejo.
+      - Republicar uno de esos territorios retira esas caras y su cobertura.
+      - Una persona decide antes de publicar el editor.
+- [ ] **Primera publicación con service worker real.** Hasta ahora el sitio
+      publicado borraba su service worker en cada carga (`import.meta.env.DEV`
+      era verdadero). Probar en un teléfono:
+      - instalar;
+      - actualizar con el aviso;
+      - marcar sin señal.
+- [ ] **CSP en `Report-Only`.** Pasarla a obligatoria cuando el editor deje de
+      necesitar scripts en línea.
+- [ ] **Bugs anotados y no arreglados**:
+      - el respaldo JSON de territorios se corta en 1.000 filas;
+      - fusionar manzanas de dos territorios no marca como tocado al que pierde
+        una;
+      - con `npm run dev`, el territorio no se dibuja en el selector de punto
+        (worker de MapLibre).
 
 ### Datos
 
