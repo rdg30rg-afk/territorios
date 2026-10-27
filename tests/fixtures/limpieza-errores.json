@@ -1,0 +1,62 @@
+[
+  {
+    "nombre": "email",
+    "entrada": "Falló para ana.perez+pruebas@example.com.ar al guardar",
+    "salida": "Falló para [email] al guardar"
+  },
+  {
+    "nombre": "dos coordenadas",
+    "entrada": "Punto fuera de rango: -31.537512,-68.536412",
+    "salida": "Punto fuera de rango: [coord],[coord]"
+  },
+  {
+    "nombre": "coordenada con cuatro decimales",
+    "entrada": "lat=-31.5375 lng=-68.5364",
+    "salida": "lat=[coord] lng=[coord]"
+  },
+  {
+    "nombre": "JWT",
+    "entrada": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abc123_-XYZ vencido",
+    "salida": "Bearer [token] vencido"
+  },
+  {
+    "nombre": "query y hash de una URL",
+    "entrada": "GET https://x.supabase.co/rest/v1/territorios?select=*&apikey=abc#frag falló",
+    "salida": "GET https://x.supabase.co/rest/v1/territorios falló"
+  },
+  {
+    "nombre": "query con email adentro",
+    "entrada": "https://app.test/auth?email=ana@example.com&code=123 (ver)",
+    "salida": "https://app.test/auth (ver)"
+  },
+  {
+    "nombre": "cadena opaca larga",
+    "entrada": "clave 0123456789abcdef0123456789abcdef0123456789abcdef usada",
+    "salida": "clave [token] usada"
+  },
+  {
+    "nombre": "acentos y eñes quedan",
+    "entrada": "Territorio inexistente: Ñandú, año 2026, ¿reintentar?",
+    "salida": "Territorio inexistente: Ñandú, año 2026, ¿reintentar?"
+  },
+  {
+    "nombre": "UUID, versiones, IP, línea de pila, enteros y decimales cortos quedan",
+    "entrada": "t=81000000-0000-0000-0000-000000000091 v1.2.3 192.168.1.10 main-AbC123.js:12:3456 n=12345 pi=3.14 fn@https://h.test/a.js:1:2",
+    "salida": "t=81000000-0000-0000-0000-000000000091 v1.2.3 192.168.1.10 main-AbC123.js:12:3456 n=12345 pi=3.14 fn@https://h.test/a.js:1:2"
+  },
+  {
+    "nombre": "pila de Chrome con URL sin query",
+    "entrada": "TypeError: x is undefined\n    at Object.f (https://congregacion.estracom.com.ar/assets/main-DFIWVQq_.js:1:23456)",
+    "salida": "TypeError: x is undefined\n    at Object.f (https://congregacion.estracom.com.ar/assets/main-DFIWVQq_.js:1:23456)"
+  },
+  {
+    "nombre": "pila de Vite con query en el archivo",
+    "entrada": "at App (http://127.0.0.1:5173/src/App.tsx?t=1698412345:12:5)",
+    "salida": "at App (http://127.0.0.1:5173/src/App.tsx)"
+  },
+  {
+    "nombre": "varios datos juntos",
+    "entrada": "ana@example.com en -31.537512, -68.536412 con eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abc123_-XYZ",
+    "salida": "[email] en [coord], [coord] con [token]"
+  }
+]
