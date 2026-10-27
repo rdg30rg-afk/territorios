@@ -9,6 +9,7 @@ import './index.css'
 import './styles/theme-hermano.css'
 import App from './App.tsx'
 import { AuthProvider } from './context/AuthContext'
+import { AvisoActualizacion } from './components/AvisoActualizacion'
 
 // Un worker instalado por una compilacion anterior puede seguir respondiendo
 // navegaciones de 127.0.0.1 aunque Vite tenga el PWA desactivado en desarrollo.
@@ -35,5 +36,7 @@ createRoot(document.getElementById('root')!).render(
         <App />
       </BrowserRouter>
     </AuthProvider>
+    {/* Fuera del router y de la sesión: avisa aunque estés en el login. */}
+    <AvisoActualizacion />
   </StrictMode>,
 )
