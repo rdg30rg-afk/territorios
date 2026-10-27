@@ -21,12 +21,20 @@ const versionDeLaMarca = ICONOS_DE_LA_MARCA.reduce(
   (resumen, ruta) => resumen.update(readFileSync(resolve(__dirname, 'public', ruta))),
   createHash('sha256'),
 ).digest('hex').slice(0, 10)
+// El sprite de íconos (iconos-territorios/sprite.svg) tampoco lleva hash en
+// el nombre: con un sprite viejo guardado, los íconos nuevos se veían vacíos.
+const versionDeLosIconos = createHash('sha256')
+  .update(readFileSync(resolve(__dirname, 'public/iconos-territorios/sprite.svg')))
+  .digest('hex')
+  .slice(0, 10)
 
 // https://vite.dev/config/
 export default defineConfig({
   // Coincidir con la URL local usada por la app; evitar que localhost resuelva
   // solo a ::1 y el navegador en 127.0.0.1 termine mostrando caché obsoleta.
   server: { host: '127.0.0.1', port: 5173, strictPort: true },
+  // Para los componentes de React (Icono.tsx); el HTML usa %VERSION_ICONOS%.
+  define: { __VERSION_ICONOS__: JSON.stringify(versionDeLosIconos) },
   // El editor de manzanas es una pagina aparte, no un componente de React.
   // Sin declararla aca, `vite build` solo empaqueta index.html: en el dev
   // server funcionaba porque sirve cualquier archivo del proyecto, y en
@@ -45,7 +53,8 @@ export default defineConfig({
       name: 'version-de-la-marca',
       transformIndexHtml: {
         order: 'pre',
-        handler: (html) => html.replaceAll('%VERSION_MARCA%', versionDeLaMarca),
+        handler: (html) =>
+          html.replaceAll('%VERSION_MARCA%', versionDeLaMarca).replaceAll('%VERSION_ICONOS%', versionDeLosIconos),
       },
     },
     VitePWA({

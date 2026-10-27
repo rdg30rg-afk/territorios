@@ -293,7 +293,7 @@
   <aside class="lateral">
     <div class="cabecera">
       <h1>Editor de manzanas</h1>
-      <p><a href="/mapas" style="color:inherit"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#anterior"></use></svg> Volver a la app</a></p>
+      <p><a href="/mapas" style="color:inherit"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg?v=%VERSION_ICONOS%#anterior"></use></svg> Volver a la app</a></p>
     </div>
 
     <div class="lateral-cuerpo">
@@ -304,19 +304,19 @@
         <div><label>Sector</label>
           <select id="nSec"><option>I</option><option>II</option><option>III</option></select></div>
       </div>
-      <button class="b pri" id="bCrear" style="width:100%"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#dibujar"></use></svg> Crear y empezar a marcar</button>
+      <button class="b pri" id="bCrear" style="width:100%"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg?v=%VERSION_ICONOS%#dibujar"></use></svg> Crear y empezar a marcar</button>
     </div>
 
     <div class="seccion" id="panelSel" style="display:none">
       <div class="panel-titulo">
         <p class="eyebrow">Seleccionado</p>
-        <button class="mini" id="bSalirTerr"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#anterior"></use></svg> Volver a territorios</button>
+        <button class="mini" id="bSalirTerr"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg?v=%VERSION_ICONOS%#anterior"></use></svg> Volver a territorios</button>
       </div>
       <div id="infoSel" style="font-size:13px;line-height:1.5;margin-bottom:10px"></div>
       <div class="fila">
-        <button class="b sec" id="bRenom"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#dibujar"></use></svg> Renumerar</button>
-        <button class="b sec" id="bDividirT"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#dividir"></use></svg> Dividir</button>
-        <button class="b dan" id="bBorrar"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#eliminar"></use></svg> Borrar</button>
+        <button class="b sec" id="bRenom"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg?v=%VERSION_ICONOS%#dibujar"></use></svg> Renumerar</button>
+        <button class="b sec" id="bDividirT"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg?v=%VERSION_ICONOS%#dividir"></use></svg> Dividir</button>
+        <button class="b dan" id="bBorrar"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg?v=%VERSION_ICONOS%#eliminar"></use></svg> Borrar</button>
       </div>
       <div style="margin-top:12px">
         <label for="colorTerritorio">Color del territorio</label>
@@ -324,7 +324,7 @@
           <input id="colorTerritorio" type="color" aria-label="Elegir un color personalizado" aria-describedby="coloresAlLado" style="width:44px;height:38px;padding:3px;cursor:pointer">
           <div id="paletaTerritorio" style="display:flex;gap:5px;flex-wrap:wrap" aria-label="Colores del territorio"></div>
         </div>
-        <button class="b sec" id="bSugerirColor" type="button" style="width:100%;margin-top:8px;min-height:38px"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#marcar"></use></svg> Sugerir color</button>
+        <button class="b sec" id="bSugerirColor" type="button" style="width:100%;margin-top:8px;min-height:38px"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg?v=%VERSION_ICONOS%#marcar"></use></svg> Sugerir color</button>
         <p class="color-vecinos" id="coloresAlLado" aria-live="polite"></p>
       </div>
       <div class="chips" id="chipsLetras" style="display:flex;gap:4px;align-items:center;margin-top:9px">
@@ -333,10 +333,10 @@
         <button data-l="proximidad">por cercanía</button>
         <button data-l="mano">a mano</button>
       </div>
-      <button class="b sec" id="bTraerTerr" style="width:100%;margin-top:6px"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#territorios"></use></svg> Traer este territorio de la base</button>
-      <button class="b sec" id="bManzanas" style="width:100%;margin-top:6px"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#territorios"></use></svg> Ver y depurar sus manzanas</button>
-      <button class="b sec" id="bDerivar" style="width:100%;margin-top:6px"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#dibujar"></use></svg> Nuevo territorio después de este</button>
-      <button class="b dan" id="bRedibujar" style="width:100%;margin-top:6px"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#rehacer"></use></svg> Redibujar desde cero</button>
+      <button class="b sec" id="bTraerTerr" style="width:100%;margin-top:6px"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg?v=%VERSION_ICONOS%#territorios"></use></svg> Traer este territorio de la base</button>
+      <button class="b sec" id="bManzanas" style="width:100%;margin-top:6px"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg?v=%VERSION_ICONOS%#territorios"></use></svg> Ver y depurar sus manzanas</button>
+      <button class="b sec" id="bDerivar" style="width:100%;margin-top:6px"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg?v=%VERSION_ICONOS%#dibujar"></use></svg> Nuevo territorio después de este</button>
+      <button class="b dan" id="bRedibujar" style="width:100%;margin-top:6px"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg?v=%VERSION_ICONOS%#rehacer"></use></svg> Redibujar desde cero</button>
     </div>
 
     <div class="lista">
@@ -352,7 +352,7 @@
       <div id="panelMz" style="display:none">
         <p class="eyebrow" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
           <span>Manzanas del <span id="mzTerr"></span> <span id="mzCont" style="color:var(--suave)"></span></span>
-          <button class="mini" id="bVolverT"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#anterior"></use></svg> territorio</button>
+          <button class="mini" id="bVolverT"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg?v=%VERSION_ICONOS%#anterior"></use></svg> territorio</button>
         </p>
         <div class="mzbarra">
           <label><input type="checkbox" id="mzTodas"> todas</label>
@@ -360,8 +360,8 @@
         </div>
         <div id="listaMz"></div>
         <div class="mzacc" id="mzAcciones" style="display:none">
-          <button class="b sec" id="bMzQuitar"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#mover"></use></svg> Quitar</button>
-          <button class="b dan" id="bMzBorrar"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#eliminar"></use></svg> Borrar</button>
+          <button class="b sec" id="bMzQuitar"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg?v=%VERSION_ICONOS%#mover"></use></svg> Quitar</button>
+          <button class="b dan" id="bMzBorrar"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg?v=%VERSION_ICONOS%#eliminar"></use></svg> Borrar</button>
         </div>
       </div>
 
@@ -383,15 +383,15 @@
           <span id="estadoArchivo">Conectando con la base…</span>
           <button class="mini" id="bVincular">copia en disco</button>
         </div>
-        <button class="b pri" id="bGuardarBD" style="width:100%;margin-bottom:8px"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#guardar"></use></svg> Guardar este territorio</button>
-        <button class="b sec" id="bComparar" style="width:100%;margin-bottom:8px"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#buscar"></use></svg> Ver qué falta guardar</button>
-        <button class="b sec" id="bExport"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#descargar"></use></svg> Exportar</button>
-        <button class="b sec" id="bImport"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#guardar"></use></svg> Importar</button>
+        <button class="b pri" id="bGuardarBD" style="width:100%;margin-bottom:8px"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg?v=%VERSION_ICONOS%#guardar"></use></svg> Guardar este territorio</button>
+        <button class="b sec" id="bComparar" style="width:100%;margin-bottom:8px"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg?v=%VERSION_ICONOS%#buscar"></use></svg> Ver qué falta guardar</button>
+        <button class="b sec" id="bExport"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg?v=%VERSION_ICONOS%#descargar"></use></svg> Exportar</button>
+        <button class="b sec" id="bImport"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg?v=%VERSION_ICONOS%#guardar"></use></svg> Importar</button>
         <!-- Lo destructivo vive aparte: sin el peso de un botón más en la fila. -->
         <details class="mas" id="menuMas">
-          <summary aria-label="Más acciones">Más <svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#chevron-abajo"></use></svg></summary>
+          <summary aria-label="Más acciones">Más <svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg?v=%VERSION_ICONOS%#chevron-abajo"></use></svg></summary>
           <div class="mas-menu">
-            <button class="b suelto" id="bReset" type="button"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#eliminar"></use></svg> Vaciar el editor…</button>
+            <button class="b suelto" id="bReset" type="button"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg?v=%VERSION_ICONOS%#eliminar"></use></svg> Vaciar el editor…</button>
           </div>
         </details>
       </div>
@@ -405,32 +405,32 @@
     <div class="flot aviso" id="aviso">Cargando manzanas de San Juan…</div>
 
     <div class="flot herr">
-      <button data-h="ver" class="neutro on"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#territorios"></use></svg> Solo mirar <span class="k">esc</span></button>
+      <button data-h="ver" class="neutro on"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg?v=%VERSION_ICONOS%#territorios"></use></svg> Solo mirar <span class="k">esc</span></button>
       <!-- Dos grupos con rótulo. Los números de los atajos (1-9) no cambian:
            siguen atados a la herramienta, no al lugar que ocupa en el menú. -->
       <div class="herr-grupo" role="group" aria-labelledby="rotDibujo">
         <p class="herr-rotulo" id="rotDibujo">Dibujo</p>
-        <button data-h="dibujar"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#dibujar"></use></svg> Dibujar manzana <span class="k">1</span></button>
-        <button data-h="dividir"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#dividir"></use></svg> Dividir manzana <span class="k">2</span></button>
-        <button data-h="fusionar"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#fusionar"></use></svg> Fusionar manzanas <span class="k">3</span></button>
-        <button data-h="editar"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#vertices"></use></svg> Editar vértices <span class="k">5</span></button>
-        <button data-h="borrar" class="quita"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#eliminar"></use></svg> Borrar manzana <span class="k">7</span></button>
+        <button data-h="dibujar"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg?v=%VERSION_ICONOS%#dibujar"></use></svg> Dibujar manzana <span class="k">1</span></button>
+        <button data-h="dividir"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg?v=%VERSION_ICONOS%#dividir"></use></svg> Dividir manzana <span class="k">2</span></button>
+        <button data-h="fusionar"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg?v=%VERSION_ICONOS%#fusionar"></use></svg> Fusionar manzanas <span class="k">3</span></button>
+        <button data-h="editar"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg?v=%VERSION_ICONOS%#vertices"></use></svg> Editar vértices <span class="k">5</span></button>
+        <button data-h="borrar" class="quita"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg?v=%VERSION_ICONOS%#eliminar"></use></svg> Borrar manzana <span class="k">7</span></button>
       </div>
       <div class="herr-grupo" role="group" aria-labelledby="rotTerritorio">
         <p class="herr-rotulo" id="rotTerritorio">Territorio</p>
-        <button data-h="marcar"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#marcar"></use></svg> Marcar manzanas <span class="k">6</span></button>
-        <button data-h="mover"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#mover"></use></svg> Mover a territorio <span class="k">4</span></button>
-        <button data-h="letras"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#letras"></use></svg> Poner las letras <span class="k">9</span></button>
-        <button data-h="caras"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#caras"></use></svg> Arreglar caras <span class="k">8</span></button>
+        <button data-h="marcar"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg?v=%VERSION_ICONOS%#marcar"></use></svg> Marcar manzanas <span class="k">6</span></button>
+        <button data-h="mover"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg?v=%VERSION_ICONOS%#mover"></use></svg> Mover a territorio <span class="k">4</span></button>
+        <button data-h="letras"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg?v=%VERSION_ICONOS%#letras"></use></svg> Poner las letras <span class="k">9</span></button>
+        <button data-h="caras"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg?v=%VERSION_ICONOS%#caras"></use></svg> Arreglar caras <span class="k">8</span></button>
       </div>
     </div>
 
     <div id="barraMovil">
-      <button class="normal" id="mUbicar" title="Dónde estoy"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#punto"></use></svg></button>
-      <button class="normal" id="mPanel"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#menu"></use></svg> Territorios</button>
-      <button class="normal" id="mDeshacer"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#deshacer"></use></svg> Deshacer</button>
-      <button class="gesto" id="mCancelar"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#cerrar"></use></svg> Cancelar</button>
-      <button class="gesto principal" id="mListo"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#completo"></use></svg> Listo</button>
+      <button class="normal" id="mUbicar" title="Dónde estoy"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg?v=%VERSION_ICONOS%#punto"></use></svg></button>
+      <button class="normal" id="mPanel"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg?v=%VERSION_ICONOS%#menu"></use></svg> Territorios</button>
+      <button class="normal" id="mDeshacer"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg?v=%VERSION_ICONOS%#deshacer"></use></svg> Deshacer</button>
+      <button class="gesto" id="mCancelar"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg?v=%VERSION_ICONOS%#cerrar"></use></svg> Cancelar</button>
+      <button class="gesto principal" id="mListo"><svg class="icono-inline" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg?v=%VERSION_ICONOS%#completo"></use></svg> Listo</button>
     </div>
 
     <div class="flot ctx">
@@ -469,7 +469,7 @@ import { pointOnFeature } from 'https://esm.sh/@turf/point-on-feature@7'
 import { ponerFondo } from '/src/lib/fondoMapa.ts'
 
 function icono (id, clase = '') {
-  return `<svg class="icono-inline ${clase}" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg#${id}"></use></svg>`
+  return `<svg class="icono-inline ${clase}" viewBox="0 0 24 24" aria-hidden="true"><use href="/iconos-territorios/sprite.svg?v=%VERSION_ICONOS%#${id}"></use></svg>`
 }
 
 // ---------------------------------------------------------------- estado

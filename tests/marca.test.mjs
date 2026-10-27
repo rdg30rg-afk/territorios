@@ -49,6 +49,14 @@ test('los íconos van con versión, para que el navegador y la CDN no muestren l
   assert.deepEqual([...ico.subarray(0, 4)], [0, 0, 1, 0])
 })
 
+test('el sprite de íconos también va con versión, en la app y en el editor', async () => {
+  const icono = await readFile(new URL('../src/components/Icono.tsx', import.meta.url), 'utf8')
+  assert.ok(icono.includes('/iconos-territorios/sprite.svg?v=${__VERSION_ICONOS__}#${nombre}'))
+  const editor = await readFile(new URL('../editor-manzanas.html', import.meta.url), 'utf8')
+  assert.equal((editor.match(/\/iconos-territorios\/sprite\.svg#/g) ?? []).length, 0, 'ninguna referencia sin versión')
+  assert.ok((editor.match(/\/iconos-territorios\/sprite\.svg\?v=%VERSION_ICONOS%#/g) ?? []).length > 30)
+})
+
 test('el manifest usa un ícono maskable propio, con la marca achicada', async () => {
   const config = await readFile(new URL('../vite.config.ts', import.meta.url), 'utf8')
   assert.match(config, /src: `pwa\/icon-maskable-512\.png\?v=\$\{versionDeLaMarca\}`,[\s\S]*?purpose: 'maskable'/)

@@ -11,6 +11,8 @@ type IconoProps = Omit<SVGProps<SVGSVGElement>, 'title'> & {
  * La aplicación usa el sprite propio de Territorios. El símbolo vive en
  * public para que también lo pueda consumir el editor de mapas y mantiene
  * currentColor, así cada pantalla decide su contraste sin duplicar dibujos.
+ * La dirección lleva la versión del sprite: con uno viejo guardado en el
+ * navegador, los íconos que se suman se verían vacíos.
  */
 export function Icono({
   nombre,
@@ -31,7 +33,7 @@ export function Icono({
       role={titulo ? 'img' : undefined}
       focusable="false"
     >
-      <use href={`/iconos-territorios/sprite.svg#${nombre}`} />
+      <use href={`/iconos-territorios/sprite.svg?v=${__VERSION_ICONOS__}#${nombre}`} />
     </svg>
   )
 }
