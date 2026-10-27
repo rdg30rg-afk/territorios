@@ -2454,13 +2454,16 @@ if (!territorios.size && (baseLeida || borradorEstado === 'sin_sesion')) {
 
    Hasta hoy las caras no existian en el editor. Se calculaban al cargar
    el dibujo en la base y el que dibujaba nunca las veia: de 605
-   manzanas, 400 daban 4 caras y 205 daban otra cosa, sin forma de saber
-   cuales estaban mal ni de corregirlas.
+   manzanas, 413 dan 4 caras y 192 dan otra cosa, sin forma de saber
+   cuales estaban mal ni de corregirlas. (Con la diferencia de angulos
+   vieja eran 400 y 205: ver scripts/informe-caras-afectadas.mjs.)
 
-   Este calculo es UNA COPIA EXACTA del de scripts/cargar-geometrias-y-
-   lados.mjs y del de la vista del hermano. Si se separan, el editor
+   Este calculo es el de src/features/map-editor/geometry/blockGeometry.ts,
+   que es el que importa scripts/cargar-geometrias-y-lados.mjs para cargar
+   la base, y el de la vista del hermano. Si se separan, el editor
    muestra una cosa y la base guarda otra, y la cobertura apunta a otra
-   calle. Cualquier cambio va en los tres.
+   calle. Cualquier cambio va en los tres, y tests/caras-paridad.test.mjs
+   corre los tres sobre las 605 manzanas para que no se separen.
    ==================================================================== */
 
 const TOL_GRADOS = 25
@@ -2470,7 +2473,14 @@ const mts = (a, b) =>
   Math.hypot((b[1] - a[1]) * Math.cos((a[0] * Math.PI) / 180) * 111320, (b[0] - a[0]) * 110540)
 const rmb = (a, b) =>
   (Math.atan2(b[0] - a[0], (b[1] - a[1]) * Math.cos((a[0] * Math.PI) / 180)) * 180) / Math.PI
-const difAng = (x, y) => Math.abs((((x - y) + 180) % 360) - 180)
+// Siempre entre 0 y 180. La formula vieja, Math.abs((((x - y) + 180) % 360)
+// - 180), daba 356 en vez de 4 para +178 y -178 porque % conserva el signo.
+// Misma forma que angleDifference (blockGeometry.ts) y difAngulo (vista del
+// hermano); tests/caras-paridad.test.mjs las corre juntas.
+const difAng = (a, b) => {
+  const d = Math.abs(a - b) % 360
+  return d > 180 ? 360 - d : d
+}
 
 function anilloLatLng (geom) {
   const anillo = geom.coordinates[0].map(([x, y]) => [y, x])

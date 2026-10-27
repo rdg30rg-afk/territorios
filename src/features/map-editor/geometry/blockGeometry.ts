@@ -61,8 +61,15 @@ function bearingBetween(a: LatLng, b: LatLng) {
   )
 }
 
-function angleDifference(a: number, b: number) {
-  return Math.abs((((a - b) + 180) % 360) - 180)
+// Diferencia entre dos rumbos, siempre entre 0 y 180. La fórmula anterior,
+// `Math.abs((((a - b) + 180) % 360) - 180)`, daba 356 en vez de 4 para +178 y
+// -178 grados porque `%` en JS conserva el signo, y partía las cuadras que
+// cruzan el corte de +/-180. La misma función, con esta misma forma, está en
+// editor-manzanas.html (`difAng`) y en vista-hermano.html (`difAngulo`):
+// tests/caras-paridad.test.mjs las corre juntas.
+export function angleDifference(a: number, b: number) {
+  const d = Math.abs(a - b) % 360
+  return d > 180 ? 360 - d : d
 }
 
 function groupLength(points: LatLng[], group: number[]) {
