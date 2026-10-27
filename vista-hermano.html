@@ -525,10 +525,12 @@ function frasePlazo () {
 }
 
 // ------------------------------------------------- lados de una manzana
-// Los poligonos dibujados a mano tienen de 4 a 59 vertices. Un "lado" no es
+// Los poligonos dibujados a mano tienen de 3 a 275 vertices (sin contar el
+// punto de cierre; 20 de las 605 pasan de 59). Un "lado" no es
 // un segmento: es la tira de segmentos casi colineales que dan la vuelta a
 // una misma calle. Con 25 grados de tolerancia, 413 de las 605 manzanas dan
-// exactamente 4 lados.
+// exactamente 4 lados (eran 400 con la diferencia de angulos vieja:
+// scripts/informe-caras-afectadas.mjs).
 const TOL_GRADOS = 25
 const LARGO_MINIMO = 12   // metros: por debajo de eso es un recorte, no una calle
 
@@ -538,7 +540,14 @@ function metros (a, b) {
 function rumbo (a, b) {
   return Math.atan2(b[0] - a[0], (b[1] - a[1]) * Math.cos(a[0] * Math.PI / 180)) * 180 / Math.PI
 }
-const difAngulo = (x, y) => Math.abs(((x - y) + 180) % 360 - 180)
+// Siempre entre 0 y 180. La formula vieja, Math.abs(((x - y) + 180) % 360 -
+// 180), daba 356 en vez de 4 para +178 y -178 porque % conserva el signo.
+// Misma forma que angleDifference (blockGeometry.ts) y difAng (el editor);
+// tests/caras-paridad.test.mjs las corre juntas.
+const difAngulo = (a, b) => {
+  const d = Math.abs(a - b) % 360
+  return d > 180 ? 360 - d : d
+}
 
 const cacheLados = new Map()
 function ladosDe (mz) {
