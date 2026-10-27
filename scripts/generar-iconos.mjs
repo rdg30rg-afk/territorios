@@ -50,7 +50,16 @@ async function main() {
       ])
       console.log(`  ${icono.archivo} (${icono.tamaño} px)`)
     }
-    console.log('  favicon.svg')
+    // favicon.ico: algunos navegadores, Safari y los marcadores lo piden aunque
+    // la página declare el SVG. Sin él, el servidor contestaba la app en HTML.
+    const origen = join(temporal, 'favicon.svg')
+    await writeFile(origen, FAVICON)
+    await promisify(execFile)('magick', [
+      '-background', 'none', '-density', '576', origen,
+      '-define', 'icon:auto-resize=48,32,16',
+      join(PUBLICO, 'favicon.ico'),
+    ])
+    console.log('  favicon.svg y favicon.ico')
   } finally {
     await rm(temporal, { recursive: true, force: true })
   }

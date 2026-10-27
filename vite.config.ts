@@ -1,7 +1,26 @@
+import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+
+// Los íconos no llevan hash en el nombre, y el navegador y la CDN de Hostinger
+// los guardan una semana: al cambiar la marca se seguía viendo la vieja. Su
+// dirección lleva entonces `?v=` con un resumen de su contenido, que cambia
+// solo cuando se regeneran (scripts/generar-iconos.mjs).
+const ICONOS_DE_LA_MARCA = [
+  'favicon.svg',
+  'favicon.ico',
+  'pwa/icon-180.png',
+  'pwa/icon-192.png',
+  'pwa/icon-512.png',
+  'pwa/icon-maskable-512.png',
+]
+const versionDeLaMarca = ICONOS_DE_LA_MARCA.reduce(
+  (resumen, ruta) => resumen.update(readFileSync(resolve(__dirname, 'public', ruta))),
+  createHash('sha256'),
+).digest('hex').slice(0, 10)
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -22,6 +41,13 @@ export default defineConfig({
   },
   plugins: [
     react(),
+    {
+      name: 'version-de-la-marca',
+      transformIndexHtml: {
+        order: 'pre',
+        handler: (html) => html.replaceAll('%VERSION_MARCA%', versionDeLaMarca),
+      },
+    },
     VitePWA({
       // "prompt": el service worker nuevo se instala pero queda esperando.
       // Con "autoUpdate" (+ skipWaiting + clientsClaim) una publicación le
@@ -33,7 +59,7 @@ export default defineConfig({
       // Sin script inyectado: el registro lo hace AvisoActualizacion con
       // `virtual:pwa-register/react`, para poder avisar y esperar.
       injectRegister: false,
-      includeAssets: ['favicon.svg', 'icons.svg', 'pwa/icon-180.png'],
+      includeAssets: ['favicon.svg', 'favicon.ico', 'icons.svg', 'pwa/icon-180.png'],
       manifest: {
         name: 'Territorios San Juan',
         short_name: 'Territorios',
@@ -48,24 +74,24 @@ export default defineConfig({
         orientation: 'portrait-primary',
         icons: [
           {
-            src: 'pwa/icon-192.png',
+            src: `pwa/icon-192.png?v=${versionDeLaMarca}`,
             sizes: '192x192',
             type: 'image/png',
           },
           {
-            src: 'pwa/icon-512.png',
+            src: `pwa/icon-512.png?v=${versionDeLaMarca}`,
             sizes: '512x512',
             type: 'image/png',
           },
           {
-            // Las manzanas más chicas, dentro del círculo que recorta Android.
-            src: 'pwa/icon-maskable-512.png',
+            // La marca más chica, dentro del círculo que recorta Android.
+            src: `pwa/icon-maskable-512.png?v=${versionDeLaMarca}`,
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable',
           },
           {
-            src: 'pwa/icon-180.png',
+            src: `pwa/icon-180.png?v=${versionDeLaMarca}`,
             sizes: '180x180',
             type: 'image/png',
           },

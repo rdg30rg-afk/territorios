@@ -35,9 +35,23 @@ test('el favicon publicado es el que sale de marca.ts', async () => {
   assert.equal(await readFile(publico('favicon.svg'), 'utf8'), simboloSvg({ trazo: 4.5 }))
 })
 
+test('los íconos van con versión, para que el navegador y la CDN no muestren los viejos', async () => {
+  const index = await readFile(new URL('../index.html', import.meta.url), 'utf8')
+  for (const ruta of ['/favicon.ico', '/favicon.svg', '/pwa/icon-180.png']) {
+    assert.ok(index.includes(`href="${ruta}?v=%VERSION_MARCA%"`), ruta)
+  }
+  const editor = await readFile(new URL('../editor-manzanas.html', import.meta.url), 'utf8')
+  assert.ok(editor.includes('href="/favicon.svg?v=%VERSION_MARCA%"'))
+  const config = await readFile(new URL('../vite.config.ts', import.meta.url), 'utf8')
+  assert.equal((config.match(/src: `pwa\/[a-z0-9-]+\.png\?v=\$\{versionDeLaMarca\}`/g) ?? []).length, 4)
+  // favicon.ico es un ICO de verdad, no la app en HTML.
+  const ico = await readFile(publico('favicon.ico'))
+  assert.deepEqual([...ico.subarray(0, 4)], [0, 0, 1, 0])
+})
+
 test('el manifest usa un ícono maskable propio, con la marca achicada', async () => {
   const config = await readFile(new URL('../vite.config.ts', import.meta.url), 'utf8')
-  assert.match(config, /src: 'pwa\/icon-maskable-512\.png',[\s\S]*?purpose: 'maskable'/)
+  assert.match(config, /src: `pwa\/icon-maskable-512\.png\?v=\$\{versionDeLaMarca\}`,[\s\S]*?purpose: 'maskable'/)
   assert.match(simboloSvg({ escala: 0.8 }), /scale\(0\.8\)/)
   for (const ruta of ['pwa/icon-180.png', 'pwa/icon-192.png', 'pwa/icon-512.png', 'pwa/icon-maskable-512.png']) {
     const png = await readFile(publico(ruta))

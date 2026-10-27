@@ -2,8 +2,11 @@
 <html lang="es-AR" data-theme="hermano">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="apple-touch-icon" href="/pwa/icon-180.png" />
+    <!-- %VERSION_MARCA% lo reemplaza vite.config.ts: cambia con los íconos,
+         para que el navegador y la CDN no sigan mostrando los viejos. -->
+    <link rel="icon" href="/favicon.ico?v=%VERSION_MARCA%" sizes="48x48" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=%VERSION_MARCA%" />
+    <link rel="apple-touch-icon" href="/pwa/icon-180.png?v=%VERSION_MARCA%" />
     <!-- Urbanist: la pide vista-hermano.css en ocho reglas y no estaba
          cargada en ningun lado, asi que la vista del hermano venia cayendo
          en la fuente del sistema. Va como <link> y no como @import de CSS
