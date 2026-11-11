@@ -102,3 +102,92 @@ test('fallo al guardar color conserva el cambio pendiente',async()=>{
   const f=fixture({color:true,fail:true});await f.button.onclick()
   assert.equal(f.territorios.get('a').colorBase,'#407dfe')
 })
+
+// La base real: rechaza el lote entero si un número no existe o se repite, y
+// contesta la lista de nombres cuando se la pide.
+function fixtureBase({ base, abierto, territorios: lista, tocados: tocadosIniciales, conManzanas, nombresFallan = false }) {
+  const button = {}, calls = [], dialogs = [], avisos = []
+  const manzanas = new Map(conManzanas.map((id, i) => ['m' + i, { territorio: id, letra: 'A', geom: { type: 'Polygon', coordinates: [] } }]))
+  const territorios = new Map(lista.map((numero) => [numero, { id: numero, numero }]))
+  const tocados = new Set(tocadosIniciales)
+  const context = vm.createContext({
+    document: { getElementById: () => button }, BD_URL: 'https://dev.invalid', BD_KEY: 'test',
+    tokenDeSesion: () => 'test', activo: abierto, territorios, historial: [], rehechos: [],
+    manzanas, tocados, carasDeMz: () => [], centroDe: () => [0, 0], areaM2De: () => 0,
+    avisar: (texto) => avisos.push(texto), guardar: () => {}, traerDeLaBase: async () => {},
+    dialogo: async (options) => { dialogs.push(options); return true },
+    fetch: async (url, options = {}) => {
+      if (!options.body) {
+        calls.push({ url })
+        if (nombresFallan) throw Error('sin conexión')
+        return { ok: true, json: async () => base.map((name) => ({ name })) }
+      }
+      const body = JSON.parse(options.body); calls.push({ url, body })
+      if (url.endsWith('revisar_publicacion_editor')) {
+        if (body.p_nombres.some((n) => base.filter((b) => b === n).length !== 1)) {
+          return { ok: false, text: async () => JSON.stringify({ message: 'Territorio inexistente o ambiguo' }) }
+        }
+        return { ok: true, text: async () => JSON.stringify(body.p_nombres.map((nombre, i) => ({ nombre, id: 'uuid-' + nombre, version: i + 1 }))) }
+      }
+      return { ok: true, text: async () => JSON.stringify(body.p_territorios.map(() => ({ manzanas: 1, lados: 0 }))) }
+    },
+  })
+  vm.runInContext(source, context)
+  return { button, calls, dialogs, avisos, tocados }
+}
+
+test('un vacío que la base nunca tuvo queda afuera y no traba al resto', async () => {
+  const f = fixtureBase({ base: ['69', '72'], abierto: '72', territorios: ['69', '72', '73'],
+    tocados: ['72', '73', '69'], conManzanas: ['72', '69'] })
+  await f.button.onclick()
+  assert.deepEqual(f.calls.map((c) => c.url.split('/').pop()),
+    ['revisar_publicacion_editor', 'territorios?select=name', 'revisar_publicacion_editor', 'publicar_territorios_atomico'])
+  assert.deepEqual(f.calls[2].body.p_nombres, ['72', '69'])
+  assert.deepEqual(f.calls[3].body.p_territorios.map((x) => x.nombre), ['72', '69'])
+  assert.match(f.dialogs[0].titulo, /Guardar 2 territorios/)
+  assert.match(f.dialogs[0].cuerpo, /El territorio <b>73<\/b> queda afuera: está vacío y la base nunca lo tuvo/)
+  assert.doesNotMatch(f.dialogs[0].cuerpo, /sin manzanas vigentes/)
+  assert.equal(f.tocados.size, 0)
+  assert.equal(f.button.disabled, false)
+})
+
+test('un territorio con manzanas que la base no tiene frena el lote y dice cuál es', async () => {
+  const f = fixtureBase({ base: ['72'], abierto: '72', territorios: ['72', '74'],
+    tocados: ['72', '74'], conManzanas: ['72', '74'] })
+  await f.button.onclick()
+  assert.equal(f.calls.length, 2)
+  assert.equal(f.calls.some((c) => /publicar/.test(c.url)), false)
+  assert.match(f.dialogs[0].titulo, /Revisá la publicación/)
+  assert.match(f.dialogs[0].cuerpo, /El territorio <b>74<\/b> todavía no existe en la base/)
+  assert.match(f.dialogs[0].cuerpo, /No se envió ninguna publicación/)
+  assert.equal(f.tocados.size, 2)
+  assert.equal(f.button.disabled, false)
+})
+
+test('el abierto vacío que la base no tiene sugiere guardar desde otro', async () => {
+  const f = fixtureBase({ base: ['72'], abierto: '73', territorios: ['72', '73'],
+    tocados: ['72', '73'], conManzanas: ['72'] })
+  await f.button.onclick()
+  assert.equal(f.calls.some((c) => /publicar/.test(c.url)), false)
+  assert.match(f.dialogs[0].cuerpo, /El territorio <b>73<\/b> todavía no existe en la base/)
+  assert.match(f.dialogs[0].cuerpo, /abrí uno de ellos y guardá desde ahí/)
+  assert.equal(f.tocados.size, 2)
+})
+
+test('un número repetido en la base se nombra en vez del error genérico', async () => {
+  const f = fixtureBase({ base: ['72', '72'], abierto: '72', territorios: ['72'],
+    tocados: ['72'], conManzanas: ['72'] })
+  await f.button.onclick()
+  assert.equal(f.calls.some((c) => /publicar/.test(c.url)), false)
+  assert.match(f.dialogs[0].cuerpo, /El territorio <b>72<\/b> figura más de una vez en la base/)
+})
+
+test('si no se puede leer la base queda el error original y no se publica', async () => {
+  const f = fixtureBase({ base: ['72'], abierto: '72', territorios: ['72', '73'],
+    tocados: ['72', '73'], conManzanas: ['72'], nombresFallan: true })
+  await f.button.onclick()
+  assert.equal(f.calls.some((c) => /publicar/.test(c.url)), false)
+  assert.match(f.dialogs[0].cuerpo, /^Territorio inexistente o ambiguo/)
+  assert.equal(f.tocados.size, 2)
+  assert.equal(f.button.disabled, false)
+})

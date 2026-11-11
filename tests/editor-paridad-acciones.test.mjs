@@ -172,8 +172,8 @@ test('la publicación revisa versiones y envía un lote atómico completo', () =
   assert.ok(publishAt >= 0, 'falta publicar_territorios_atomico')
   assert.ok(revisionAt < publishAt, 'la revisión de versión debe ocurrir antes de publicar')
 
-  assertSource(/const capturas = aPublicar\.map\([\s\S]*?JSON\.parse\(JSON\.stringify\(prepararTerritorio\(x\)\)\)/)
-  assertSource(/const versiones = await rpcEditor\('revisar_publicacion_editor'/)
+  assertSource(/(?:const|let) capturas = aPublicar\.map\([\s\S]*?JSON\.parse\(JSON\.stringify\(prepararTerritorio\(x\)\)\)/)
+  assertSource(/versiones = await rpcEditor\('revisar_publicacion_editor'/)
   assertSource(/version_esperada:\s*revision\.version/)
   assertSource(/const lote = capturas\.map\([\s\S]*?manzanas: x\.manzanas/)
   assertSource(/const resultados = renumeraciones\.length \|\| colores\.length[\s\S]*?rpcEditor\('publicar_editor_con_renumeracion'[\s\S]*?rpcEditor\('publicar_territorios_atomico', \{ p_territorios: lote \}, token\)/)
@@ -198,5 +198,5 @@ test('mover una manzana marca explícitamente origen y destino para el mismo lot
 
   assertSource(/const arrastrados = \[\.\.\.tocados\][\s\S]*?id !== activo/)
   assertSource(/const vaciados = \[\.\.\.tocados\][\s\S]*?!mzDe\(id\)\.length/)
-  assertSource(/const aPublicar = \[\.\.\.new Map\(\[t, \.\.\.arrastrados, \.\.\.vaciados, \.\.\.renumerados\]/)
+  assertSource(/(?:const|let) aPublicar = \[\.\.\.new Map\(\[t, \.\.\.arrastrados, \.\.\.vaciados, \.\.\.renumerados\]/)
 })

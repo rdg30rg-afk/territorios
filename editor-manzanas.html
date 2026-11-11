@@ -3304,8 +3304,8 @@ document.getElementById('bGuardarBD').onclick = async () => {
     .map((id) => territorios.get(id))
 
   const renumerados = [...territorios.values()].filter(x => x.numeroBase != null || x.colorBase != null)
-  const aPublicar = [...new Map([t, ...arrastrados, ...vaciados, ...renumerados].map(x => [x.id, x])).values()]
-  const vacios = aPublicar.filter((x) => !mzDe(x.id).length)
+  let aPublicar = [...new Map([t, ...arrastrados, ...vaciados, ...renumerados].map(x => [x.id, x])).values()]
+  let vacios = aPublicar.filter((x) => !mzDe(x.id).length)
   publicacionEnVuelo = true
   const boton = document.getElementById('bGuardarBD')
   boton.disabled = true
@@ -3313,14 +3313,28 @@ document.getElementById('bGuardarBD').onclick = async () => {
   try {
   // Copia profunda antes de abrir el diálogo: nunca enviar ediciones posteriores
   // que la persona todavía no confirmó.
-  const capturas = aPublicar.map((x) => ({
+  let capturas = aPublicar.map((x) => ({
     id: x.id, nombre: String(x.numero), nombreBase: String(x.numeroBase ?? x.numero),
     color: x.colorBase != null ? x.color : null,
     manzanas: JSON.parse(JSON.stringify(prepararTerritorio(x))),
   }))
-  const versiones = await rpcEditor('revisar_publicacion_editor', {
-    p_nombres: capturas.map((x) => x.nombreBase),
-  }, token)
+  // Vacíos que la base nunca tuvo: no hay dibujo que guardar ni que retirar.
+  let omitidos = []
+  let versiones
+  try {
+    versiones = await rpcEditor('revisar_publicacion_editor', {
+      p_nombres: capturas.map((x) => x.nombreBase),
+    }, token)
+  } catch (e) {
+    omitidos = await vaciosQueLaBaseNoTiene(capturas, t.id, token, e)
+    const fuera = new Set(omitidos.map((x) => x.id))
+    capturas = capturas.filter((x) => !fuera.has(x.id))
+    aPublicar = aPublicar.filter((x) => !fuera.has(x.id))
+    vacios = vacios.filter((x) => !fuera.has(x.id))
+    versiones = await rpcEditor('revisar_publicacion_editor', {
+      p_nombres: capturas.map((x) => x.nombreBase),
+    }, token)
+  }
   const lote = capturas.map((x) => {
     const revision = versiones.find((v) => v.nombre.toLowerCase() === x.nombreBase.toLowerCase())
     if (!revision || !Number.isInteger(revision.version)) throw new Error('No se pudo verificar la versión del territorio ' + x.nombre)
@@ -3336,7 +3350,13 @@ document.getElementById('bGuardarBD').onclick = async () => {
     titulo: aPublicar.length > 1
       ? 'Guardar ' + aPublicar.length + ' territorios'
       : 'Guardar el territorio ' + t.numero,
-    cuerpo: (colores.length ? 'Se guarda también el color de ' + colores.map(x => 'territorio ' + x.nombre).join(', ') + '.<br><br>' : '') + (renumeraciones.length ? 'Cambios de número: <b>' + renumeraciones.map(x => x.nombre_anterior + ' → ' + x.nombre_nuevo).join('</b>, <b>') + '</b>.<br><br>' : '') + 'Los hermanos van a ver el territorio <b>' + t.numero + '</b> con las <b>' +
+    cuerpo: (omitidos.length
+      ? (omitidos.length === 1 ? 'El territorio <b>' : 'Los territorios <b>') +
+        omitidos.map((x) => x.nombre).join('</b>, <b>') + '</b> ' +
+        (omitidos.length === 1 ? 'queda' : 'quedan') + ' afuera: está' + (omitidos.length === 1 ? '' : 'n') +
+        ' vacío' + (omitidos.length === 1 ? '' : 's') + ' y la base nunca ' + (omitidos.length === 1 ? 'lo' : 'los') +
+        ' tuvo, así que no hay nada que guardar.<br><br>'
+      : '') + (colores.length ? 'Se guarda también el color de ' + colores.map(x => 'territorio ' + x.nombre).join(', ') + '.<br><br>' : '') + (renumeraciones.length ? 'Cambios de número: <b>' + renumeraciones.map(x => x.nombre_anterior + ' → ' + x.nombre_nuevo).join('</b>, <b>') + '</b>.<br><br>' : '') + 'Los hermanos van a ver el territorio <b>' + t.numero + '</b> con las <b>' +
             propias.length + '</b> manzanas que dibujaste y sus <b>' + caras + ' cuadras</b>.<br><br>' +
             (arrastrados.length
               ? 'Moviste manzanas entre territorios, así que también se guarda ' +
@@ -3373,6 +3393,13 @@ document.getElementById('bGuardarBD').onclick = async () => {
       }
       if (actual && String(actual.numero) === captura.nombre &&
           JSON.stringify(prepararTerritorio(actual)) === JSON.stringify(captura.manzanas)) tocados.delete(captura.id)
+    }
+    // Los que quedaron afuera ya no tienen nada pendiente, salvo que hayan
+    // cambiado mientras se confirmaba.
+    for (const omitido of omitidos) {
+      const actual = territorios.get(omitido.id)
+      if (actual && String(actual.numero) === omitido.nombre && actual.numeroBase == null &&
+          actual.colorBase == null && !prepararTerritorio(actual).length) tocados.delete(omitido.id)
     }
     // El historial previo referencia los nombres anteriores ya publicados.
     if (renumeraciones.length || colores.length) { historial.length = 0; rehechos.length = 0 }
@@ -3425,6 +3452,53 @@ function prepararTerritorio (t) {
   })
 
   return cuerpo
+}
+
+// La base rechaza el lote entero cuando un número no existe o está repetido,
+// y no dice cuál. Se le pregunta qué números tiene para nombrar el problema.
+// Un territorio vacío que la base nunca tuvo, sin número ni color nuevo y que
+// no es el abierto, no tiene nada que guardar ni que retirar: se devuelve para
+// dejarlo afuera en vez de trabar al resto. Cualquier otro faltante frena el
+// lote con su número a la vista. Si no aparece nada, sigue el error original.
+async function vaciosQueLaBaseNoTiene (capturas, idAbierto, token, error) {
+  let filas
+  try {
+    const r = await fetch(`${BD_URL}/rest/v1/territorios?select=name`, {
+      headers: { apikey: BD_KEY, Authorization: 'Bearer ' + token },
+    })
+    if (!r.ok) throw error
+    filas = await r.json()
+  } catch (e) { throw error }
+  if (!Array.isArray(filas)) throw error
+
+  const veces = new Map()
+  for (const f of filas) {
+    const clave = String(f.name).toLowerCase()
+    veces.set(clave, (veces.get(clave) || 0) + 1)
+  }
+  const uno = (xs) => xs.length === 1
+  const nombres = (xs) => '<b>' + xs.map((x) => x.nombreBase === x.nombre
+    ? x.nombre : x.nombre + ' (antes ' + x.nombreBase + ')').join('</b>, <b>') + '</b>'
+
+  const repetidos = capturas.filter((x) => veces.get(x.nombreBase.toLowerCase()) > 1)
+  if (repetidos.length) {
+    throw new Error((uno(repetidos) ? 'El territorio ' : 'Los territorios ') + nombres(repetidos) +
+      (uno(repetidos) ? ' figura' : ' figuran') + ' más de una vez en la base. Hay que dejar uno solo antes de guardar.')
+  }
+
+  const faltan = capturas.filter((x) => !veces.has(x.nombreBase.toLowerCase()))
+  const sinNadaQueGuardar = (x) => !x.manzanas.length && x.nombreBase === x.nombre && !x.color
+  const traban = faltan.filter((x) => x.id === idAbierto || !sinNadaQueGuardar(x))
+  if (traban.length) {
+    const abiertoVacio = traban.length === 1 && traban[0].id === idAbierto &&
+      sinNadaQueGuardar(traban[0]) && capturas.length > 1
+    throw new Error((uno(traban) ? 'El territorio ' : 'Los territorios ') + nombres(traban) +
+      (uno(traban) ? ' todavía no existe' : ' todavía no existen') + ' en la base, y la base solo acepta ' +
+      'dibujos de territorios que ya tiene.' +
+      (abiertoVacio ? ' Está vacío: para guardar los que tocaste, abrí uno de ellos y guardá desde ahí.' : ''))
+  }
+  if (!faltan.length) throw error
+  return faltan
 }
 
 async function rpcEditor (nombre, cuerpo, token) {
