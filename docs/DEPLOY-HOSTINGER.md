@@ -1,5 +1,38 @@
 # Desarrollo en Hostinger
 
+## Publicación del 11 de noviembre de 2026 — guardar sin trabarse con un territorio que la base no tiene
+
+Publicado el tag `publicacion-2026-11-11` (commit `88fc5a2`) con
+`scripts/publicar-hostinger.mjs --ejecutar --sin-podar`, desde un worktree
+limpio. Sin migraciones.
+
+**El problema.** Al guardar el 72 la base rechazaba el lote con "Territorio
+inexistente o ambiguo", sin decir cuál. Era el 73: existe solo en el editor
+(la base tiene del 1 al 72), quedó vacío al mover sus manzanas y viajaba en el
+lote como tocado. Por eso tampoco se guardaban el 72 ni el 69.
+
+**El arreglo.** Si la revisión falla, el editor pide los nombres de la base:
+
+- deja afuera los vacíos que la base nunca tuvo y lo dice al confirmar;
+- frena el lote nombrando el territorio que falta o que está repetido;
+- si no puede leer la base, muestra el error original.
+
+Si todos existen, el guardado no cambia.
+
+**Respaldo previo:**
+`/home/u800479702/backups/congregacion-dev-20261111-publicacion-2026-11-11-pre`.
+
+**Verificación:**
+
+- 120 de 120 archivos coinciden; `/`, `/mapas` y `/login` responden 200.
+- `version.json` trae el commit y el tag.
+- El editor publicado (`assets/editor-WEFu8aIn.js`) trae el arreglo y carga
+  sin errores en consola.
+
+**Pendiente:** del 73 al 80 siguen existiendo solo en el editor. "Insertar
+después" corre números sin guardar el número anterior y puede volver a armar
+un lote con un territorio que la base no reconoce.
+
 ## Publicaciones del 27 de octubre de 2026 (e y f) — iconografía completa
 
 **(e)** Tag `publicacion-2026-10-27e` (commit `c8e738d`).
