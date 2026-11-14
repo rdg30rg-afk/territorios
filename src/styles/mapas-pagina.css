@@ -398,3 +398,33 @@
   flex-wrap: wrap;
   margin-bottom: 0.75rem;
 }
+
+/* Vista de solo lectura: números y letras iguales a los del editor
+   (editor-manzanas.html, .terr-num y .manz-lbl). */
+.mapas-pagina .terr-num {
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  font-weight: 700;
+  font-size: 15px;
+  color: #fff;
+  letter-spacing: -0.4px;
+  border-radius: 999px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
+  border: 2px solid rgba(255, 255, 255, 0.9);
+}
+.mapas-pagina .terr-num.suave {
+  opacity: 0.62;
+  font-size: 12px;
+  border-width: 1.5px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+.mapas-pagina .manz-lbl {
+  display: grid;
+  place-items: center;
+  font-weight: 600;
+  font-size: 10px;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}

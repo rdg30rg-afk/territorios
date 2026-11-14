@@ -213,6 +213,98 @@ function getTerritoryColor(index: number, color?: string | null) {
   return color ?? TERRITORY_COLORS[index % TERRITORY_COLORS.length]
 }
 
+/* Vista de solo lectura: se dibuja como el mapa del editor
+   (editor-manzanas.html): cada manzana con el color de su territorio
+   (relleno .60 de lejos y .40 de cerca, borde de 1,6 px; el territorio
+   abierto .68 y 2,5 px), el número del territorio en una bolita sobre su
+   manzana más grande, y las letras sólo desde el zoom 16 y sólo del
+   territorio abierto. */
+const ZOOM_LETRAS_LECTURA = 16
+
+function escapeHtml(texto: string) {
+  return texto.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
+}
+
+type PuntoLngLat = [number, number]
+
+/** Un punto que cae adentro del anillo: el centro del área y, si cae afuera
+ *  (manzana en L), el del cuadro que la contiene recorrido de a poco. */
+function puntoDeRotulo(anillo: PuntoLngLat[]): PuntoLngLat {
+  let area2 = 0
+  let cx = 0
+  let cy = 0
+  for (let i = 0; i < anillo.length - 1; i += 1) {
+    const [x0, y0] = anillo[i]
+    const [x1, y1] = anillo[i + 1]
+    const cruz = x0 * y1 - x1 * y0
+    area2 += cruz
+    cx += (x0 + x1) * cruz
+    cy += (y0 + y1) * cruz
+  }
+  const promedio = (): PuntoLngLat => [
+    anillo.reduce((total, p) => total + p[0], 0) / anillo.length,
+    anillo.reduce((total, p) => total + p[1], 0) / anillo.length,
+  ]
+  const dentro = (p: PuntoLngLat) => {
+    try {
+      return booleanPointInPolygon(point(p), polygon([anillo]))
+    } catch {
+      return true
+    }
+  }
+  if (Math.abs(area2) > 1e-18) {
+    const centro: PuntoLngLat = [cx / (3 * area2), cy / (3 * area2)]
+    if (dentro(centro)) return centro
+  }
+  const medio = promedio()
+  if (dentro(medio)) return medio
+  return anillo[0]
+}
+
+/** Dónde va el número de un territorio: sobre su manzana más grande. */
+function puntoDeNumero(anillos: PuntoLngLat[][]): PuntoLngLat | null {
+  let mayor: PuntoLngLat[] | null = null
+  let mayorArea = -1
+  for (const anillo of anillos) {
+    if (anillo.length < 4) continue
+    let area2 = 0
+    for (let i = 0; i < anillo.length - 1; i += 1) {
+      area2 += anillo[i][0] * anillo[i + 1][1] - anillo[i + 1][0] * anillo[i][1]
+    }
+    const tamano = Math.abs(area2)
+    if (tamano > mayorArea) {
+      mayorArea = tamano
+      mayor = anillo
+    }
+  }
+  return mayor ? puntoDeRotulo(mayor) : null
+}
+
+/** El encuadre inicial va por el grueso de los territorios: uno alejado del
+ *  resto (hay uno al noreste) no tiene que achicar todo el mapa. */
+function encuadreDelGrueso(cajas: L.LatLngBounds[]): L.LatLngBounds | null {
+  const validas = cajas.filter((caja) => caja.isValid())
+  if (validas.length === 0) return null
+  const centros = validas.map((caja) => caja.getCenter())
+  const mediana = (valores: number[]) => {
+    const orden = [...valores].sort((a, b) => a - b)
+    return orden[Math.floor(orden.length / 2)]
+  }
+  const lat0 = mediana(centros.map((c) => c.lat))
+  const lng0 = mediana(centros.map((c) => c.lng))
+  const escala = Math.cos((lat0 * Math.PI) / 180)
+  const distancias = centros.map((c) => Math.hypot(c.lat - lat0, (c.lng - lng0) * escala))
+  const ordenadas = [...distancias].sort((a, b) => a - b)
+  // Los más cercanos al centro: el 85 %. Los más alejados se ven moviendo el
+  // mapa; no tienen por qué decidir el zoom con el que se abre.
+  const limite = Math.max(ordenadas[Math.min(ordenadas.length - 1, Math.floor(ordenadas.length * 0.85))] ?? 0, 0.005)
+  const resultado = new L.LatLngBounds([])
+  validas.forEach((caja, i) => {
+    if (distancias[i] <= limite) resultado.extend(caja)
+  })
+  return resultado.isValid() ? resultado : null
+}
+
 function geometryToLayer(
   geometry: TerritoryPolygon,
   options: L.GeoJSONOptions = {},
@@ -984,6 +1076,10 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false, 
   const candidateLayerRef = useRef<L.LayerGroup | null>(null)
   const editorBlockLayersRef = useRef(new Map<string, L.Polygon>())
   const blockLayerRef = useRef<L.LayerGroup | null>(null)
+  // Un solo lienzo para las manzanas de la vista de lectura: son miles de
+  // polígonos y como SVG el mapa se arrastra a tirones.
+  const lienzoLecturaRef = useRef<L.Canvas | null>(null)
+  const esAdmin = canOpenAdminPanel(profile, contexto)
   const snapGuideLayerRef = useRef<L.LayerGroup | null>(null)
   const overlapLayerRef = useRef<L.LayerGroup | null>(null)
   const drawControlRef = useRef<L.Control.Draw | null>(null)
@@ -1469,6 +1565,14 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false, 
   // `territoriesWithIndex` (`getTerritoryColor(index)`), así que reordenar
   // ese arreglo le cambiaría el color a los territorios que no lo tienen
   // guardado.
+  const manzanasPorTerritorio = useMemo(() => {
+    const cuenta = new Map<string, number>()
+    for (const bloque of territoryBlocks) {
+      cuenta.set(bloque.territory_id, (cuenta.get(bloque.territory_id) ?? 0) + 1)
+    }
+    return cuenta
+  }, [territoryBlocks])
+
   const filteredTerritories = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase()
 
@@ -1602,6 +1706,19 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false, 
           return
         }
 
+        if (!editingEnabled) {
+          // Solo lectura: el contorno no se dibuja (lo que se ve son las
+          // manzanas, ver renderBlockMarkers); queda sin pintar nada para
+          // medir el encuadre.
+          const contorno = geometryToLayer(geometry, {
+            interactive: false,
+            style: { stroke: false, fill: false },
+          })
+          contorno.addTo(existingTerritoryLayer)
+          if (isSelected) selectedBounds = contorno.getBounds()
+          return
+        }
+
         const existingLayer = geometryToLayer(geometry, {
           style: {
             color: territory.color,
@@ -1667,6 +1784,19 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false, 
         return
       }
 
+      if (fitMode === 'all' && !editingEnabled) {
+        const cajas: L.LatLngBounds[] = []
+        existingTerritoryLayer.eachLayer((layer) => {
+          if ('getBounds' in layer) cajas.push((layer as L.FeatureGroup).getBounds())
+        })
+        // El contenedor puede haber cambiado de tamaño desde que nació el mapa.
+        map.invalidateSize()
+        const grueso = encuadreDelGrueso(cajas)
+        if (grueso) fitMapToBounds(grueso, 15)
+        else map.setView(SAN_JUAN_CENTER, 11)
+        return
+      }
+
       if (fitMode === 'all') {
         const bounds = new L.LatLngBounds([])
 
@@ -1693,6 +1823,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false, 
       applyEditableLayerStyle,
       currentGeometry,
       disableActiveDrawHandler,
+      editingEnabled,
       editingTerritoryId,
       fitMapToBounds,
       selectedColor,
@@ -1742,6 +1873,9 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false, 
   const formasPedidas = useRef<Set<string>>(new Set())
 
   const territoriosADibujar = useMemo(() => {
+    // Solo lectura: el editor muestra todos los territorios a la vez, a
+    // cualquier zoom, así que se piden las formas de todos de una vez.
+    if (!editingEnabled) return territories.map((territorio) => territorio.id)
     const cerca = mapZoom >= MANZANA_ZOOM
     if (!cerca && !selectedTerritoryId) return [] as string[]
 
@@ -1764,7 +1898,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false, 
     // `vistaMovida` entra a proposito: al arrastrar cambia el encuadre, que
     // Leaflet no publica como estado.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapZoom, selectedTerritoryId, territories, vistaMovida])
+  }, [editingEnabled, mapZoom, selectedTerritoryId, territories, vistaMovida])
 
   // La clave y no el arreglo: `territoriosADibujar` se recalcula en cada
   // arrastre del mapa, y con el arreglo como dependencia el efecto se
@@ -1817,6 +1951,80 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false, 
     }
 
     blockLayer.clearLayers()
+
+    if (!editingEnabled) {
+      const lienzo = (lienzoLecturaRef.current ??= L.canvas({ padding: 0.4 }))
+      const lejos = mapZoom < MANZANA_ZOOM
+      const hayLetras = mapZoom >= ZOOM_LETRAS_LECTURA
+
+      territories.forEach((territory, index) => {
+        const esActivo = territory.id === selectedTerritoryId
+        const color = getTerritoryColor(index, territory.polygon_geojson.color)
+        const formas = formasBase.get(territory.id)
+        const anillos: PuntoLngLat[][] = formas?.length
+          ? formas.map((manzana) => manzana.geom.coordinates[0])
+          // Sin formas (todavía no llegaron, o el territorio no las tiene): el
+          // contorno del territorio hace de manzana, para que se vea y se
+          // pueda tocar.
+          : territory.polygon_geojson?.coordinates?.[0]?.length
+            ? [territory.polygon_geojson.coordinates[0]]
+            : []
+
+        const estilo: L.PathOptions = esActivo
+          ? { color, weight: 2.5, fillColor: color, fillOpacity: 0.68 }
+          : { color, weight: 1.6, fillColor: color, fillOpacity: lejos ? 0.6 : 0.4 }
+
+        anillos.forEach((anillo) => {
+          const capa = L.polygon(
+            anillo.map(([lng, lat]) => [lat, lng] as [number, number]),
+            { ...estilo, renderer: lienzo },
+          )
+          capa.on('click', () => {
+            setSelectedTerritoryId(territory.id)
+            setFichaAbierta(true)
+          })
+          capa.on('mouseover', () =>
+            capa.setStyle({ weight: 3.5, fillOpacity: Math.min(0.75, (estilo.fillOpacity ?? 0.4) + 0.3) }),
+          )
+          capa.on('mouseout', () => capa.setStyle(estilo))
+          capa.addTo(blockLayer)
+        })
+
+        if (esActivo && hayLetras && formas?.length) {
+          formas.forEach((manzana) => {
+            if (!manzana.letra) return
+            const [lng, lat] = puntoDeRotulo(manzana.geom.coordinates[0])
+            L.marker([lat, lng], {
+              interactive: false,
+              icon: L.divIcon({
+                className: 'manz-lbl',
+                html: manzana.letra,
+                iconSize: [18, 18],
+                iconAnchor: [9, 9],
+              }),
+            }).addTo(blockLayer)
+          })
+        }
+
+        // El número del territorio, sobre su manzana más grande.
+        const punto = puntoDeNumero(anillos)
+        if (!punto) return
+        const lado = esActivo ? 34 : 26
+        const sobreLetra = esActivo && hayLetras && Boolean(formas?.length)
+        const subir = sobreLetra ? lado / 2 + 11 : 0
+        L.marker([punto[1], punto[0]], {
+          interactive: false,
+          zIndexOffset: esActivo ? 1000 : 0,
+          icon: L.divIcon({
+            className: '',
+            html: `<div class="terr-num${esActivo ? '' : ' suave'}" style="width:${lado}px;height:${lado}px;background:${/^#[0-9a-f]{3,8}$/i.test(color) ? color : '#407dfe'}">${escapeHtml(territory.name.trim())}</div>`,
+            iconSize: [lado, lado],
+            iconAnchor: [lado / 2, lado / 2 + subir],
+          }),
+        }).addTo(blockLayer)
+      })
+      return
+    }
 
     // Territorios que tienen forma: para esos se dibuja el poligono y se
     // omiten sus puntos, para no mostrar las dos cosas encima.
@@ -1907,6 +2115,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false, 
       marker.addTo(blockLayer)
     })
   }, [
+    editingEnabled,
     formasBase,
     mapZoom,
     selectedTerritoryId,
@@ -2359,6 +2568,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false, 
       vertexLayerRef.current = null
       candidateLayerRef.current = null
       blockLayerRef.current = null
+      lienzoLecturaRef.current = null
       snapGuideLayerRef.current = null
       overlapLayerRef.current = null
       drawControlRef.current = null
@@ -3621,11 +3831,14 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false, 
                     aria-hidden="true"
                   />
                   <strong>{territory.name}</strong>
-                  {pct === undefined ? null : pct === null ? (
-                    <small className="territory-pct sin-dato">Sin dato</small>
-                  ) : (
-                    <small className="territory-pct">{pct}%</small>
-                  )}
+                  {(() => {
+                    const manzanas = manzanasPorTerritorio.get(territory.id) ?? 0
+                    const resumen = [
+                      manzanas > 0 ? `${manzanas} ${manzanas === 1 ? 'manzana' : 'manzanas'}` : null,
+                      typeof pct === 'number' ? `${pct}%` : null,
+                    ].filter(Boolean).join(' · ')
+                    return resumen ? <small className="territory-pct">{resumen}</small> : null
+                  })()}
                 </button>
                 )
               })}
@@ -3673,6 +3886,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false, 
                     cosas que se hacen una vez cada tanto: vivian en un panel
                     propio ("Herramientas · Exportar y ver ayuda") que
                     ocupaba una columna entera al lado del mapa. */}
+                {esAdmin ? (
                 <details className="map-mas">
                   <summary aria-label="Más herramientas del mapa">
                     <Icono nombre="chevron-abajo" tamaño={18} />
@@ -3716,6 +3930,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false, 
                     </button>
                   </div>
                 </details>
+                ) : null}
               </div>
             </div>
 
