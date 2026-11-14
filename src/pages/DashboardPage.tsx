@@ -8,6 +8,8 @@ import { decirElError } from '../lib/decirElError'
 import { supabase } from '../lib/supabase'
 import '../styles/inicio-admin.css'
 import { Icono } from '../components/Icono'
+import { SalidasDeHoyYAyer, TerritoriosPersonalesTerminados } from '../components/InicioAvisos'
+import { contarSalidasIncompletas, type SalidaProxima } from '../lib/inicioAvisos.ts'
 
 const moduleLabels: Record<ModuleKey, string> = {
   mapas: 'Mapas y Territorios',
@@ -18,11 +20,14 @@ const moduleLabels: Record<ModuleKey, string> = {
   territorio_personal: 'Territorio Personal',
 }
 
-const manageableRoles: Array<{ value: ProfileRole; label: string }> = [
+// El servidor hoy solo distingue Publicador y Administrador: los otros roles
+// responden «Listo» pero no cambian nada. No se borran (falta la decision del
+// dueño); se muestran deshabilitados con su aviso.
+const manageableRoles: Array<{ value: ProfileRole; label: string; sinEfecto?: boolean }> = [
   { value: 'viewer', label: 'Publicador' },
-  { value: 'conductor', label: 'Conductor' },
-  { value: 'siervo', label: 'Siervo' },
-  { value: 'superintendente', label: 'Superintendente' },
+  { value: 'conductor', label: 'Conductor', sinEfecto: true },
+  { value: 'siervo', label: 'Siervo', sinEfecto: true },
+  { value: 'superintendente', label: 'Superintendente', sinEfecto: true },
   { value: 'admin', label: 'Administrador' },
 ]
 
@@ -69,6 +74,8 @@ export function DashboardPage() {
         <>
           <QueNecesitaAtencion />
           {profile?.role === 'admin' ? <TerritorySuggestions /> : null}
+          {profile?.role === 'admin' ? <SalidasDeHoyYAyer /> : null}
+          {profile?.role === 'admin' ? <TerritoriosPersonalesTerminados /> : null}
         </>
       ) : profile?.role === 'admin' ? <UserAccessPanel /> : null}
     </div>
@@ -166,7 +173,7 @@ function QueNecesitaAtencion() {
         .limit(1)
       const corrida = corridaError ? null : (corridas as { id: string }[] | null)?.[0]?.id ?? null
 
-      const [conflictos, sinConductor, solicitudes] = await Promise.all([
+      const [conflictos, sinConductor, solicitudes, ingresos, incompletas] = await Promise.all([
         corrida
           ? cuenta(
               cliente
@@ -200,12 +207,36 @@ function QueNecesitaAtencion() {
             .select('id', cuantas)
             .eq('status', 'solicitada'),
         ),
+        // Pedidos de ingreso a un grupo que nadie confirmó todavía.
+        cuenta(
+          cliente
+            .from('grupo_miembros')
+            .select('id', cuantas)
+            .eq('estado', 'pendiente')
+            .is('hasta', null),
+        ),
+        // Salidas que vienen y les falta el punto de encuentro o el territorio.
+        (async () => {
+          try {
+            const { data, error } = await cliente
+              .from('salidas')
+              .select('tipo, territory_id, meeting_point_id, meeting_point_name')
+              .gte('scheduled_for', new Date().toISOString())
+              .limit(500)
+            if (error) return null
+            return contarSalidasIncompletas((data ?? []) as SalidaProxima[])
+          } catch {
+            return null
+          }
+        })(),
       ])
       if (!vivo) return
       setUnavailable([
         ...(conflictos === null ? ['conflictos de importación'] : []),
         ...(sinConductor === null ? ['salidas sin conductor'] : []),
         ...(solicitudes === null ? ['solicitudes de territorio'] : []),
+        ...(ingresos === null ? ['pedidos de ingreso a grupos'] : []),
+        ...(incompletas === null ? ['salidas sin punto o sin territorio'] : []),
       ])
 
       const lista: Pendiente[] = []
@@ -214,7 +245,7 @@ function QueNecesitaAtencion() {
           clave: 'usuarios',
           cuantos: enEspera,
           titulo: enEspera === 1 ? 'Una persona espera acceso' : `${enEspera} personas esperan acceso`,
-          detalle: 'Se registraron y todavía no pueden entrar a nada.',
+          detalle: '',
           a: '/?seccion=usuarios&filtro=pendientes',
           accion: 'Darles acceso',
         })
@@ -227,7 +258,7 @@ function QueNecesitaAtencion() {
             solicitudes === 1
               ? 'Un hermano pidió un territorio'
               : `${solicitudes} hermanos pidieron territorio`,
-          detalle: 'Están esperando que se lo asignes o se lo rechaces.',
+          detalle: '',
           a: '/territorio-personal',
           accion: 'Ver los pedidos',
         })
@@ -240,9 +271,41 @@ function QueNecesitaAtencion() {
             sinConductor === 1
               ? 'Una salida no tiene conductor'
               : `${sinConductor} salidas no tienen conductor`,
-          detalle: 'Están programadas y nadie las conduce todavía.',
+          detalle: '',
           a: '/salidas?agenda=sin-conductor',
           accion: 'Asignar conductor',
+        })
+      }
+      if (incompletas && incompletas.sinPunto > 0) {
+        const n = incompletas.sinPunto
+        lista.push({
+          clave: 'sin-punto',
+          cuantos: n,
+          titulo: n === 1 ? 'Una salida no tiene punto de encuentro' : `${n} salidas no tienen punto de encuentro`,
+          detalle: '',
+          a: '/salidas?agenda=sin-punto',
+          accion: 'Elegir el punto',
+        })
+      }
+      if (incompletas && incompletas.sinTerritorio > 0) {
+        const n = incompletas.sinTerritorio
+        lista.push({
+          clave: 'sin-territorio',
+          cuantos: n,
+          titulo: n === 1 ? 'Una salida no tiene territorio' : `${n} salidas no tienen territorio`,
+          detalle: '',
+          a: '/salidas?agenda=sin-territorio',
+          accion: 'Elegir el territorio',
+        })
+      }
+      if (ingresos) {
+        lista.push({
+          clave: 'ingresos',
+          cuantos: ingresos,
+          titulo: ingresos === 1 ? 'Una persona pidió entrar a un grupo' : `${ingresos} personas pidieron entrar a un grupo`,
+          detalle: '',
+          a: '/grupos',
+          accion: 'Ver los pedidos',
         })
       }
       if (conflictos) {
@@ -287,12 +350,7 @@ function QueNecesitaAtencion() {
   if (!items.length && !missing.length) {
     return (
       <section className="panel inicio-tranquilo">
-        <p className="eyebrow">Al día</p>
-        <h3>No hay nada esperándote.</h3>
-        <p>
-          Cuando alguien pida un territorio, se registre una persona nueva o quede una salida
-          sin conductor, te lo vas a encontrar acá.
-        </p>
+        <p><strong>Al día.</strong> No hay nada esperándote.</p>
       </section>
     )
   }
@@ -307,7 +365,7 @@ function QueNecesitaAtencion() {
             <span className="inicio-cuantos">{p.cuantos}</span>
             <span className="inicio-texto">
               <strong>{p.titulo}</strong>
-              <small>{p.detalle}</small>
+              {p.detalle ? <small>{p.detalle}</small> : null}
             </span>
             <Link to={p.a} className="inicio-accion">
               {p.accion} <Icono nombre="siguiente" tamaño={17} />
@@ -645,10 +703,12 @@ function UserAccessPanel() {
             alElegir={(valor) =>
               setDraftRoles((current) => ({ ...current, [user.id]: valor as ProfileRole }))
             }
-            opciones={manageableRoles.map((role) => ({
-              valor: role.value,
-              texto: role.label,
-            }))}
+            opciones={manageableRoles
+              .filter((role) => !role.sinEfecto || role.value === draftRole)
+              .map((role) => ({
+                valor: role.value,
+                texto: role.sinEfecto ? `${role.label} · todavía no hace nada` : role.label,
+              }))}
           />
         </label>
 
@@ -709,6 +769,11 @@ function UserAccessPanel() {
         {draftRole === 'admin' ? (
           <p className="admin-access-complete">Acceso completo al panel.</p>
         ) : (
+        <details className="para-revisar-como">
+        <summary>Opciones avanzadas</summary>
+        <p className="admin-nota-sin-efecto">
+          Estos tildes todavía no hacen nada: el acceso a los módulos no cambia al marcarlos.
+        </p>
         <div className="admin-module-checks">
           {Object.entries(moduleLabels).map(([moduleKey, label]) => (
             <label key={moduleKey}>
@@ -718,12 +783,13 @@ function UserAccessPanel() {
                 onChange={() =>
                   toggleModule(user.id, moduleKey as ModuleKey, user.moduleAccess)
                 }
-                disabled={isDisabled}
+                disabled
               />
               <span>{label}</span>
             </label>
           ))}
         </div>
+        </details>
         )}
 
         <div className="admin-user-actions">

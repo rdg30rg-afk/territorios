@@ -231,7 +231,7 @@ test('la página arma la vista de la calle con los cuatro pedidos', () => {
   assert.match(pagina, /entradasParaDeshacer\(reciente\.cambios, miTerritorio\.id, profile\.id\)/)
   assert.match(pagina, /await enqueue\(entrada\)/)
   // H4: marcas pendientes a partir de la cola.
-  assert.match(pagina, /resumirCola\(cola\.events\)/)
+  assert.match(pagina, /const marcasEnCola = enCaminoLista\.length/)
   assert.match(pagina, /<MarcasPendientes[\s\S]*?enLinea=\{online\}/)
   // H1: copia al cargar, copia si falla, y límite de espera.
   assert.match(pagina, /guardarCopiaDeMapa\(almacenDelTelefono\(\)/)
@@ -259,8 +259,9 @@ test('el algoritmo de caras y el dibujo de las líneas siguen como estaban', () 
   assert.match(pagina, /\(centro\[1\] - punto\[1\]\) \* Math\.cos\(\(punto\[0\] \* Math\.PI\) \/ 180\) \* 111320/)
   assert.match(pagina, /\(centro\[0\] - punto\[0\]\) \* 110540/)
   assert.match(pagina, /haciaAdentro\(\[y, x\], centro\)/)
-  assert.match(pagina, /L\.polyline\(linea, \{ color: '#000', opacity: 0, weight: 26 \}\)/)
-  assert.match(pagina, /weight: ok \? 7 : 5,/)
+  // La zona de toque ya no es una franja invisible de 26 px: la cuadra más cercana la elige elegirCuadra.
+  assert.match(pagina, /elegirCuadra\(p, candidatas\)/)
+  assert.match(pagina, /weight: ok \|\| guiones \? 7 : 5,/)
 })
 
 test('las piezas de lógica no dependen del navegador ni de Vite, así que se prueban en Node', () => {

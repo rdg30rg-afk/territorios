@@ -82,14 +82,14 @@ test('el DOM oculta No se realizó a otro conductor y lo muestra al autorizado',
 
   const assigned = render(true)
   assert.deepEqual(assigned.buttons.map(domText), [
-    'Informar predicación', 'Territorio completo', 'No se realizó',
+    'Informar predicación', 'Territorio completo', 'Informar solo el resultado', 'No se realizó',
   ])
   assigned.buttons.forEach((button) => button.props.onClick())
-  assert.deepEqual(assigned.calls, ['recorrido', 'completo', 'no_realizada'])
+  assert.deepEqual(assigned.calls, ['recorrido', 'completo', 'resultado', 'no_realizada'])
 
   const otherConductor = render(false)
   assert.deepEqual(otherConductor.buttons.map(domText), [
-    'Informar predicación', 'Territorio completo',
+    'Informar predicación', 'Territorio completo', 'Informar solo el resultado',
   ])
   assert.doesNotMatch(otherConductor.text, /No se realizó/)
 })

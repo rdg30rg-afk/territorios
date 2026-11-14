@@ -221,6 +221,10 @@
 .vh .barraProgreso { height: 12px; border-radius: var(--r-pill); background: rgba(255,255,255,.14); overflow: hidden; }
 .vh .barraProgreso i { display: block; height: 100%; background: var(--lime); border-radius: var(--r-pill); }
 .vh .pieProgreso { font-size: var(--t-label); color: #a4a8b0; margin-top: 8px; }
+/* La misma barra sobre una tarjeta clara (la oscura es el valor por defecto). */
+.vh .barraProgreso.sobreClaro { background: var(--line); }
+.vh .barraProgreso.sobreClaro i { background: var(--lime-deep); }
+.vh .pieProgreso.sobreClaro { color: var(--fg-2); }
 
 /* -------------------------------------------------------- botones */
 .vh .boton {
@@ -252,6 +256,7 @@
 .vh .tarjeta:not(.consulta):not(.lima) .boton.alternativa:active { background: rgba(255,255,255,.08); }
 /* "Chico" es de peso, no de altura: sigue midiendo 56px porque la regla 2
    no se negocia. Lo que baja es el cuerpo de la letra y el relleno. */
+.vh .boton.principal.tinta { background: var(--ink); color: #fff; }
 .vh .boton.chico { background: transparent; border: 1px solid var(--line); color: var(--fg); font-size: var(--t-body); font-weight: 600; margin-top: 10px; }
 .vh .tarjeta:not(.consulta):not(.lima) .boton.chico { border-color: rgba(255,255,255,.28); color: #fff; }
 
@@ -305,7 +310,7 @@
    atenua y lo dice con palabras, no solo bajandole el color. */
 .vh .salida.pasada { opacity: .58; }
 .vh .salida.pasada .cuando { font-weight: 500; }
-.vh .yaPaso { font-size: var(--t-label); font-weight: 600; color: var(--fg-3); }
+.vh .yaPaso { display: block; font-size: var(--t-label); font-weight: 600; color: var(--fg-3); }
 .vh .salida .cuando { font-size: var(--t-lead); font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .vh .salida .donde strong { display: block; font-size: var(--t-body); font-weight: 600; line-height: 1.3; }
 /* Combinador de hijo, no descendiente. Con ".salida .donde span" (0-2-1)

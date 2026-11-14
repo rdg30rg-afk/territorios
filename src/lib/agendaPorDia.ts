@@ -62,27 +62,20 @@ export function agruparPorDia<T extends SalidaConFecha>(
   return dias
 }
 
-/** Las salidas armadas desde el programa conservan su posición dentro del
- * día. Las demás mantienen el orden que ya traía la agenda (por horario). */
+/** Dentro del día el orden es por hora. Si dos salidas tienen la misma hora,
+ *  desempata la posición que traían del programa y, al final, el orden
+ *  original (el sort es estable). Una hora ilegible va al final del día. */
 export function ordenarSalidasDelDia<T extends SalidaConPosicion>(salidas: T[]): T[] {
-  const conOrden = salidas.filter((salida) => Number.isInteger(salida.programa_orden) && (salida.programa_orden ?? 0) > 0)
-    .sort((a, b) => a.programa_orden! - b.programa_orden!)
-  const sinOrden = salidas.filter((salida) => !Number.isInteger(salida.programa_orden) || (salida.programa_orden ?? 0) <= 0)
-  const resultado: T[] = []
-  let i = 0
-  let j = 0
-  let posicion = 1
-  while (i < conOrden.length || j < sinOrden.length) {
-    if (i < conOrden.length && (conOrden[i].programa_orden ?? 0) <= posicion) {
-      resultado.push(conOrden[i++])
-    } else if (j < sinOrden.length) {
-      resultado.push(sinOrden[j++])
-    } else {
-      resultado.push(conOrden[i++])
-    }
-    posicion += 1
+  const posicion = (s: T) =>
+    Number.isInteger(s.programa_orden) && (s.programa_orden ?? 0) > 0 ? s.programa_orden! : Number.MAX_SAFE_INTEGER
+  const hora = (s: T) => {
+    const t = instante(s)
+    return Number.isFinite(t) ? t : Number.MAX_SAFE_INTEGER
   }
-  return resultado
+  return salidas
+    .map((salida, indice) => ({ salida, indice }))
+    .sort((a, b) => hora(a.salida) - hora(b.salida) || posicion(a.salida) - posicion(b.salida) || a.indice - b.indice)
+    .map((x) => x.salida)
 }
 
 const nombreDelDia = new Intl.DateTimeFormat('es-AR', {

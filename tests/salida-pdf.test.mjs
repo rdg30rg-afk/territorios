@@ -43,6 +43,19 @@ test('el PDF usa coordenadas cuando existen y la dirección escrita como respald
   )
 })
 
+test('la telefónica no lleva «Ver mapa» aunque arrastre coordenadas viejas', async () => {
+  const { enlaceMapaSalida } = await importarHelpers()
+  assert.equal(
+    enlaceMapaSalida({
+      title: 'Salida',
+      scheduledFor: '2026-09-12T10:00:00-03:00',
+      meetingPointName: 'Predicación telefónica',
+      meetingCoords: [-68.54, -31.53],
+    }),
+    null,
+  )
+})
+
 test('el archivo tiene un nombre legible, estable y sin caracteres problemáticos', async () => {
   const { nombrePdfSalida } = await importarHelpers()
 

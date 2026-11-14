@@ -70,3 +70,12 @@
   .modal { max-width: 100vw; max-height: 100vh; }
   .modal-tarjeta { max-height: 100vh; border-radius: 0; border: 0; }
 }
+
+/* La fila de botones al pie de un modal (Cancelar / confirmar). */
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}

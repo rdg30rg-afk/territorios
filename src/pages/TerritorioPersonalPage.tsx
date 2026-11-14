@@ -6,15 +6,19 @@ import {
   useState,
   type FormEvent,
 } from 'react'
+import { Link } from 'react-router-dom'
 import { Desplegable } from '../components/Desplegable'
-import { Falta } from '../components/Falta'
 import { Vacio } from '../components/Vacio'
 import { Modal } from '../components/Modal'
 import { useAuth } from '../context/useAuth'
 import { decirElError } from '../lib/decirElError'
 import { rotuloTerritorio } from '../lib/salidaEtiquetas'
 import { supabase } from '../lib/supabase'
+import { loadCoverageHeatmap } from '../lib/loadCoverageHeatmap'
+import { ultimasMarcas, haceCuanto } from '../lib/coverageDetalle'
+import { ordenarTerritorios } from '../lib/ordenarTerritorios'
 import { Icono } from '../components/Icono'
+import '../styles/territorio-personal.css'
 
 type ReservationStatus = 'solicitada' | 'activa' | 'liberada' | 'rechazada'
 
@@ -81,6 +85,12 @@ type LoadedPersonalData = {
   movements: ReservationMovement[]
   memberships: GroupMembership[]
   error: QueryError | null
+}
+
+type TerritoryProgress = {
+  total: number
+  recorridas: number
+  percent: number | null
 }
 
 type ReservationAction = 'aprobar' | 'rechazar' | 'devolver' | 'vincular'
@@ -347,6 +357,10 @@ export function TerritorioPersonalPage() {
   const [message, setMessage] = useState<string | null>(null)
   const [view, setView] = useState<'pendientes' | 'activos' | 'historial'>('pendientes')
   const [assignmentOpen, setAssignmentOpen] = useState(false)
+  const [progress, setProgress] = useState<Map<string, TerritoryProgress>>(() => new Map())
+  const [lastMarks, setLastMarks] = useState<Map<string, string>>(() => new Map())
+  const [progressError, setProgressError] = useState<string | null>(null)
+  const [progressLoading, setProgressLoading] = useState(false)
 
   useEffect(() => {
     isMounted.current = true
@@ -408,8 +422,23 @@ export function TerritorioPersonalPage() {
         setReservations(loaded.reservations)
         setMovements(loaded.movements)
         setMemberships(loaded.memberships)
-        setBeneficiaryByReservation(defaults)
-        setDecisionNotes({})
+        // Lo escrito en las demás tarjetas no se pierde al refrescar: solo se
+        // descartan las notas y elecciones de pedidos que ya no existen.
+        const vigentes = new Set(loaded.reservations.map((item) => item.id))
+        setBeneficiaryByReservation((current) => {
+          const kept: Record<string, string> = {}
+          Object.entries(current).forEach(([id, value]) => {
+            if (vigentes.has(id) && value) kept[id] = value
+          })
+          return { ...defaults, ...kept }
+        })
+        setDecisionNotes((current) => {
+          const kept: Record<string, string> = {}
+          Object.entries(current).forEach(([id, value]) => {
+            if (vigentes.has(id)) kept[id] = value
+          })
+          return kept
+        })
         setError(null)
         setIsLoading(false)
         return true
@@ -513,6 +542,60 @@ export function TerritorioPersonalPage() {
 
     return map
   }, [activeReservations])
+
+  // Cuánto lleva recorrido cada territorio asignado. Se pide solo al mirar la
+  // pestaña de activos y solo de esos territorios.
+  const activeTerritoryKey = useMemo(
+    () => [...new Set(activeReservations.map((item) => item.territory_id))].sort().join(','),
+    [activeReservations],
+  )
+
+  useEffect(() => {
+    if (!client || view !== 'activos' || !activeTerritoryKey) return
+    let live = true
+    setProgressLoading(true)
+    setProgressError(null)
+    void (async () => {
+      try {
+        const snapshot = await loadCoverageHeatmap(
+          client,
+          new Date().toISOString(),
+          activeTerritoryKey.split(','),
+        )
+        if (!live) return
+        const next = new Map<string, TerritoryProgress>()
+        snapshot.territories.forEach((item) => {
+          const total = item.counts.recorrido + item.counts.revisitar + item.counts.no_accesible + item.counts.sin_dato
+          if (total > 0) next.set(item.id, { total, recorridas: item.counts.recorrido, percent: item.percent })
+        })
+        setProgress(next)
+        setLastMarks(ultimasMarcas(snapshot.events).porPersona)
+      } catch (caught) {
+        if (live) setProgressError(errorMessage(caught, 'No se pudo leer lo recorrido.'))
+      } finally {
+        if (live) setProgressLoading(false)
+      }
+    })()
+    return () => {
+      live = false
+    }
+  }, [activeTerritoryKey, client, view, reservations])
+
+  const freeTerritories = useMemo(
+    () =>
+      ordenarTerritorios(
+        territories.filter((item) => !activeReservationsByTerritory.has(item.id)),
+      ),
+    [activeReservationsByTerritory, territories],
+  )
+
+  const pendingByTerritory = useMemo(() => {
+    const map = new Map<string, number>()
+    pendingReservations.forEach((item) => {
+      map.set(item.territory_id, (map.get(item.territory_id) ?? 0) + 1)
+    })
+    return map
+  }, [pendingReservations])
 
   const query = normalizedSearch(searchTerm)
 
@@ -701,6 +784,10 @@ export function TerritorioPersonalPage() {
         return
       }
 
+      setDecisionNotes((current) => {
+        const { [reservation.id]: _resuelta, ...resto } = current
+        return resto
+      })
       const refreshed = await reloadData()
       setMessage(
         refreshed
@@ -867,13 +954,12 @@ export function TerritorioPersonalPage() {
           <p className="eyebrow">Administración</p>
           <h2>Territorio Personal</h2>
           <p className="lead">
-            Resolvé solicitudes, asigná territorios y conservá cada decisión. El beneficiario siempre se
-            elige por un perfil activo, nunca por coincidencia de nombres.
+            Resolvé pedidos y asigná territorios; cada decisión queda en el historial.
           </p>
         </div>
       </section>
 
-      <div className="module-console">
+      <div className="module-console module-console-plano">
         {error ? (
           <div className="form-feedback error" role="alert">
             {error}
@@ -885,23 +971,16 @@ export function TerritorioPersonalPage() {
           </div>
         ) : null}
 
-        <Falta
-          cuantos={pendingReservations.length}
-          uno="Un pedido de territorio espera tu decisión"
-          varios="{n} pedidos de territorio esperan tu decisión"
-          detalle="Elegí un perfil activo antes de aprobar; para rechazar, dejá el motivo."
-        />
-
-        <div className="module-table-actions personal-tabs" role="tablist" aria-label="Territorios personales">
-          <button type="button" className="secondary-button" role="tab" aria-selected={view === 'pendientes'} onClick={() => setView('pendientes')}>
+        <div className="segmentado personal-tabs" role="tablist" aria-label="Territorios personales">
+          <button type="button" role="tab" aria-selected={view === 'pendientes'} onClick={() => setView('pendientes')}>
             <Icono nombre="pendiente" tamaño={18} />
             Pendientes ({pendingReservations.length})
           </button>
-          <button type="button" className="secondary-button" role="tab" aria-selected={view === 'activos'} onClick={() => setView('activos')}>
+          <button type="button" role="tab" aria-selected={view === 'activos'} onClick={() => setView('activos')}>
             <Icono nombre="completo" tamaño={18} />
             Activos ({activeReservations.length})
           </button>
-          <button type="button" className="secondary-button" role="tab" aria-selected={view === 'historial'} onClick={() => setView('historial')}>
+          <button type="button" role="tab" aria-selected={view === 'historial'} onClick={() => setView('historial')}>
             <Icono nombre="historial" tamaño={18} />
             Historial
           </button>
@@ -909,10 +988,6 @@ export function TerritorioPersonalPage() {
 
         <section className="panel module-registry-panel">
           <div className="module-registry-toolbar">
-            <div>
-              <p className="eyebrow">Buscar</p>
-              <h3>Solicitudes, asignaciones e historial</h3>
-            </div>
             <label className="module-search-field">
               <span className="sr-only">Buscar en territorios personales</span>
               <input
@@ -935,9 +1010,6 @@ export function TerritorioPersonalPage() {
                   <p className="eyebrow">Bandeja</p>
                   <h3>Solicitudes pendientes</h3>
                 </div>
-                <span className="status-pill status-pendiente">
-                  {pendingReservations.length} pendientes
-                </span>
               </div>
 
               {filteredPendingReservations.length === 0 ? (
@@ -958,6 +1030,7 @@ export function TerritorioPersonalPage() {
                       (reservation.requested_by && activeProfileIds.has(reservation.requested_by)
                         ? reservation.requested_by
                         : '')
+                    const ocupadoPor = activeReservationsByTerritory.get(reservation.territory_id)
                     const requestedProfileIsNotActive =
                       Boolean(reservation.requested_by) &&
                       !activeProfileIds.has(reservation.requested_by ?? '')
@@ -978,6 +1051,16 @@ export function TerritorioPersonalPage() {
                             Grupo: {reservation.requested_by ? groupsByProfile.get(reservation.requested_by) ?? 'Sin grupo' : 'Sin solicitante vinculado'}
                           </small>
 
+                          {ocupadoPor ? (
+                            <div className="form-feedback error" role="alert">
+                              Este territorio ya lo tiene{' '}
+                              {ocupadoPor.assigned_to
+                                ? profileDisplay(ocupadoPor.assigned_to, profilesById)
+                                : 'alguien sin persona vinculada'}{' '}
+                              desde {formatDate(ocupadoPor.reserved_at)}. Para aprobar este pedido, primero hay
+                              que devolverlo en Activos. Si no, se le daría a dos personas.
+                            </div>
+                          ) : null}
                           {requestedProfileIsNotActive ? (
                             <div className="form-feedback error">
                               El solicitante no tiene un perfil activo disponible. Elegí el beneficiario
@@ -1016,6 +1099,7 @@ export function TerritorioPersonalPage() {
                                 rows={3}
                                 disabled={isSaving}
                               />
+                              <small>Lo lee el hermano tal como lo escribas.</small>
                             </label>
 
                             <div className="module-table-actions">
@@ -1023,7 +1107,7 @@ export function TerritorioPersonalPage() {
                                 type="button"
                                 className="primary-button"
                                 onClick={() => void handleReservationAction(reservation, 'aprobar')}
-                                disabled={isSaving}
+                                disabled={isSaving || Boolean(ocupadoPor)}
                               >
                                 <Icono nombre="completo" tamaño={18} />
                                 {isSaving ? 'Procesando...' : 'Aprobar'}
@@ -1055,33 +1139,23 @@ export function TerritorioPersonalPage() {
                     ? 'Hay una reserva activa antigua sin persona vinculada.'
                     : `Hay ${legacyActiveReservations.length} reservas activas antiguas sin persona vinculada.`}
                 </h3>
-                <p>
-                  No se intentó emparejar el texto original de la solicitud con ningún nombre. Elegí “Vincular persona”
-                  en la fila correspondiente para dejar una decisión auditable.
-                </p>
+                <p>Usá “Vincular persona” en cada fila para dejarlo resuelto.</p>
               </section>
             ) : null}
 
             {overdueReservations.length > 0 ? (
               <section className="panel personal-alert-panel" hidden={view !== 'activos'}>
-                <p className="eyebrow">Avisos de seguimiento</p>
-                <h3>Territorios activos desde hace más de un mes</h3>
-                <div className="personal-alert-list">
-                  {overdueReservations.map((reservation) => {
-                    const territoryName =
-                      rotuloTerritorio(territoriesById.get(reservation.territory_id)?.name)
-
-                    return (
-                      <article key={reservation.id} className="personal-alert-card">
-                        <strong>{territoryName}</strong>
-                        <span>
-                          Activo para {profileDisplay(reservation.assigned_to, profilesById)} desde{' '}
-                          {formatDate(reservation.reserved_at)}.
-                        </span>
-                      </article>
-                    )
-                  })}
-                </div>
+                <h3>
+                  {overdueReservations.length === 1
+                    ? '1 territorio activo hace más de un mes'
+                    : `${overdueReservations.length} territorios activos hace más de un mes`}
+                </h3>
+                <p>
+                  {overdueReservations
+                    .map((reservation) => rotuloTerritorio(territoriesById.get(reservation.territory_id)?.name))
+                    .join(', ')}
+                  . El tiempo de cada uno se ve en su tarjeta.
+                </p>
               </section>
             ) : null}
 
@@ -1091,9 +1165,6 @@ export function TerritorioPersonalPage() {
                   <p className="eyebrow">Asignaciones vigentes</p>
                   <h3>Territorios activos</h3>
                 </div>
-                <span className="status-pill status-activo">
-                  {activeReservations.length} activos
-                </span>
                 <button type="button" className="primary-button" onClick={() => setAssignmentOpen(true)}>
                   <Icono nombre="reservar" tamaño={18} />
                   Asignar territorio
@@ -1115,6 +1186,11 @@ export function TerritorioPersonalPage() {
                     const days = getReservedDays(reservation.reserved_at)
                     const isLegacy = !reservation.assigned_to
                     const selectedBeneficiary = beneficiaryByReservation[reservation.id] ?? ''
+                    const avance = progress.get(reservation.territory_id)
+                    const ultimaMarca = reservation.assigned_to
+                      ? lastMarks.get(`${reservation.territory_id}|${reservation.assigned_to}`)
+                      : undefined
+                    const esMio = Boolean(profile?.id) && reservation.assigned_to === profile?.id
 
                     return (
                       <article key={reservation.id} className="personal-reservation-card">
@@ -1122,20 +1198,33 @@ export function TerritorioPersonalPage() {
                           <span className="status-pill status-activo">
                             {isLegacy ? 'Activa · revisar vínculo' : 'Activa'}
                           </span>
-                          <strong>{territoryName}</strong>
+                          <strong className="personal-nombre-largo" title={territoryName}>{territoryName}</strong>
                           <p>
-                            Beneficiario:{' '}
                             {isLegacy
                               ? 'Pendiente de vincular'
                               : profileDisplay(reservation.assigned_to, profilesById)}
                           </p>
                           <small>
-                            Desde {formatDate(reservation.reserved_at)}
-                            {days === null ? '' : ` · ${days} día/s`}
+                            Desde el {formatDate(reservation.reserved_at)}
+                            {days === null ? '' : ` · ${days === 1 ? '1 día' : `${days} días`}`}
+                            {' · '}
+                            {progressLoading && !avance
+                              ? 'leyendo lo recorrido…'
+                              : avance
+                                ? `${avance.recorridas} de ${avance.total} ${avance.total === 1 ? 'cuadra' : 'cuadras'}${avance.percent === null ? '' : ` (${avance.percent} %)`}`
+                                : progressError
+                                  ? 'no se pudo leer lo recorrido'
+                                  : 'sin cuadras marcadas'}
                           </small>
-                          <small>
-                            Grupo: {reservation.assigned_to ? groupsByProfile.get(reservation.assigned_to) ?? 'Sin grupo' : 'Sin persona vinculada'} · Aprobó: {profileDisplay(reservation.decided_by, profilesById)}
-                          </small>
+                          <div className="module-table-actions">
+                            <Link
+                              className="ghost-button"
+                              to={`/mapas?territorio=${reservation.territory_id}&vista=cobertura`}
+                            >
+                              <Icono nombre="cobertura" tamaño={18} />
+                              Ver lo marcado
+                            </Link>
+                          </div>
                           {reservation.assigned_to && !activeProfileIds.has(reservation.assigned_to) ? (
                             <div className="form-feedback error">
                               La persona asignada ya no aparece entre los perfiles activos. Revisá el
@@ -1183,22 +1272,84 @@ export function TerritorioPersonalPage() {
                           ) : null}
                         </div>
 
-                        <div className="module-table-actions">
-                          <button
-                            type="button"
-                            className="secondary-button"
-                            onClick={() => void handleReservationAction(reservation, 'devolver')}
-                            disabled={isSaving}
-                          >
-                            <Icono nombre="mover" tamaño={18} />
-                            {isSaving ? 'Procesando...' : 'Devolver'}
-                          </button>
-                        </div>
+                        <details className="para-revisar-como">
+                          <summary>Más</summary>
+                          <p>
+                            {ultimaMarca
+                              ? `Última marca: ${haceCuanto(ultimaMarca)}. `
+                              : reservation.assigned_to
+                                ? 'Todavía no marcó nada. '
+                                : ''}
+                            Grupo: {reservation.assigned_to ? groupsByProfile.get(reservation.assigned_to) ?? 'Sin grupo' : 'sin persona vinculada'} · Aprobó: {profileDisplay(reservation.decided_by, profilesById)}
+                          </p>
+                          <div className="module-table-actions">
+                            {esMio ? (
+                              <Link className="ghost-button" to="/predicacion">
+                                <Icono nombre="marcar" tamaño={18} />
+                                Marcar lo recorrido
+                              </Link>
+                            ) : null}
+                            {!isLegacy ? (
+                              <label>
+                                Motivo de la devolución (opcional)
+                                <textarea
+                                  value={decisionNotes[reservation.id] ?? ''}
+                                  onChange={(event) =>
+                                    setReservationNote(reservation.id, event.target.value)
+                                  }
+                                  placeholder="Por qué se devuelve"
+                                  maxLength={2000}
+                                  rows={2}
+                                  disabled={isSaving}
+                                />
+                              </label>
+                            ) : null}
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              onClick={() => void handleReservationAction(reservation, 'devolver')}
+                              disabled={isSaving}
+                            >
+                              <Icono nombre="mover" tamaño={18} />
+                              {isSaving ? 'Procesando...' : 'Devolver'}
+                            </button>
+                          </div>
+                        </details>
                       </article>
                     )
                   })}
                 </div>
               )}
+            </section>
+
+            <section className="panel module-registry-panel" hidden={view !== 'activos'}>
+              <details className="para-revisar-como">
+              <summary>Territorios libres ({freeTerritories.length}) · tocá uno para asignarlo</summary>
+              {freeTerritories.length === 0 ? (
+                <p>Todos los territorios están asignados.</p>
+              ) : (
+                <ul className="personal-free-list">
+                  {freeTerritories.map((territory) => (
+                    <li key={territory.id}>
+                      <button
+                        type="button"
+                        className="ghost-button"
+                        onClick={() => {
+                          setManualTerritoryId(territory.id)
+                          setAssignmentOpen(true)
+                        }}
+                      >
+                        <Icono nombre="reservar" tamaño={18} />
+                        <span className="personal-free-nombre" title={rotuloTerritorio(territory.name)}>
+                          {rotuloTerritorio(territory.name)}
+                        </span>
+                        {pendingByTerritory.has(territory.id) ? <span> · tiene un pedido pendiente</span> : null}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              </details>
             </section>
 
             <Modal abierto={assignmentOpen} alCerrar={() => setAssignmentOpen(false)} titulo="Asignar territorio" bajada="Elegí una persona y un territorio disponible.">

@@ -3,7 +3,6 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/useAuth'
 import { modules } from '../data/modules'
 import { usePwaInstall } from '../hooks/usePwaInstall'
-import { isDevelopmentEnvironment } from '../lib/supabase'
 import { canOpenAdminPanel } from '../lib/access'
 import { Icono } from './Icono'
 import { SimboloTerritorios } from './SimboloTerritorios'
@@ -37,7 +36,7 @@ export function AppShell() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="mobile-admin-header">
-          <span>Territorios{isDevelopmentEnvironment && <small>Base de prueba</small>}</span>
+          <span>Territorios</span>
           <button ref={menuButton} type="button" aria-expanded={menuOpen}
             aria-controls="admin-navigation" onClick={() => setOpenAt(menuOpen ? null : location.key)}
             onKeyDown={event => { if (event.key === 'Escape') setOpenAt(null) }}>
@@ -116,22 +115,12 @@ export function AppShell() {
           </button>
         </section>
 
-        {/* El aviso de "Base de prueba" abria la barra lateral, arriba del
-            nombre de la app y de los modulos: el primer objeto de la
-            pantalla era una nota sobre en que base estas. La invitacion a
-            instalar ocupaba otro recuadro al pie. Ninguna de las dos es una
-            decision del dia; van juntas en un desplegable cerrado, y en
-            produccion sin entorno de prueba ni instalacion no hay nada. */}
-        {isDevelopmentEnvironment || (canInstall && !isInstalled) ? (
+        {/* La invitacion a instalar vive en un desplegable cerrado: no es una
+            decision del dia. Antes compartia lugar con un cartel de "Base de
+            prueba" que era falso (esta base es la de verdad) y se quito. */}
+        {canInstall && !isInstalled ? (
           <details className="sidebar-extras">
-            <summary>{isDevelopmentEnvironment ? 'Base de prueba' : 'Ajustes de la app'}</summary>
-
-            {isDevelopmentEnvironment ? (
-              <p className="brand-copy">
-                Estás en el entorno de desarrollo. Lo que toques acá no afecta a la
-                base de verdad.
-              </p>
-            ) : null}
+            <summary>Ajustes de la app</summary>
 
             {canInstall && !isInstalled ? (
               <button

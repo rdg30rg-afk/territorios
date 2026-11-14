@@ -8,7 +8,7 @@ import ts from 'typescript'
 // React DOM ni la aceptación visual: comprueba las transiciones del formulario.
 const source = await readFile(new URL('../src/components/SalidaResultadoForm.tsx', import.meta.url), 'utf8')
 const code = ts.transpileModule(source, {compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText
-function harness({loadError=false,saveError=false,refreshError=false,pending=null,hideOccurredAt=false,occurredAt=null}={}) {
+function harness({saveCode=null,loadError=false,saveError=false,refreshError=false,pending=null,hideOccurredAt=false,occurredAt=null}={}) {
   const slots=[], effects=[], calls=[]
   let cursor=0, loads=0, tree
   const same=(a,b)=>a&&b&&a.length===b.length&&a.every((v,i)=>Object.is(v,b[i]))
@@ -35,7 +35,7 @@ function harness({loadError=false,saveError=false,refreshError=false,pending=nul
     if(name.endsWith('supabase')) return {supabase:client}
     if(name.endsWith('resultDelivery')) return {
       async pendingResult(){return {userId:'user',payload:pending}},
-      async deliverResult(payload){pending??=payload;const result=await client.rpc('informar_resultado_salida',pending);if(result.error)throw result.error;pending=null},
+      async deliverResult(payload){pending??=payload;const result=await client.rpc('informar_resultado_salida',pending);if(result.error){if(saveCode){pending=null;throw Object.assign(Error(result.error.message),{definitivo:true,code:saveCode})}throw result.error}pending=null},
     }
     if(name.endsWith('decirElError')) return {decirElError:e=>e.message}
     throw Error(name)
@@ -58,14 +58,17 @@ test('error de lectura no se presenta como ausencia de resultado ni habilita inf
   assert.doesNotMatch(h.text(),/Sin resultado informado/)
   assert.ok(!h.nodes().some(n=>n.type==='button'&&n.props.children==='Informar resultado'))
 })
-test('un informe nuevo empieza en Realizada y no ofrece Sin dato como resultado',async()=>{
+test('un informe nuevo no trae ningún resultado elegido y no ofrece Sin dato',async()=>{
   const h=harness();await h.settle();await h.click('Informar resultado')
-  const realizada=h.nodes().find(n=>n.type==='button'&&n.props.children==='Realizada')
-  assert.equal(realizada?.props['aria-pressed'],true)
+  const opciones=h.nodes().filter(n=>n.type==='button'&&n.props['aria-pressed']!==undefined)
+  assert.ok(opciones.length>=4)
+  assert.ok(opciones.every(n=>n.props['aria-pressed']===false))
+  await h.submit();assert.equal(h.calls.length,0)
+  assert.match(h.text(),/Elegí qué pasó/)
   assert.ok(!h.nodes().some(n=>n.type==='button'&&n.props.children==='Sin dato'))
 })
 test('respuesta perdida bloquea edición y reintenta el mismo UUID y payload',async()=>{
-  const h=harness({saveError:true});await h.settle();await h.click('Informar resultado');await h.submit()
+  const h=harness({saveError:true});await h.settle();await h.click('Informar resultado');await h.click('Realizada');await h.submit()
   assert.match(h.text(),/Reintentar el mismo envío/)
   for(const n of h.nodes().filter(n=>['textarea','input'].includes(n.type)))assert.equal(n.props.disabled,true)
   for(const n of h.nodes().filter(n=>n.type==='Desplegable'))assert.equal(n.props.deshabilitado,true)
@@ -73,14 +76,14 @@ test('respuesta perdida bloquea edición y reintenta el mismo UUID y payload',as
   assert.deepEqual(h.calls[0].payload,h.calls[1].payload)
 })
 test('RPC confirmada seguida de lectura fallida cierra formulario y no habilita duplicar',async()=>{
-  const h=harness({refreshError:true});await h.settle();await h.click('Informar resultado');await h.submit()
+  const h=harness({refreshError:true});await h.settle();await h.click('Informar resultado');await h.click('Realizada');await h.submit()
   assert.equal(h.calls.length,1)
   assert.match(h.text(),/se guardó, pero no se pudo volver a cargar/)
   assert.ok(!h.nodes().some(n=>n.type==='form'))
   assert.match(h.text(),/Volver a consultar/)
 })
 test('dos submits antes del siguiente render hacen una sola llamada',async()=>{
-  const h=harness({saveError:true});await h.settle();await h.click('Informar resultado')
+  const h=harness({saveError:true});await h.settle();await h.click('Informar resultado');await h.click('Realizada')
   const form=h.nodes().find(n=>n.type==='form')
   await Promise.all([form.props.onSubmit({preventDefault(){}}),form.props.onSubmit({preventDefault(){}})])
   assert.equal(h.calls.length,1)
@@ -103,7 +106,7 @@ test('recupera envío tras remontar y mantiene UUID aunque el resultado actual e
   await h.submit();assert.deepEqual(h.calls[0].payload,pending)
 })
 test('consultar después de respuesta perdida no descarta el intento pendiente',async()=>{
-  const h=harness({saveError:true});await h.settle();await h.click('Informar resultado');await h.submit()
+  const h=harness({saveError:true});await h.settle();await h.click('Informar resultado');await h.click('Realizada');await h.submit()
   const original=h.calls[0].payload
   await h.click('Consultar qué quedó guardado')
   assert.match(h.text(),/Reintentar el mismo envío/)
@@ -113,9 +116,15 @@ test('consultar después de respuesta perdida no descarta el intento pendiente',
 test('el cierre desde la salida no pide fecha manual y usa la fecha programada',async()=>{
   const scheduledAt='2026-09-08T22:00:00.000Z'
   const h=harness({hideOccurredAt:true,occurredAt:scheduledAt})
-  await h.settle();await h.click('Informar resultado')
+  await h.settle();await h.click('Informar resultado');await h.click('Realizada')
 
   assert.ok(!h.nodes().some((node) => node.type === 'input' && node.props.type === 'datetime-local'))
   await h.submit()
   assert.equal(h.calls[0].payload.p_ocurrio_at, scheduledAt)
+})
+
+test('un rechazo definitivo suelta el intento y deja volver a empezar',async()=>{
+  const h=harness({saveError:true,saveCode:'42501'});await h.settle();await h.click('Informar resultado');await h.click('Realizada');await h.submit()
+  assert.ok(!/Reintentar el mismo envío/.test(h.text()))
+  assert.equal(h.calls.length,1)
 })

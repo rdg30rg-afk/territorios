@@ -31,6 +31,10 @@ type SalidaCoverageFormProps = {
   autoOpen?: boolean
   autoSelectAll?: boolean
   onSaved?: () => void
+  /** Si viene, «Continuar» no guarda nada todavía: entrega una función que
+   *  guarda todas las marcas y la cantidad marcada. Así el informe se guarda
+   *  entero al final, junto con el resultado. */
+  onDeferred?: (commit: () => Promise<void>, resumen: { lados: number; manzanas: number }) => void
   onCancel?: () => void
   onDirtyChange?: (dirty: boolean) => void
 }
@@ -66,6 +70,7 @@ export function SalidaCoverageForm({
   autoOpen = false,
   autoSelectAll = false,
   onSaved,
+  onDeferred,
   onCancel,
   onDirtyChange,
 }: SalidaCoverageFormProps) {
@@ -85,6 +90,8 @@ export function SalidaCoverageForm({
   const [lastSent, setLastSent] = useState<string | null>(null)
   const [confirmed, setConfirmed] = useState(false)
   const running = useRef(false)
+  const queueRef = useRef(queue)
+  queueRef.current = queue
   const mapElement = useRef<HTMLDivElement>(null)
   const actor = profile ? { ...profile, puede_informar_salidas: contexto?.puede_informar_salidas } : null
   const allowed = canReportSalidaCoverage(actor, outing)
@@ -117,6 +124,7 @@ export function SalidaCoverageForm({
   }, [lastSent, queue.confirmed])
 
   useEffect(() => onDirtyChange?.(selected.size > 0), [onDirtyChange, selected.size])
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange])
 
   useEffect(() => {
     if (!editing || !allowed || !supabase || !outing.terrId) return
@@ -351,6 +359,16 @@ export function SalidaCoverageForm({
         </button>
         <button type="button" className="boton principal" disabled={busy || !selectedSides.length} onClick={async () => {
           if (!selectedSides.length || running.current) return
+          if (onDeferred) {
+            const chosen = [...selectedSides]
+            const chosenState = state
+            const chosenActor = actor
+            onDeferred(async () => {
+              for (const side of chosen) await queueRef.current.enqueue(prepareSalidaCoverage(chosenActor, outing, side, chosenState))
+              void queueRef.current.sync()
+            }, { lados: chosen.length, manzanas: selectedBlockLabels.length })
+            return
+          }
           running.current = true
           setBusy(true)
           setError(null)

@@ -110,3 +110,12 @@ test('si falta la migración, se dice con esas palabras y no con el error crudo'
     (error) => error instanceof FaltaLaMigracion,
   )
 })
+
+test('si una lectura falla de verdad, se avisa y no se devuelve la semana del código', async () => {
+  await assert.rejects(
+    cargarConfigSemana(clienteFalso({
+      tablas: { programa_horarios: { data: null, error: { code: '57014', message: 'timeout' } } },
+    })),
+    /timeout/,
+  )
+})

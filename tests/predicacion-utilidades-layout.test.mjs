@@ -13,7 +13,7 @@ test('Mi cuenta vive en la barra y conserva una variante compacta accesible', ()
   const barra = predicacion.match(/<header className="barra">([\s\S]*?)<\/header>/)?.[1]
   assert.ok(barra, 'no se encontró la barra de la vista hermano')
   assert.match(barra, /<MiCuenta key=\{profile\?\.id\} compact \/>/)
-  assert.match(barra, /className="btnIcono"/)
+  assert.match(barra, /className="btnIcono btnTamanio"/)
   assert.match(miCuenta, /compact\?: boolean/)
   assert.match(miCuenta, /className=\{compact \? 'miCuenta compacto' : 'panel'\}/)
   assert.match(miCuenta, /aria-label="Abrir Mi cuenta"/)

@@ -254,6 +254,26 @@ export function semanasDelRango(desde: Date, hasta: Date): SemanaPrograma[] {
   return semanas
 }
 
+/**
+ * El período que se guardó en el borrador sirve mientras no haya pasado
+ * entero. Si ya pasó (el lunes abría la semana anterior), se arma uno nuevo.
+ */
+export function periodoVigente<T extends { hasta: string }>(
+  guardado: T | null | undefined,
+  hoy = new Date(),
+): T | ReturnType<typeof crearEstadoPrograma> {
+  if (guardado && typeof guardado.hasta === 'string' && guardado.hasta >= aClaveFecha(hoy)) {
+    return guardado
+  }
+  return crearEstadoPrograma(hoy)
+}
+
+/** El primer día que todavía se puede programar: nunca uno que ya pasó. */
+export function desdeProgramable(desdeClave: string, hoy = new Date()): string {
+  const hoyClave = aClaveFecha(hoy)
+  return desdeClave < hoyClave ? hoyClave : desdeClave
+}
+
 export function hayDiasPasados(desde: Date, hoy: Date): boolean {
   return inicioDelDia(desde).getTime() < inicioDelDia(hoy).getTime()
 }

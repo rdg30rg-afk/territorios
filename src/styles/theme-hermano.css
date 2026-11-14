@@ -310,6 +310,14 @@
   box-shadow: none;
 }
 
+/* Una consola cuyos hijos ya son tarjetas no es otra tarjeta: sin esto
+   queda un recuadro adentro de otro. */
+:root[data-theme='hermano'] .module-console.module-console-plano {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+
 :root[data-theme='hermano'] .module-hero,
 :root[data-theme='hermano'] .territory-hero,
 :root[data-theme='hermano'] .group-assignment-card,

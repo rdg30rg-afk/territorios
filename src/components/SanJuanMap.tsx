@@ -4129,7 +4129,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false, 
           {selectedTerritory ? (
               <>
                 <p className="territory-selected-copy">
-                  {selectedTerritory.description || 'Sin descripcion registrada todavia.'}
+                  {selectedTerritory.description || 'Sin descripción registrada todavía.'}
                 </p>
                 <div className="territory-selected-meta">
                   <div>
@@ -4188,7 +4188,7 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false, 
                       <strong>
                         {selectedTerritoryBlocks.length > 0
                           ? 'Letras cargadas'
-                          : 'Sin letras todavia'}
+                          : 'Sin letras todavía'}
                       </strong>
                     </div>
                     {canManageTerritories ? (
@@ -4213,9 +4213,11 @@ export function SanJuanMap({ initialTerritoryId = null, editingEnabled = false, 
                       {selectedTerritoryBlocks.map((block) => (
                         <div key={block.id} className="territory-block-row">
                           <span className="territory-block-chip">{block.label}</span>
-                          <small>
-                            {block.lat.toFixed(6)}, {block.lng.toFixed(6)}
-                          </small>
+                          {canManageTerritories ? (
+                            <small>
+                              {block.lat.toFixed(6)}, {block.lng.toFixed(6)}
+                            </small>
+                          ) : null}
                           {canManageTerritories ? (
                             <button
                               type="button"

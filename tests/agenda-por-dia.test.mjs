@@ -54,22 +54,23 @@ test('agrupar no reordena y junta solo días consecutivos iguales', () => {
   assert.equal(dias[1].clave, '2026-09-10')
 })
 
-test('la agenda respeta el orden manual guardado dentro del día y no cambia las salidas antiguas', () => {
+test('dentro del día las salidas van por hora; a igual hora desempata la posición del programa', () => {
   const salidas = [
     { id: 'tarde', scheduled_for: en(2026, 9, 9, 17), programa_orden: 1 },
-    { id: 'manana', scheduled_for: en(2026, 9, 9, 9), programa_orden: 2 },
-    { id: 'manual', scheduled_for: en(2026, 9, 9, 19), programa_orden: null },
+    { id: 'diez', scheduled_for: en(2026, 9, 9, 10), programa_orden: null },
+    { id: 'nueve-b', scheduled_for: en(2026, 9, 9, 9), programa_orden: 3 },
+    { id: 'nueve-a', scheduled_for: en(2026, 9, 9, 9), programa_orden: 2 },
+    { id: 'nueve-sin', scheduled_for: en(2026, 9, 9, 9) },
   ]
-  const porHora = partirAgenda(salidas, ahora).proximas
-  assert.deepEqual(ordenarSalidasDelDia(porHora).map((s) => s.id), ['tarde', 'manana', 'manual'])
-  assert.deepEqual(ordenarSalidasDelDia(porHora.filter((s) => s.programa_orden == null)).map((s) => s.id), ['manual'])
-  const agregadasDespues = [
-    { id: 'primera-guardada', scheduled_for: en(2026, 9, 9, 9) },
-    { id: 'telefono', scheduled_for: en(2026, 9, 9, 19), programa_orden: 2 },
-    { id: 'tarde-nueva', scheduled_for: en(2026, 9, 9, 17), programa_orden: 3 },
+  assert.deepEqual(ordenarSalidasDelDia(salidas).map((s) => s.id),
+    ['nueve-a', 'nueve-b', 'nueve-sin', 'diez', 'tarde'])
+  const mezcla = [
+    { id: 'a', scheduled_for: en(2026, 9, 9, 9) },
+    { id: 'b', scheduled_for: en(2026, 9, 9, 17) },
+    { id: 'c', scheduled_for: en(2026, 9, 9, 9) },
+    { id: 'd', scheduled_for: en(2026, 9, 9, 10) },
   ]
-  assert.deepEqual(ordenarSalidasDelDia(agregadasDespues).map((s) => s.id),
-    ['primera-guardada', 'telefono', 'tarde-nueva'])
+  assert.deepEqual(ordenarSalidasDelDia(mezcla).map((s) => s.id), ['a', 'c', 'd', 'b'])
 })
 
 test('la etiqueta dice hoy, mañana y ayer sin dejar de mostrar la fecha', () => {

@@ -28,7 +28,13 @@ import { readAllRows } from '../lib/readAllRows'
 import { latestEventsAt, validAt } from '../lib/coverageHistory'
 import { coverageSummary } from '../lib/coverageSummary'
 import { useCoverageOutbox } from '../lib/useCoverageOutbox'
-import type { CoverageInput } from '../lib/coverageOutbox'
+import { MENSAJE_FALTA_HABILITAR_ADMIN, type CoverageInput } from '../lib/coverageOutbox'
+import { avisoMarcandoComoAdmin, conOrigenAdmin, esAdminQueMarca, marcaComoAdmin, territorioDeLaDireccion } from '../lib/marcaComoAdmin'
+import {
+  DIAS_PARA_INFORMAR, avisosDeRechazo, botonDeTamanio, cerrarRechazo, cuandoDeLaSalida, desdeHaceDias, estadoDeInforme,
+  hora24, leerRechazosCerrados, nombreDeTamanio, quienConduce, resumenDeSoloTipos, rotuloDeLaSalida, rotuloFaltan,
+  salidasSinInformar, siguienteTamanio, tamanioGuardado, textoFaltan, type ResultadoDeSalida,
+} from '../lib/vistaHermanoSalidas'
 import { canMarkSalidaNotHeld, canReportSalida } from '../lib/salidaPermissions'
 import { crearPdfSalida, descargarPdf } from '../lib/salidaPdf'
 import { InformePredicacionFlow, type InformePredicacionAction } from '../components/InformePredicacionFlow'
@@ -80,11 +86,16 @@ import {
   type Alcance,
   type MarcaReciente,
 } from '../lib/deshacerMarca'
-import { resumirCola, useModoDeEnvio } from '../lib/marcasPendientes'
+import { textoDeEnvio, useModoDeEnvio } from '../lib/marcasPendientes'
+import { bloquearFondo, enfocarSinMover } from '../lib/vistaHermanoFondo'
 import { usePantallaEncendida } from '../lib/pantallaEncendida'
 import { useMapaSinSenal } from '../lib/useMapaSinSenal'
 import '../styles/vista-hermano.css'
 import '../styles/vista-hermano-calle.css'
+import '../styles/vista-hermano-marcado.css'
+import { resumirManzana, avanceDeManzanas, textoDeCuadras, type ResumenDeManzana } from '../lib/estadoManzana'
+import { elegirManzana, elegirCuadra } from '../lib/elegirCuadra'
+import { describirCuadra, motivoHumano, agruparRechazadas } from '../lib/marcasRechazadas'
 
 // Los tres mapas de la pantalla se arman igual.
 //
@@ -94,6 +105,35 @@ import '../styles/vista-hermano-calle.css'
 // manzanas se pinta en modo "multiply": el color se multiplica contra lo que
 // hay debajo en vez de reemplazarlo, y lo oscuro de abajo -las lineas de las
 // calles y sus nombres- atraviesa el color entero.
+// Opciones comunes de los mapas con los que se interactúa: zoom hasta poder
+// distinguir una cuadra de la de enfrente (las teselas se agrandan después
+// del 19) y rueda un poco más ágil para el mouse.
+const OPCIONES_MAPA: L.MapOptions = {
+  zoomAnimation: false,
+  maxZoom: 21,
+  zoomControl: false,
+  wheelPxPerZoomLevel: 70,
+  // Sin esto el encuadre baja al zoom entero de abajo y el territorio queda
+  // chico, en la mitad del ancho.
+  zoomSnap: 0.25,
+}
+
+// Encuadrar al territorio con poco margen, en píxeles y no en proporción.
+const ENCUADRE: L.FitBoundsOptions = { padding: [10, 10], animate: false }
+
+// Lo que se puede informar al marcar. «Sin dato» quita la marca actual; eso va
+// como detalle, para que el texto del botón sea corto y no se corte.
+const ESTADOS_A_INFORMAR = [
+  { valor: 'recorrido', texto: 'Recorrida' },
+  { valor: 'no_accesible', texto: 'No accesible' },
+  { valor: 'revisitar', texto: 'Para revisitar' },
+  { valor: 'sin_dato', texto: 'Sin dato', detalle: 'Quita la marca actual' },
+]
+
+function ponerZoom(m: L.Map) {
+  L.control.zoom({ position: 'topleft', zoomInTitle: 'Acercar el mapa', zoomOutTitle: 'Alejar el mapa' }).addTo(m)
+}
+
 function ponerFondo(m: L.Map) {
   // Quien hace el mapa va nombrado: es la condicion de uso de las teselas.
   // Sin el "Leaflet |" adelante, que no le dice nada a nadie.
@@ -108,6 +148,13 @@ function ponerFondo(m: L.Map) {
 const SALIDAS_QUE_SE_TRAEN = 60
 const LIMITE_CARGA_PROGRAMA_MS = 15_000
 const MENSAJE_CARGA_PROGRAMA_LENTA = 'La carga del programa tardó demasiado.'
+
+// Avisos de carga: se retiran solos cuando la recarga sale bien (antes
+// quedaban en pantalla aunque ya estuviera todo al día).
+const AVISO_PROGRAMA_LENTO = 'El programa tardó demasiado en cargar. Revisá la conexión y tocá Actualizar programa.'
+const AVISO_PROGRAMA_FALLO = 'No pudimos actualizar el programa y tus asignaciones. Revisá la conexión y tocá Actualizar programa.'
+const AVISO_COBERTURA_FALLO = 'No pudimos cargar la cobertura. Tocá Actualizar para volver a intentar.'
+const sinAvisoDeCarga = (visto: string | null, ...retirar: string[]) => (visto && retirar.includes(visto) ? null : visto)
 
 const TAMANIO_GUARDADO = 'vh-tamanio-del-texto'
 
@@ -323,6 +370,19 @@ export function showQaFromSearch(search: string) {
 type Territorio = { id: string; name: string }
 
 const hoyISO = () => new Date().toLocaleDateString('sv-SE')
+const mananaISO = () => {
+  const m = new Date()
+  m.setDate(m.getDate() + 1)
+  return m.toLocaleDateString('sv-SE')
+}
+
+function nombreDeEstado(estado: string) {
+  return estado === 'recorrido' ? 'Recorrida' : estado === 'no_accesible' ? 'No accesible' : estado === 'revisitar' ? 'Para revisitar' : 'Sin dato'
+}
+
+function textoCuadras(n: number) {
+  return n === 1 ? '1 cuadra' : `${n} cuadras`
+}
 
 function fechaLarga(iso: string) {
   const [a, m, d] = iso.split('-').map(Number)
@@ -533,18 +593,30 @@ const centroDe = (anillo: [number, number][]) =>
 
 // Un solo lugar decide los colores de una manzana. Si el mapa vivo y el del
 // historial se pintaran distinto, el mismo dato contaria dos historias.
-function pinta(hechos: number, total: number) {
-  const completa = total > 0 && hechos === total
-  const media = hechos > 0 && !completa
+function pinta(r: ResumenDeManzana) {
+  const completa = r.tipo === 'completa'
+  const media = r.tipo === 'media'
+  // «No accesible» y «Para revisitar» llevan borde cortado y un signo en la
+  // letra además del color: el color solo no alcanza.
+  if (r.tipo === 'aparte') {
+    const rev = r.aparte === 'revisitar'
+    return {
+      color: rev ? '#1d4f8f' : '#8a2b2b',
+      relleno: rev ? '#b9d4f5' : '#f1c2c2',
+      opacidad: 0.85,
+      guiones: rev ? '8 5' : '2 6',
+      signo: rev ? ' ↻' : ' ✕',
+    }
+  }
   // Rellenos claros: el modo "multiply" los oscurece contra el mapa, asi que
   // un color que ya viene fuerte termina en una mancha donde no se lee nada.
   // Sin recorrer no lleva casi color: el estado que importa es el otro.
   return {
-    completa,
-    media,
     color: completa ? '#0f6b47' : media ? '#955408' : '#16191d',
     relleno: completa ? '#8fe0b6' : media ? '#ffd79a' : '#e4e8ec',
     opacidad: completa ? 0.9 : media ? 0.9 : 0.75,
+    guiones: undefined as string | undefined,
+    signo: '',
   }
 }
 
@@ -565,27 +637,25 @@ function pintarManzanas(
   capa: L.LayerGroup,
   manzanas: Manzana[],
   ladosDe: (mz: Manzana) => Lado[],
-  hechos: Set<string>,
-  alTocar?: (mz: Manzana) => void,
+  estados: Record<string, string>,
 ) {
+  // Tocar el mapa lo resuelve un solo manejador del mapa (elige la manzana o
+  // cuadra más cercana al toque), así que acá nada se toca.
   for (const mz of manzanas) {
     if (!mz.geometry_geojson) continue
     const anillo = anilloDe(mz.geometry_geojson)
-    const propios = ladosDe(mz)
-    const n = propios.filter((l) => hechos.has(l.id)).length
-    const c = pinta(n, propios.length)
+    const c = pinta(resumirManzana(ladosDe(mz).map((l) => l.id), estados))
     L.polygon(anillo, {
       color: c.color,
       weight: 2,
+      dashArray: c.guiones,
       fillColor: c.relleno,
       fillOpacity: c.opacidad,
-      interactive: Boolean(alTocar),
-    })
-      .addTo(capa)
-      .on('click', () => alTocar?.(mz))
+      interactive: false,
+    }).addTo(capa)
     L.marker(centroDe(anillo), {
       interactive: false,
-      icon: etiqueta(mz.label, c.color),
+      icon: etiqueta(`${mz.label}${c.signo}`, c.color),
     }).addTo(capa)
   }
 }
@@ -672,8 +742,7 @@ export function PredicacionPage() {
   // Quien necesita el texto grande lo necesita siempre, no una vez. Antes
   // volvia a 1 en cada recarga y habia que agrandarlo de nuevo.
   const [paso, setPaso] = useState(() => {
-    const g = Number(localStorage.getItem(TAMANIO_GUARDADO))
-    return g >= 1 && g <= 1.3 ? g : 1
+    try { return tamanioGuardado(localStorage.getItem(TAMANIO_GUARDADO)) } catch { return 1 }
   })
   const [modoMarcar, setModoMarcar] = useState<'manzana' | 'lado'>('manzana')
   // Se entra a marcar a proposito. Antes, un toque al pasar el dedo por el
@@ -689,6 +758,14 @@ export function PredicacionPage() {
   const [miTerritorio, setMiTerritorio] = useState<Territorio | null>(null)
   const asignado = reservas.some((r) => r.status === 'activa' && r.assigned_to === profile?.id && r.territory_id === miTerritorio?.id)
   const solicitado = reservas.some((r) => r.status === 'solicitada' && r.territory_id === miTerritorio?.id)
+  // Un administrador de territorios puede abrir y marcar uno que no es suyo con
+  // /predicacion?territorio=<id>. Para el resto el parámetro no hace nada.
+  const territorioPedido = useMemo(
+    () => territorioDeLaDireccion(typeof window === 'undefined' ? '' : window.location.search),
+    [],
+  )
+  const comoAdmin = marcaComoAdmin({ perfil: profile, territorioPedido, territorioAbierto: miTerritorio?.id, esPropio: asignado })
+  const puedeTrabajar = asignado || comoAdmin
   // Lo que los efectos de carga leen al terminar sin tener que volver a correr
   // cada vez que cambia: si cambiara `asignado`, se volvería a pedir el mapa.
   const asignadoRef = useRef(false)
@@ -726,11 +803,17 @@ export function PredicacionPage() {
     }
     return result
   }, [estadosBase, cola.confirmed, cola.events, miTerritorio?.id])
-  const hechos = useMemo(() => new Set(Object.keys(estados).filter(id => estados[id] === 'recorrido')), [estados])
   const [salidas, setSalidas] = useState<Salida[]>([])
+  const [salidasPrevias, setSalidasPrevias] = useState<Salida[]>([])
+  const [resultadosSalidas, setResultadosSalidas] = useState<Map<string, ResultadoDeSalida>>(new Map())
+  const [nombresInformantes, setNombresInformantes] = useState<Record<string, string>>({})
+  const [resultadosLeidos, setResultadosLeidos] = useState(false)
+  const [rechazosCerrados, setRechazosCerrados] = useState<Set<string>>(() => new Set())
   const [origenSalidas, setOrigenSalidas] = useState<'base' | 'archivo' | null>(null)
   const [recorte, setRecorte] = useState<{ trajo: number; hay: number } | null>(null)
   const [cargando, setCargando] = useState(true)
+  // El territorio cuyo mapa no se pudo traer ni de la base ni de la copia.
+  const [mapaFallo, setMapaFallo] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
   const [filtroSalidas, setFiltroSalidas] = useState<'todas' | 'mias' | 'grupo'>('todas')
   const guardando = cola.sending
@@ -771,12 +854,12 @@ export function PredicacionPage() {
   // Solo se marca el territorio propio, y solo despues de pedirlo. Mirar es
   // lo que pasa cuando no pediste otra cosa.
   const puedeMarcar =
-    asignado && Boolean(miTerritorio) && dibujoListo && !cola.error && !esMiembroPendiente(contexto)
+    puedeTrabajar && Boolean(miTerritorio) && dibujoListo && !cola.error && !esMiembroPendiente(contexto)
   const editando = puedeMarcar && marcando
 
   // Recuperar una asignación o cambiar de territorio nunca reactiva por sí
   // solo el modo de escritura que se abrió sobre otro contexto.
-  useEffect(() => { setMarcando(false) }, [miTerritorio?.id, asignado, profile?.id])
+  useEffect(() => { setMarcando(false) }, [miTerritorio?.id, asignado, comoAdmin, profile?.id])
 
   // La pantalla no se apaga mientras el mapa propio está a la vista en modo
   // marcar. (El mapa grande solo se abre desde esta misma pestaña.)
@@ -797,7 +880,11 @@ export function PredicacionPage() {
   })
 
   // Marcas que esperan señal, con "Todo enviado" cuando se vacía la cola.
-  const { cantidad: marcasEnCola, conError: marcasConError } = resumirCola(cola.events)
+  // Las rechazadas para siempre van en su propio panel; acá solo las que
+  // siguen en camino, y «sin enviar» es la que ya falló y espera reintento.
+  const enCaminoLista = cola.events.filter((event) => event.status !== 'error')
+  const marcasEnCola = enCaminoLista.length
+  const marcasConError = enCaminoLista.some((event) => event.lastError)
   const modoDeEnvio = useModoDeEnvio(marcasEnCola)
 
   // Deshacer dura ocho segundos; la confirmación, unos pocos. No hay aviso si
@@ -828,28 +915,27 @@ export function PredicacionPage() {
     (mz: Manzana) => ladosPorManzana.get(mz.id) ?? [],
     [ladosPorManzana],
   )
-  const hechosDe = useCallback(
-    (mz: Manzana) => ladosDe(mz).filter((l) => hechos.has(l.id)).length,
-    [ladosDe, hechos],
+  // Cómo está cada manzana: «No accesible» y «Para revisitar» cuentan como
+  // resueltas (no como «te falta»), pero se ven aparte.
+  const resumenDe = useCallback(
+    (mz: Manzana) => resumirManzana(ladosDe(mz).map((l) => l.id), estados),
+    [ladosDe, estados],
   )
 
   const avance = useMemo(() => {
     const resumen = coverageSummary(lados, estados)
-    const completas = manzanas.filter((m) => ladosDe(m).length > 0 && hechosDe(m) === ladosDe(m).length).length
-    const empezadas = manzanas.filter((m) => {
-      const h = hechosDe(m)
-      return h > 0 && h < ladosDe(m).length
-    }).length
+    const { completas, aparte, empezadas, faltan } = avanceDeManzanas(manzanas.map(resumenDe))
     return {
       metros: resumen.totalMeters,
       metrosHechos: resumen.walkedMeters,
       pct: resumen.percent,
       estados: resumen.counts,
       completas,
+      aparte,
       empezadas,
-      faltan: manzanas.length - completas,
+      faltan,
     }
-  }, [manzanas, ladosDe, hechosDe, lados, estados])
+  }, [manzanas, resumenDe, lados, estados])
 
   // ----------------------------------------------------------- carga
   useEffect(() => {
@@ -938,11 +1024,12 @@ export function PredicacionPage() {
         setSalidas([])
         setOrigenSalidas('base')
       }
+      setAviso((visto) => sinAvisoDeCarga(visto, AVISO_PROGRAMA_LENTO, AVISO_PROGRAMA_FALLO))
       } catch (failure) {
         if (vivo) setAviso(
           failure instanceof Error && failure.message === MENSAJE_CARGA_PROGRAMA_LENTA
-            ? 'El programa tardó demasiado en cargar. Revisá la conexión y tocá Actualizar programa.'
-            : 'No pudimos actualizar el programa y tus asignaciones. Revisá la conexión y tocá Actualizar programa.',
+            ? AVISO_PROGRAMA_LENTO
+            : AVISO_PROGRAMA_FALLO,
         )
         // Sin señal, el territorio propio se abre con lo último que se guardó.
         const guardadas = vivo && profile?.id
@@ -964,6 +1051,77 @@ export function PredicacionPage() {
       vivo = false
     }
   }, [profile?.id, revision])
+
+  // /predicacion?territorio=<id>: solo un administrador de territorios abre y
+  // marca un territorio que no es suyo. Para el resto no pasa nada.
+  useEffect(() => {
+    let almacen: Storage | null = null
+    try { almacen = window.localStorage } catch { /* sin almacenamiento */ }
+    setRechazosCerrados(leerRechazosCerrados(almacen, profile?.id))
+  }, [profile?.id])
+  const territorioAplicado = useRef(false)
+  useEffect(() => {
+    if (territorioAplicado.current || !territorioPedido || !esAdminQueMarca(profile)) return
+    const pedido = territorios.find((t) => t.id.toLowerCase() === territorioPedido)
+    if (!pedido) return
+    territorioAplicado.current = true
+    setMiTerritorio(pedido)
+    setVista('territorio')
+  }, [territorioPedido, territorios, profile])
+
+  // Las salidas de los últimos días que le tocaron al conductor, y qué informes
+  // hay de ellas y de las de hoy (quién informó). Si algo no se puede leer, no
+  // se dice «sin informar»: no se sabe.
+  useEffect(() => {
+    if (!supabase || !profile?.id) return
+    let vivo = true
+    void (async () => {
+      try {
+        const hoy0 = desdeHaceDias(new Date(), 0)
+        let previas: Salida[] = []
+        if (profile.driver_id) {
+          const res = await supabase
+            .from('salidas')
+            .select(CAMPOS_SALIDA)
+            .eq('driver_id', profile.driver_id)
+            .gte('scheduled_for', desdeHaceDias(new Date(), DIAS_PARA_INFORMAR).toISOString())
+            .lt('scheduled_for', hoy0.toISOString())
+            .order('scheduled_for', { ascending: false })
+            .limit(60)
+          if (res.error) throw res.error
+          previas = ((res.data ?? []) as unknown as Record<string, unknown>[]).map((f) => comoSalida(f, territorios))
+        }
+        const hoy = hoyISO()
+        const ids = [...new Set([
+          ...previas.map((s) => s.id),
+          ...salidas.filter((s) => s.fecha <= hoy).map((s) => s.id),
+        ].filter((x): x is string => Boolean(x)))]
+        const mapa = new Map<string, ResultadoDeSalida>()
+        if (ids.length) {
+          const r = await supabase
+            .from('salida_resultado_actual')
+            .select('salida_id, estado, informado_por')
+            .in('salida_id', ids)
+          if (r.error) throw r.error
+          for (const fila of (r.data ?? []) as ResultadoDeSalida[]) mapa.set(fila.salida_id, fila)
+        }
+        const quienes = [...new Set([...mapa.values()].map((x) => x.informado_por).filter((x): x is string => Boolean(x)))]
+        const nombres: Record<string, string> = {}
+        if (quienes.length) {
+          const { data: perfiles } = await supabase.from('profiles').select('id, full_name').in('id', quienes)
+          for (const f of (perfiles ?? []) as { id: string; full_name: string | null }[]) if (f.full_name) nombres[f.id] = f.full_name
+        }
+        if (!vivo) return
+        setSalidasPrevias(previas)
+        setResultadosSalidas(mapa)
+        setNombresInformantes(nombres)
+        setResultadosLeidos(true)
+      } catch {
+        if (vivo) { setResultadosLeidos(false); setSalidasPrevias([]) }
+      }
+    })()
+    return () => { vivo = false }
+  }, [profile?.id, profile?.driver_id, territorios, salidas, revision])
 
   useEffect(() => {
     const actualizar = () => setRevision((value) => value + 1)
@@ -992,6 +1150,7 @@ export function PredicacionPage() {
     }
     // Volver a pedir el mismo territorio no apaga el mapa que ya está a la vista.
     if (territorioCargado.current !== miTerritorio.id) setDibujoListo(false)
+    setMapaFallo(null)
 
     void (async () => {
       try {
@@ -1022,6 +1181,8 @@ export function PredicacionPage() {
       setDesdeCopia(null)
       acknowledgeSnapshot(checkpoint)
       territorioCargado.current = miTerritorio.id
+      setMapaFallo(null)
+      setAviso((visto) => sinAvisoDeCarga(visto, AVISO_COBERTURA_FALLO))
       setDibujoListo(true)
       // Lo que acaba de llegar queda en el teléfono, con la fecha, para poder
       // abrir el mapa sin señal. Solo el territorio propio: el de consulta no.
@@ -1039,6 +1200,10 @@ export function PredicacionPage() {
       }
       } catch (falla) {
         if (!vivo) return
+        // Una recarga que falla con conexión (por ejemplo, justo mientras se
+        // guarda una marca) no cambia lo que ya se ve: antes caía a la copia y
+        // decía «Sin señal» con la señal bien. Sin conexión sí se usa la copia.
+        if (navigator.onLine && territorioCargado.current === miTerritorio.id) return
         const idPerfil = perfilIdRef.current
         const copia = idPerfil
           ? await leerCopiaDeMapa<Manzana, Lado>(almacenDelTelefono(), idPerfil, miTerritorio.id)
@@ -1052,12 +1217,14 @@ export function PredicacionPage() {
           setDesdeCopia({
             territorioId: miTerritorio.id,
             guardadoEl: copia.guardadoEl,
-            causa: pareceFaltaDeRed(falla, navigator.onLine) ? 'red' : 'otra',
+            causa: !navigator.onLine && pareceFaltaDeRed(falla, false) ? 'red' : 'otra',
           })
           territorioCargado.current = miTerritorio.id
+          setMapaFallo(null)
           setDibujoListo(true)
         } else {
-          setAviso('No pudimos cargar la cobertura. Tocá Actualizar para volver a intentar.')
+          setAviso(AVISO_COBERTURA_FALLO)
+          setMapaFallo(miTerritorio.id)
         }
       }
     })()
@@ -1078,7 +1245,7 @@ export function PredicacionPage() {
         // Se revisan todas antes de encolar la primera: una cuadra sin versión
         // de dibujo no deja la manzana a medio marcar.
         const cambios = cambiosParaMarcar(afectados, estadoElegido, estados)
-        for (const entrada of entradasDeMarca(cambios, estadoElegido, miTerritorio.id, profile.id)) {
+        for (const entrada of conOrigenAdmin(entradasDeMarca(cambios, estadoElegido, miTerritorio.id, profile.id), comoAdmin)) {
           await enqueue(entrada)
         }
         setAviso(null)
@@ -1093,7 +1260,7 @@ export function PredicacionPage() {
         void sync()
       }
     },
-    [editando, miTerritorio, profile?.id, estados, estadoElegido, enqueue, sync],
+    [editando, miTerritorio, profile?.id, estados, estadoElegido, enqueue, sync, comoAdmin],
   )
 
   // Deshacer es otro evento por cada cuadra que la marca cambió, devolviéndola
@@ -1103,7 +1270,7 @@ export function PredicacionPage() {
     if (reciente?.fase !== 'reciente' || !puedeMarcar || !miTerritorio || !profile?.id || encolando.current) return
     encolando.current = true
     try {
-      for (const entrada of entradasParaDeshacer(reciente.cambios, miTerritorio.id, profile.id)) {
+      for (const entrada of conOrigenAdmin(entradasParaDeshacer(reciente.cambios, miTerritorio.id, profile.id), comoAdmin)) {
         await enqueue(entrada)
       }
       setAviso(null)
@@ -1114,7 +1281,7 @@ export function PredicacionPage() {
       encolando.current = false
       void sync()
     }
-  }, [reciente, puedeMarcar, miTerritorio, profile?.id, enqueue, sync])
+  }, [reciente, puedeMarcar, miTerritorio, profile?.id, enqueue, sync, comoAdmin])
 
   const marcarManzana = useCallback(
     (mz: Manzana) => {
@@ -1139,42 +1306,87 @@ export function PredicacionPage() {
   // ----------------------------------------------------------- mapas
   const dibujarPropio = useCallback(
     (capa: L.LayerGroup) => {
-      pintarManzanas(
-        capa,
-        manzanas,
-        ladosDe,
-        hechos,
-        editando && modoMarcar === 'manzana' ? marcarManzana : undefined,
-      )
+      pintarManzanas(capa, manzanas, ladosDe, estados)
 
-      if (!editando || modoMarcar !== 'lado') return
+      // En «Por cuadra» y marcando se ven todas las cuadras. En «Manzana
+      // entera» (o mirando) igual se ven las que tienen una marca: antes
+      // desaparecían y una cuadra no accesible dentro de una manzana quedaba
+      // invisible.
+      const todas = editando && modoMarcar === 'lado'
 
       for (const mz of manzanas) {
         if (!mz.geometry_geojson) continue
-        {
-          const centro: [number, number] = [Number(mz.lat), Number(mz.lng)]
-          for (const lado of ladosDe(mz)) {
-            const linea = lado.geometry_geojson.coordinates.map(([x, y]: [number, number]) =>
-              haciaAdentro([y, x], centro),
-            )
-            const ok = hechos.has(lado.id)
-            // Debajo de cada linea va otra invisible y gruesa: el dedo mide
-            // bastante mas que la calle.
-            L.polyline(linea, { color: '#000', opacity: 0, weight: 26 })
-              .addTo(capa)
-              .on('click', () => marcarLado(lado))
-            L.polyline(linea, {
-              color: ok ? '#0f6b47' : '#6a6e77',
-              weight: ok ? 7 : 5,
-              opacity: ok ? 1 : 0.75,
-              interactive: false,
-            }).addTo(capa)
-          }
+        const centro: [number, number] = [Number(mz.lat), Number(mz.lng)]
+        for (const lado of ladosDe(mz)) {
+          const linea = lado.geometry_geojson.coordinates.map(([x, y]: [number, number]) =>
+            haciaAdentro([y, x], centro),
+          )
+          const estado = estados[lado.id]
+          if (!todas && (!estado || estado === 'sin_dato')) continue
+          const ok = estado === 'recorrido'
+          // Además del color, la trama: raya cortada para «No accesible» y
+          // larga para «Para revisitar».
+          const color = ok ? '#0f6b47' : estado === 'no_accesible' ? '#8a2b2b' : estado === 'revisitar' ? '#1d4f8f' : '#6a6e77'
+          const guiones = estado === 'no_accesible' ? '2 7' : estado === 'revisitar' ? '12 7' : undefined
+          // Elegir la cuadra lo hace el manejador del mapa, con la más cercana al toque.
+          L.polyline(linea, {
+            color,
+            weight: ok || guiones ? 7 : 5,
+            opacity: ok || guiones ? 1 : 0.75,
+            dashArray: guiones,
+            interactive: false,
+          }).addTo(capa)
         }
       }
     },
-    [manzanas, ladosDe, hechos, modoMarcar, editando, marcarManzana, marcarLado],
+    [manzanas, ladosDe, estados, modoMarcar, editando],
   )
+
+  // Un toque en el mapa elige la manzana o la cuadra MÁS CERCANA, aunque haya
+  // caído en la calle de al lado: la zona de toque era una franja de 26 px y
+  // con el mouse o el dedo era fácil errarle. La calcula en píxeles de pantalla.
+  const resolverToque = useCallback(
+    (mapaVivo: L.Map, punto: L.Point) => {
+      if (!editando) return
+      const proyectar = (la: number, ln: number) => {
+        const q = mapaVivo.latLngToContainerPoint([la, ln])
+        return { x: q.x, y: q.y }
+      }
+      const p = { x: punto.x, y: punto.y }
+      if (modoMarcar === 'manzana') {
+        const mz = elegirManzana(
+          p,
+          manzanas.filter((m) => m.geometry_geojson).map((m) => ({
+            item: m,
+            anillo: anilloDe(m.geometry_geojson!).map(([la, ln]) => proyectar(la, ln)),
+          })),
+        )
+        if (mz) marcarManzana(mz)
+        return
+      }
+      const candidatas: Array<{ item: Lado; linea: Array<{ x: number; y: number }> }> = []
+      for (const mz of manzanas) {
+        if (!mz.geometry_geojson) continue
+        const centro: [number, number] = [Number(mz.lat), Number(mz.lng)]
+        for (const lado of ladosDe(mz)) {
+          candidatas.push({
+            item: lado,
+            linea: lado.geometry_geojson.coordinates.map(([x, y]: [number, number]) => {
+              const [la, ln] = haciaAdentro([y, x], centro)
+              return proyectar(la, ln)
+            }),
+          })
+        }
+      }
+      const lado = elegirCuadra(p, candidatas)
+      if (lado) marcarLado(lado)
+    },
+    [editando, modoMarcar, manzanas, ladosDe, marcarManzana, marcarLado],
+  )
+  // Los mapas se arman una vez; siempre llaman a la versión de este render.
+  const toqueRef = useRef(resolverToque)
+  toqueRef.current = resolverToque
+  const alTocarMapa = useCallback((m: L.Map, p: L.Point) => toqueRef.current(m, p), [])
 
   const encuadre = useMemo(() => {
     const pts = manzanas.flatMap((m) => (m.geometry_geojson ? anilloDe(m.geometry_geojson) : []))
@@ -1192,9 +1404,11 @@ export function PredicacionPage() {
   useEffect(() => {
     if (vista !== 'territorio' || !cajaMapa.current || !encuadre) return
     if (!mapa.current) {
-      const m = L.map(cajaMapa.current, { zoomAnimation: false })
-      m.fitBounds(encuadre.pad(0.08), { animate: false })
+      const m = L.map(cajaMapa.current, { ...OPCIONES_MAPA, scrollWheelZoom: false })
+      m.fitBounds(encuadre, ENCUADRE)
       ponerFondo(m)
+      ponerZoom(m)
+      m.on('click', (e: L.LeafletMouseEvent) => alTocarMapa(m, e.containerPoint))
       capa.current = L.layerGroup().addTo(m)
       mapa.current = m
       setMapaListo(true)
@@ -1204,9 +1418,48 @@ export function PredicacionPage() {
     // caja ya tiene su tamaño: una pestaña oculta mide cero.
     window.setTimeout(() => {
       m.invalidateSize({ animate: false, pan: false })
-      m.fitBounds(encuadre.pad(0.08), { animate: false })
+      m.fitBounds(encuadre, ENCUADRE)
     }, 60)
-  }, [vista, encuadre])
+  }, [vista, encuadre, alTocarMapa])
+
+  // Al cerrar el mapa grande (o volver a esta pestaña) el mapa chico se
+  // rehace: sin esto quedaba sin fondo y con las letras amontonadas hasta
+  // cambiar de pestaña, porque Leaflet no se entera de que la caja cambió de
+  // tamaño detrás de la pantalla completa.
+  useEffect(() => {
+    if (hoja || vista !== 'territorio' || !encuadre) return
+    const m = mapa.current
+    if (!m) return
+    const rehacer = () => {
+      if (mapa.current !== m) return
+      m.invalidateSize({ animate: false, pan: false })
+      m.fitBounds(encuadre, ENCUADRE)
+    }
+    const timers = [0, 150, 500].map((ms) => window.setTimeout(rehacer, ms))
+    return () => timers.forEach((t) => window.clearTimeout(t))
+  }, [hoja, vista, encuadre])
+
+  // Y si la caja cambia de tamaño por cualquier otra cosa (girar el teléfono,
+  // aparecer el teclado), el mapa se entera.
+  useEffect(() => {
+    const m = mapa.current
+    const caja = cajaMapa.current
+    if (!m || !caja || !mapaListo || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(() => { if (mapa.current === m) m.invalidateSize({ animate: false, pan: false }) })
+    ro.observe(caja)
+    return () => ro.disconnect()
+  }, [mapaListo, vista])
+
+  // Marcando se puede acercar con la rueda (en la computadora) y el doble clic
+  // no acerca: dos clics seguidos eran un doble toque, no un zoom. Sin marcar,
+  // la rueda sigue siendo para desplazar la página.
+  useEffect(() => {
+    const m = mapa.current
+    if (!m || !mapaListo) return
+    if (editando) { m.scrollWheelZoom.enable(); m.doubleClickZoom.disable() }
+    else { m.scrollWheelZoom.disable(); m.doubleClickZoom.enable() }
+    m.getContainer().classList.toggle('mapaMarcando', editando)
+  }, [editando, mapaListo])
 
   useEffect(() => {
     if (!mapaListo || !capa.current) return
@@ -1253,11 +1506,15 @@ export function PredicacionPage() {
     setAviso(null)
   }, [miTerritorio, profile?.id])
 
+  // Marcas rechazadas para siempre: no cuentan como «pendientes».
+  const rechazadas = cola.events.filter((event) => event.status === 'error')
+  const enCamino = cola.events.length - rechazadas.length
+
   const devolverTerritorio = async () => {
     const reserva = reservas.find(r => r.status === 'activa' && r.assigned_to === profile?.id && r.territory_id === miTerritorio?.id)
     if (!supabase || !reserva || devolviendo) return
-    if (cola.events.some(event => event.territory_id === reserva.territory_id) || cola.error || encolando.current) {
-      setAviso('Antes de devolver el territorio, confirmá las marcas pendientes. Si hay un rechazo, pedí al administrador que lo revise.')
+    if (cola.events.some(event => event.territory_id === reserva.territory_id && event.status !== 'error') || cola.error || encolando.current) {
+      setAviso('Antes de devolver el territorio, esperá a que se envíen las marcas pendientes.')
       return
     }
     if (!window.confirm(`¿Devolver el territorio ${miTerritorio?.name}? Su historial se conserva y dejarás de poder marcarlo.`)) return
@@ -1287,10 +1544,23 @@ export function PredicacionPage() {
   const otras = deHoy.filter((s) => s !== destacada)
   const quedan = deHoy.filter((s) => !s.tipo && !yaEmpezo(s))
   const h = new Date().getHours()
+  const manana = mananaISO()
+  const miDriverId = profile?.driver_id ?? null
+  const informadas = new Set([...resultadosSalidas.values()].filter((r) => r.estado !== 'sin_dato').map((r) => r.salida_id))
+  const sinInformar = salidasSinInformar(
+    showQA ? salidasPrevias : salidasPrevias.filter((s) => !isSyntheticQaOuting(s)),
+    informadas, miDriverId, hoy,
+  )
+  const informeDe = (s: Salida) => {
+    const e = estadoDeInforme(s.id, resultadosSalidas, nombresInformantes, resultadosLeidos)
+    // «Sin informar» de una salida que todavía no empezó no dice nada.
+    return e && (e.informada || sePuedeInformarAhora(s)) ? e : null
+  }
+  const rechazosAMostrar = avisosDeRechazo(reservas, profile?.id, rechazosCerrados)
 
   const resumenHoy = deHoy.length
     ? !deHoy.some((s) => !s.tipo)
-      ? 'Hoy es predicación telefónica.'
+      ? resumenDeSoloTipos(deHoy)
       : quedan.length === 1
         ? `Te queda la salida de las ${quedan[0].hora}.`
         : quedan.length > 1
@@ -1306,11 +1576,14 @@ export function PredicacionPage() {
   // pagina o dentro del mapa grande, segun cual este a la vista. El estado
   // vive aca arriba, asi que cambiarlos de lugar no los reinicia.
   const enMapa = vista === 'territorio' || Boolean(hoja)
+  // Un solo aviso por vez. Prioridad: Deshacer > enviando > sin señal.
+  const hayDeshacer = enMapa && Boolean(reciente)
+  const hayEnvio = !hayDeshacer && Boolean(textoDeEnvio(modoDeEnvio, { cantidad: marcasEnCola, conError: marcasConError, enLinea: online }))
   const avisosCalle = (
     <>
-      <AvisoDeCopia copia={enMapa ? copiaVisible : null} />
+      <AvisoDeCopia copia={enMapa && !hayDeshacer && !hayEnvio ? copiaVisible : null} />
       <MarcasPendientes
-        modo={modoDeEnvio}
+        modo={hayDeshacer ? 'oculto' : modoDeEnvio}
         cantidad={marcasEnCola}
         conError={marcasConError}
         enLinea={online}
@@ -1321,7 +1594,7 @@ export function PredicacionPage() {
   )
 
   return (
-    <div className="vh" style={escala}>
+    <div className="vh" style={escala} data-texto={nombreDeTamanio(paso)}>
       <header className="barra">
         <span className="marca">
           <SimboloTerritorios tamaño={36} />
@@ -1330,19 +1603,19 @@ export function PredicacionPage() {
         <div className="barra-controles">
           <MiCuenta key={profile?.id} compact />
           <button
-            className="btnIcono"
-            aria-label={paso >= 1.3 ? 'Volver al tamaño normal' : 'Agrandar el texto'}
+            className="btnIcono btnTamanio"
+            aria-label={botonDeTamanio(paso).etiqueta}
             onClick={() =>
               setPaso((p) => {
-                const n = p >= 1.3 ? 1 : Number((p + 0.15).toFixed(2))
-                localStorage.setItem(TAMANIO_GUARDADO, String(n))
+                const n = siguienteTamanio(p)
+                try { localStorage.setItem(TAMANIO_GUARDADO, String(n)) } catch { /* sin almacenamiento */ }
                 return n
               })
             }
           >
-            {/* El signo tiene que decir lo que va a pasar. Con "A−" en el paso
-                del medio, el boton mostraba achicar y agrandaba. */}
-            {paso >= 1.3 ? 'A−' : 'A+'}
+            {/* Siempre dice «Letra» y, abajo, cómo está ahora. */}
+            <span>{botonDeTamanio(paso).texto}</span>
+            <small>{botonDeTamanio(paso).nivel}</small>
           </button>
         </div>
       </header>
@@ -1354,19 +1627,54 @@ export function PredicacionPage() {
         <Icono nombre="pendiente" tamaño={20} />
         <span>{aviso}</span>
       </p>
-      <div className="hoja">
+      <div className="hoja" hidden={!cola.error && !cola.events.length && !cola.sending}>
         {cola.error && <p className="nota" role="alert">{cola.error}</p>}
-        <p role="status" hidden={!cola.events.length && !cola.sending && !cola.confirmed.length}>
-          {cola.sending ? 'Enviando marcas… ' : ''}
-          {cola.events.length ? `${cola.events.length} marcas conservadas en este dispositivo, pendientes de confirmar.` : 'Marcas confirmadas por el servidor.'}
-        </p>
-            {cola.events.length > 0 && <>
-          <p className="sub">El mapa puede incluir avance pendiente. No borres los datos del navegador hasta que termine el envío.</p>
-          {cola.events.filter(event => event.status === 'error').map(event => <p className="nota" role="alert" key={event.id}>
-            Cuadra {event.lado_id.slice(0, 8)}: {event.lastError}
-          </p>)}
-          <button className="boton secundario" disabled={cola.sending} onClick={() => void cola.retry()}><Icono nombre="reintentar" tamaño={18} />Reintentar marcas pendientes</button>
-        </>}
+        {(enCamino > 0 || cola.sending) && (
+          <p role="status">
+            {cola.sending ? 'Enviando marcas… ' : ''}
+            {enCamino > 0 && `${enCamino === 1 ? '1 marca guardada' : `${enCamino} marcas guardadas`} en este dispositivo, esperando enviarse. Se reintentan solas.`}
+          </p>
+        )}
+        {/* Las que el servidor rechazó no se arreglan esperando: se pueden
+            descartar. Van plegadas y por manzana para no empujar la pantalla. */}
+        {rechazadas.length > 0 && (
+          <details className="rechazadas">
+            <summary>
+              <Icono nombre="error" tamaño={22} />
+              {rechazadas.length === 1 ? '1 marca que no se pudo enviar' : `${rechazadas.length} marcas que no se pudieron enviar`}
+            </summary>
+            <div className="rechazadasCuerpo">
+              <p className="sub">El servidor no las aceptó. Podés intentar de nuevo o descartarlas; las demás marcas siguen su camino.</p>
+              {agruparRechazadas(rechazadas, manzanas).map((g) => (
+                <div className="grupoRechazado" key={g.clave}>
+                  <h3>{g.titulo}</h3>
+                  {rechazadas.filter((e) => g.ids.includes(e.id)).map((e) => (
+                    <p className="marcaRechazada" key={e.id}>
+                      <span>
+                        {describirCuadra(e, manzanas, lados)}. {e.origen === 'admin' && e.lastError === MENSAJE_FALTA_HABILITAR_ADMIN ? e.lastError : motivoHumano(e.lastError)}
+                      </span>
+                      <button type="button" className="botonChico" onClick={() => void cola.discard([e.id])}>Descartar</button>
+                    </p>
+                  ))}
+                </div>
+              ))}
+              <div className="botonesRechazadas">
+                <button className="boton secundario" disabled={cola.sending} onClick={() => void cola.retry()}>
+                  <Icono nombre="reintentar" tamaño={18} />Intentar de nuevo
+                </button>
+                <button
+                  className="boton secundario"
+                  onClick={() => {
+                    if (window.confirm(`¿Descartar ${rechazadas.length === 1 ? 'esta marca' : `estas ${rechazadas.length} marcas`}? No se envían y el mapa vuelve a como lo tiene el servidor.`)) void cola.discard()
+                  }}
+                >
+                  Descartar todas
+                </button>
+              </div>
+            </div>
+          </details>
+        )}
+        {enCamino > 0 && <p className="sub">El mapa puede incluir avance pendiente. No borres los datos del navegador hasta que termine el envío.</p>}
       </div>
 
       {/* ------------------------------------------------------------ HOY */}
@@ -1384,6 +1692,32 @@ export function PredicacionPage() {
           </p>
         ) : null}
 
+        {sinInformar.length > 0 && canReportSalida(profile, miDriverId, contexto?.puede_informar_salidas) ? (
+          <section className="panel sinInformar" aria-label="Te quedó sin informar">
+            <h2>Te quedó sin informar</h2>
+            <p className="sub">
+              {sinInformar.length === 1 ? 'Una salida de estos días no tiene informe.' : `${sinInformar.length} salidas de estos días no tienen informe.`}
+            </p>
+            {sinInformar.map((s) => (
+              <div className="salidaSinInformar" key={s.id}>
+                <p>
+                  <strong>{cuandoDeLaSalida(comoSeLlamaElDia(s.fecha) ?? fechaLarga(s.fecha), s.hora)}</strong>
+                  <span>{tituloSalida(s, contexto)}</span>
+                </p>
+                <button className="boton principal" onClick={() => setInforme({ salida: s, action: sinMapaLaSalida(s) ? 'resultado' : 'recorrido' })}>
+                  <Icono nombre="completo" tamaño={18} />
+                  {sinMapaLaSalida(s) ? 'Informar cómo salió' : 'Informar predicación'}
+                </button>
+                {!sinMapaLaSalida(s) ? (
+                  <button className="boton secundario" onClick={() => setInforme({ salida: s, action: 'resultado' })}>
+                    Informar solo el resultado
+                  </button>
+                ) : null}
+              </div>
+            ))}
+          </section>
+        ) : null}
+
         {paneles.includes('sosConductor') && salidasVisibles.some((s) => s.driverId === profile?.driver_id && s.fecha >= hoyISO()) ? (
           <section className="tarjeta lima">
             <p className="rotulo">Sos el conductor</p>
@@ -1392,13 +1726,21 @@ export function PredicacionPage() {
               .slice(0, 1)
               .map((s) => (
                 <div key={s.id ?? s.hora}>
-                  <p className="numeroGrande">{s.hora}</p>
+                  <p className="numeroGrande">{s.hora} <small>{comoSeLlamaElDia(s.fecha) ?? fechaLarga(s.fecha)}</small></p>
                   <p>{tituloSalida(s, contexto)}</p>
+                  <EstadoInforme dato={informeDe(s)} />
                   {yaEmpezo(s) && s.id ? (
-                    <button className="boton principal" onClick={() => setInforme({ salida: s, action: 'recorrido' })}>
-                      <Icono nombre="completo" tamaño={18} />
-                      Informar predicación
-                    </button>
+                    <>
+                      <button className="boton principal" onClick={() => setInforme({ salida: s, action: sinMapaLaSalida(s) ? 'resultado' : 'recorrido' })}>
+                        <Icono nombre="completo" tamaño={18} />
+                        {sinMapaLaSalida(s) ? 'Informar cómo salió' : 'Informar predicación'}
+                      </button>
+                      {!sinMapaLaSalida(s) ? (
+                        <button className="boton secundario" onClick={() => setInforme({ salida: s, action: 'resultado' })}>
+                          Informar solo el resultado
+                        </button>
+                      ) : null}
+                    </>
                   ) : null}
                 </div>
               ))}
@@ -1448,7 +1790,9 @@ export function PredicacionPage() {
           <TarjetaDestacada
             salida={destacada}
             contexto={contexto}
-            esFutura={!deHoy.length}
+            rotulo={rotuloDeLaSalida(destacada.fecha, hoy, manana)}
+            miDriverId={miDriverId}
+            informe={informeDe(destacada)}
             onMapa={() => setHoja({ salida: destacada })}
             onInformar={(action) => setInforme({ salida: destacada, action })}
             puedeInformar={Boolean(destacada.id) && canReportSalida(profile, destacada.driverId, contexto?.puede_informar_salidas)}
@@ -1464,6 +1808,8 @@ export function PredicacionPage() {
                 key={`${s.fecha}-${s.hora}-${i}`}
                 salida={s}
                 contexto={contexto}
+                miDriverId={miDriverId}
+                informe={informeDe(s)}
                 abierta={abierta === `hoy-${i}`}
                 onAbrir={() => setAbierta(abierta === `hoy-${i}` ? null : `hoy-${i}`)}
                 onMapa={() => setHoja({ salida: s })}
@@ -1486,18 +1832,18 @@ export function PredicacionPage() {
                   : avance.faltan === 0
                     ? 'Ya lo recorriste entero.'
                     : avance.faltan === 1
-                      ? 'Te falta 1 manzana.'
-                      : `Te faltan ${avance.faltan} manzanas.`}
+                      ? `${textoFaltan(1)}.`
+                      : `${textoFaltan(avance.faltan)}.`}
               </p>
               {!sinDibujo && (
                 <>
-                  <div className="barraProgreso" style={{ background: 'var(--line)' }}>
-                    <i style={{ width: `${avance.pct ?? 0}%`, background: 'var(--lime-deep)' }} />
+                  <div className="barraProgreso sobreClaro">
+                    <i style={{ width: `${avance.pct ?? 0}%` }} />
                   </div>
-                  <p className="pieProgreso" style={{ color: 'var(--fg-2)' }}>
+                  <p className="pieProgreso sobreClaro">
                     {avance.completas} de {manzanas.length} recorridas · {avance.pct === null ? 'Sin información suficiente' : `${avance.pct}% de los metros`}
                   </p>
-                  <button className="boton principal" style={{ background: 'var(--ink)', color: '#fff' }} onClick={() => setVista('territorio')}>
+                  <button className="boton principal tinta" onClick={() => setVista('territorio')}>
                     <Icono nombre="personal" tamaño={18} />
                     Ver mi territorio
                   </button>
@@ -1561,7 +1907,7 @@ export function PredicacionPage() {
                 className={filtroSalidas === 'mias' ? 'boton principal' : 'boton secundario'}
                 onClick={() => setFiltroSalidas('mias')}
               >
-                Las que conduzco
+                Mis salidas
               </button>
             ) : null}
             {filtros.lasDeMiGrupo ? (
@@ -1580,6 +1926,8 @@ export function PredicacionPage() {
             salidas={salidasVisibles}
             contexto={contexto}
             cargando={cargando}
+            miDriverId={miDriverId}
+            informeDe={informeDe}
             abierta={abierta}
             setAbierta={setAbierta}
             onMapa={(s) => setHoja({ salida: s })}
@@ -1592,41 +1940,80 @@ export function PredicacionPage() {
 
       {/* ----------------------------------------------------- TERRITORIO */}
       <section className={vista === 'territorio' ? 'vista activa hoja' : 'vista hoja'}>
-        {reservas.some((r) => r.status === 'activa' && r.assigned_to === profile?.id) && (
+        {(comoAdmin || reservas.some((r) => r.status === 'activa' && r.assigned_to === profile?.id)) && (
           <ElegirDeLista
             etiqueta="Mis territorios asignados"
-            valor={asignado ? miTerritorio?.id ?? '' : ''}
+            valor={asignado || comoAdmin ? miTerritorio?.id ?? '' : ''}
             vacio="Elegí tu territorio…"
             alElegir={(valor) => {
+              // No se apaga el dibujo acá: si se elige el mismo territorio no hay
+              // nada que recargar y quedaría «Cargando el mapa…» para siempre.
+              // El efecto de carga ya lo apaga cuando de verdad cambia.
               setMarcando(false)
-              setDibujoListo(false)
               setMiTerritorio(territorios.find((t) => t.id === valor) ?? null)
             }}
-            opciones={reservas
-              .filter((r) => r.status === 'activa' && r.assigned_to === profile?.id)
-              .map((r) => ({
-                valor: r.territory_id,
-                texto: `Territorio ${territorios.find((t) => t.id === r.territory_id)?.name ?? 'sin nombre'}`,
-              }))}
+            opciones={[
+              // Como administrador el territorio abierto (?territorio=) puede no
+              // ser de los asignados: va primero, para que el selector diga
+              // cuál se está viendo y no «Elegí tu territorio…».
+              ...(comoAdmin && miTerritorio && !reservas.some((r) => r.status === 'activa' && r.assigned_to === profile?.id && r.territory_id === miTerritorio.id)
+                ? [{ valor: miTerritorio.id, texto: `Territorio ${miTerritorio.name}`, detalle: 'Lo abriste como administrador' }]
+                : []),
+              ...reservas
+                .filter((r) => r.status === 'activa' && r.assigned_to === profile?.id)
+                .map((r) => ({
+                  valor: r.territory_id,
+                  texto: `Territorio ${territorios.find((t) => t.id === r.territory_id)?.name ?? 'sin nombre'}`,
+                })),
+            ]}
           />
         )}
-        {reservas.filter((r) => r.status === 'rechazada').map((r) => (
-          <p className="nota" key={r.id}>Tu pedido del territorio {territorios.find((t) => t.id === r.territory_id)?.name ?? 'sin nombre'} no fue aprobado: {r.nota || 'Consultá al administrador.'}</p>
+        {rechazosAMostrar.map((r) => (
+          <div className="nota notaCerrable" key={r.id} role="status">
+            <span>Tu pedido del territorio {territorios.find((t) => t.id === r.territory_id)?.name ?? 'sin nombre'} no fue aprobado: {r.nota || 'Consultá al administrador.'}</span>
+            <button
+              type="button"
+              className="botonChico"
+              onClick={() => {
+                let almacen: Storage | null = null
+                try { almacen = window.localStorage } catch { /* sin almacenamiento */ }
+                setRechazosCerrados(cerrarRechazo(almacen, profile?.id, r.id))
+              }}
+            >
+              <Icono nombre="cerrar" tamaño={18} />
+              Cerrar aviso
+            </button>
+          </div>
         ))}
+        {comoAdmin && miTerritorio && (
+          <p className="nota avisoAdmin" role="status">
+            <Icono nombre="marcar" tamaño={22} />
+            <span>{avisoMarcandoComoAdmin(miTerritorio.name)}. Tus marcas quedan a nombre de tu cuenta de administrador.</span>
+          </p>
+        )}
         <h1 className="saludo">
-          {asignado ? 'Mi territorio' : 'Consultar territorio'}
+          {asignado ? 'Mi territorio' : comoAdmin ? 'Marcar como administrador' : 'Consultar territorio'}
           <span className="sub">
             {!miTerritorio
               ? 'Todavía no tenés uno asignado.'
-              : !dibujoListo ? 'Cargando el mapa…' : !asignado ? `Territorio ${miTerritorio.name} · Solo consulta` : sinDibujo
+              : !dibujoListo ? (mapaFallo === miTerritorio.id ? 'No pudimos cargar el mapa.' : 'Cargando el mapa…') : !puedeTrabajar ? `Territorio ${miTerritorio.name} · Solo consulta` : sinDibujo
                 ? `El territorio ${miTerritorio.name} todavía no está dibujado.`
                 : avance.faltan === 0
                   ? `Terminaste el territorio ${miTerritorio.name}.`
-                  : `Te faltan ${avance.faltan} manzanas del territorio ${miTerritorio.name}.`}
+                  : `${textoFaltan(avance.faltan)} del territorio ${miTerritorio.name}.`}
           </span>
         </h1>
+        {miTerritorio && !dibujoListo && mapaFallo === miTerritorio.id && (
+          <button
+            className="boton principal"
+            onClick={() => { setMapaFallo(null); setRevision((value) => value + 1) }}
+          >
+            <Icono nombre="reintentar" tamaño={18} />
+            Volver a intentar
+          </button>
+        )}
 
-        {!asignado && (
+        {!puedeTrabajar && (
           <section className="panel">
             <h2>Estás mirando, no marcando</h2>
             <p className="sub">
@@ -1649,7 +2036,6 @@ export function PredicacionPage() {
               }))}
               alElegir={(id) => {
                 setMarcando(false)
-                setDibujoListo(false)
                 setMiTerritorio(territorios.find((t) => t.id === id) ?? null)
               }}
             />
@@ -1698,10 +2084,10 @@ export function PredicacionPage() {
 
         {miTerritorio && !sinDibujo && (
           <>
-            <section className={asignado ? 'tarjeta' : 'tarjeta consulta'}>
-              <p className="rotulo">{asignado ? 'Tu territorio' : 'Solo consulta'}</p>
+            <section className={puedeTrabajar ? 'tarjeta' : 'tarjeta consulta'}>
+              <p className="rotulo">{asignado ? 'Tu territorio' : comoAdmin ? 'Marcás como administrador' : 'Solo consulta'}</p>
               <p className="numeroGrande">{miTerritorio.name}</p>
-              {asignado ? (
+              {puedeTrabajar ? (
                 <>
                   <div className="cifras">
                     <div>
@@ -1713,7 +2099,7 @@ export function PredicacionPage() {
                       <strong>{avance.completas}</strong>
                     </div>
                     <div>
-                      <span>Te faltan</span>
+                      <span>{rotuloFaltan(avance.faltan)}</span>
                       <strong>{avance.faltan}</strong>
                     </div>
                   </div>
@@ -1722,7 +2108,8 @@ export function PredicacionPage() {
                   </div>
                   <p className="pieProgreso">
                     {avance.completas} de {manzanas.length} recorridas
-                    {avance.empezadas ? ` · ${avance.empezadas} empezada${avance.empezadas > 1 ? 's' : ''}` : ''} ·{' '}
+                    {avance.empezadas ? ` · ${avance.empezadas} empezada${avance.empezadas > 1 ? 's' : ''}` : ''}
+                    {avance.aparte ? ` · ${avance.aparte} con cuadras aparte` : ''} ·{' '}
                     {avance.pct === null ? 'Sin información suficiente' : `${avance.pct}% de los metros`}{guardando ? ' · guardando…' : ''}
                   </p>
                   <p className="sub">Cuadras: {avance.estados.sin_dato} sin dato · {avance.estados.no_accesible} no accesibles · {avance.estados.revisitar} para revisitar.</p>
@@ -1736,17 +2123,23 @@ export function PredicacionPage() {
               </button>
               {puedeMarcar && (
                 <button
-                  className={marcando ? 'boton principal' : 'boton secundario'}
+                  className={marcando ? 'boton botonListo' : 'boton botonMarcar'}
                   onClick={() => {
                     if (marcando && cola.events.length) setAviso('Saliste del modo marcar. Las marcas pendientes siguen guardadas en este dispositivo.')
                     setMarcando((v) => !v)
                   }}
                 >
                   <Icono nombre={marcando ? 'completo' : 'marcar'} tamaño={18} />
-                  {marcando ? 'Listo, terminé de marcar' : 'Marcar lo que recorrí'}
+                  {marcando ? 'Listo, terminé de marcar' : 'Empezar a marcar lo que recorrí'}
                 </button>
               )}
-              {asignado ? (
+              {editando && (
+                <p className="avisoMarcando" role="status">
+                  <Icono nombre="marcar" tamaño={22} />
+                  <span>Estás marcando: cada toque en el mapa se guarda. Cuando termines, apretá «Listo».</span>
+                </p>
+              )}
+              {puedeTrabajar ? (
                 <button className="boton secundario" onClick={() => setHistorial(true)}>
                   <Icono nombre="historial" tamaño={18} />
                   Historial
@@ -1769,26 +2162,21 @@ export function PredicacionPage() {
                 ) : puedeMarcar ? (
                   <>
                     Las verdes ya las recorriste. Para cambiar algo, tocá{' '}
-                    <strong>Marcar lo que recorrí</strong>.
+                    <strong>Empezar a marcar lo que recorrí</strong>.
                   </>
                 ) : (
                   <>Las verdes tienen recorrido informado. Este territorio es de mirar.</>
                 )}
               </p>
               {editando && (
-                <label>Estado que vas a informar
+                <div className="selectorEstado">
                   <ElegirDeLista
                     etiqueta="Estado que vas a informar"
                     valor={estadoElegido}
                     alElegir={(valor) => setEstadoElegido(valor as CoverageInput['estado'])}
-                    opciones={[
-                      { valor: 'recorrido', texto: 'Recorrido' },
-                      { valor: 'no_accesible', texto: 'No accesible' },
-                      { valor: 'revisitar', texto: 'Para revisitar' },
-                      { valor: 'sin_dato', texto: 'Sin dato (quitar la marca actual)' },
-                    ]}
+                    opciones={ESTADOS_A_INFORMAR}
                   />
-                </label>
+                </div>
               )}
               {editando && (
                 <div className="modos" role="group" aria-label="Cómo marcar">
@@ -1814,13 +2202,19 @@ export function PredicacionPage() {
                   dicho con palabras, que es la regla 3. */}
               <div className="leyenda">
                 <span>
-                  <i className="punto ok" aria-hidden="true" /> Recorrida
+                  <i className="punto ok" aria-hidden="true" /> Recorrida (todas sus cuadras)
                 </span>
                 <span>
-                  <i className="punto media" aria-hidden="true" /> Empezada
+                  <i className="punto media" aria-hidden="true" /> Empezada (faltan cuadras)
                 </span>
                 <span>
                   <i className="punto" aria-hidden="true" /> Te falta
+                </span>
+                <span>
+                  <i className="punto aparteRev" aria-hidden="true" /> <b className="glifo" aria-hidden="true">↻</b> Para revisitar
+                </span>
+                <span>
+                  <i className="punto aparteNo" aria-hidden="true" /> <b className="glifo" aria-hidden="true">✕</b> No accesible
                 </span>
               </div>
             </section>
@@ -1831,25 +2225,29 @@ export function PredicacionPage() {
                 {editando
                   ? 'Elegí el estado y tocá la manzana o cuadra. Repetir el mismo estado no desmarca; para quitarlo elegí “Sin dato”.'
                   : puedeMarcar
-                    ? 'Para cambiar algo, tocá “Marcar lo que recorrí” arriba.'
+                    ? 'Para cambiar algo, tocá “Empezar a marcar lo que recorrí” arriba.'
                     : 'Así está este territorio hoy.'}
               </p>
               <div className="rejilla">
                 {manzanas.map((mz) => {
-                  const total = ladosDe(mz).length
-                  const n = hechosDe(mz)
-                  const completa = total > 0 && n === total
-                  const media = n > 0 && !completa
+                  const r = resumenDe(mz)
+                  const completa = r.tipo === 'completa'
+                  const media = r.tipo === 'media'
+                  const aparte = r.tipo === 'aparte'
                   return (
                     <button
                       key={mz.id}
-                      className={`manzana${completa ? ' hecha' : ''}${media ? ' media' : ''}`}
+                      className={`manzana${completa ? ' hecha' : ''}${media ? ' media' : ''}${aparte ? ` aparte ${r.aparte === 'revisitar' ? 'revisitar' : 'noaccesible'}` : ''}`}
                       aria-pressed={completa}
                       disabled={!editando}
                       onClick={() => marcarManzana(mz)}
                     >
                       {mz.label}
-                      <small>{completa ? <><Icono nombre="completo" tamaño={15} /> hecha</> : media ? `${n} de ${total} cuadras` : 'te falta'}</small>
+                      <small>{completa
+                        ? <><Icono nombre="completo" tamaño={15} /> hecha</>
+                        : aparte
+                          ? <>{r.aparte === 'revisitar' ? '↻ ' : '✕ '}{textoDeCuadras(r)}</>
+                          : media ? textoDeCuadras(r) : 'te falta'}</small>
                     </button>
                   )
                 })}
@@ -1907,9 +2305,12 @@ export function PredicacionPage() {
           editable={editando}
           modoMarcar={modoMarcar}
           setModoMarcar={setModoMarcar}
+          estadoElegido={estadoElegido}
+          setEstadoElegido={setEstadoElegido}
           territorio={miTerritorio}
           manzanas={manzanas}
           dibujarPropio={dibujarPropio}
+          alTocar={alTocarMapa}
           avisos={avisosCalle}
           onCerrar={() => setHoja(null)}
         />
@@ -1920,6 +2321,7 @@ export function PredicacionPage() {
           action={informe.action}
           queue={cola}
           canCorrect={Boolean(contexto?.puede_abrir_panel)}
+          yaInformada={Boolean(informe.salida.id && informadas.has(informe.salida.id))}
           onClose={() => setInforme(null)}
         />
       )}
@@ -1941,7 +2343,7 @@ function ChipsDeSalida({ salida }: { salida: Salida }) {
     <>
       {salida.terr && (
         <span className="marca-chip terr">
-          <b>Territorio</b> {salida.terr}
+          <b>Territorio</b> <span className="terrNombre">{salida.terr}</span>
         </span>
       )}
       {letras && (
@@ -1997,7 +2399,7 @@ function MapaMini({ salida, onAbrir }: { salida: Salida; onAbrir: () => void }) 
     ponerFondo(m)
     const capa = L.layerGroup().addTo(m)
     const b = L.latLngBounds(pts)
-    m.fitBounds(b.pad(0.12), { animate: false })
+    m.fitBounds(b, ENCUADRE)
     // Las letras van solo cuando hay manzanas priorizadas: ahi sirven para
     // ver cuales son las verdes. Si se recorre el territorio entero no
     // distinguen nada y solo tapan las calles, que es lo unico que este mapa
@@ -2013,7 +2415,7 @@ function MapaMini({ salida, onAbrir }: { salida: Salida; onAbrir: () => void }) 
     mapa.current = m
     window.setTimeout(() => {
       m.invalidateSize({ animate: false, pan: false })
-      m.fitBounds(b.pad(0.12), { animate: false })
+      m.fitBounds(b, ENCUADRE)
     }, 60)
   }, [formas, salida.priorizar])
 
@@ -2071,10 +2473,16 @@ function TarjetaGrupoSale({
   return (
     <section className="tarjeta">
       <p className="rotulo">Tu grupo sale</p>
-      <p className="numeroGrande">
-        <span className="numeroHora">{salida?.hora ?? '—'}</span>{' '}
-        <small>{salida ? comoSeLlamaElDia(salida.fecha) ?? fechaLarga(salida.fecha) : 'cuando lo carguen'}</small>
-      </p>
+      {salida ? (
+        <p className="numeroGrande">
+          <span className="numeroHora">{salida.hora}</span>{' '}
+          <small>{comoSeLlamaElDia(salida.fecha) ?? fechaLarga(salida.fecha)}</small>
+        </p>
+      ) : (
+        <p className="numeroGrande sinSalida">
+          <small>Tu grupo todavía no tiene salida cargada</small>
+        </p>
+      )}
       {punto ? (
         <p>
           {punto}
@@ -2088,33 +2496,77 @@ function TarjetaGrupoSale({
   )
 }
 
+// Una salida por teléfono o sin territorio no tiene mapa que marcar: solo se
+// informa cómo salió.
+function sinMapaLaSalida(s: Salida) {
+  return !s.terrId || s.tipo === 'telefonica'
+}
+
 function AccionesConduccion({
   onInformar,
   puedeMarcarNoRealizada,
+  sinMapa,
 }: {
   onInformar: (action: InformePredicacionAction) => void
   puedeMarcarNoRealizada: boolean
+  sinMapa: boolean
 }) {
   return <section className="acciones-conduccion" aria-label="Conducción">
     <h3>Conducción</h3>
-    <button type="button" className="boton principal" onClick={() => onInformar('recorrido')}>
-      <Icono nombre="marcar" tamaño={20} />Informar predicación
-    </button>
-    <div className="acciones-conduccion-rapidas">
-      <button type="button" className="boton secundario" onClick={() => onInformar('completo')}>
-        <Icono nombre="completo" tamaño={18} />Territorio completo
+    {sinMapa ? (
+      <button type="button" className="boton principal" onClick={() => onInformar('resultado')}>
+        <Icono nombre="marcar" tamaño={20} />Informar cómo salió
       </button>
-      {puedeMarcarNoRealizada ? <button type="button" className="boton secundario" onClick={() => onInformar('no_realizada')}>
+    ) : (
+      <>
+        <button type="button" className="boton principal" onClick={() => onInformar('recorrido')}>
+          <Icono nombre="marcar" tamaño={20} />Informar predicación
+        </button>
+        <div className="acciones-conduccion-rapidas">
+          <button type="button" className="boton secundario" onClick={() => onInformar('completo')}>
+            <Icono nombre="completo" tamaño={18} />Territorio completo
+          </button>
+          <button type="button" className="boton secundario" onClick={() => onInformar('resultado')}>
+            <Icono nombre="marcar" tamaño={18} />Informar solo el resultado
+          </button>
+        </div>
+      </>
+    )}
+    {puedeMarcarNoRealizada ? <div className="acciones-conduccion-rapidas">
+      <button type="button" className="boton secundario" onClick={() => onInformar('no_realizada')}>
         <Icono nombre="cerrar" tamaño={18} />No se realizó
-      </button> : null}
-    </div>
+      </button>
+    </div> : null}
   </section>
+}
+
+// «Conducís vos»: con texto y con ícono, no solo con color.
+function ChipsDeConduccion({ salida, miDriverId }: { salida: Salida; miDriverId: string | null }) {
+  if (!quienConduce(salida, miDriverId).esMia) return null
+  return (
+    <span className="marca-chip mia">
+      <Icono nombre="conductor" tamaño={20} /> Conducís vos
+    </span>
+  )
+}
+
+// Si la salida ya tiene informe y de quién; si pasó la hora y no lo tiene, lo dice.
+function EstadoInforme({ dato }: { dato: { informada: boolean; texto: string } | null }) {
+  if (!dato) return null
+  return (
+    <p className={`estadoInforme ${dato.informada ? 'informada' : 'sinInformar'}`}>
+      <Icono nombre={dato.informada ? 'completo' : 'pendiente'} tamaño={20} />
+      <span>{dato.texto}</span>
+    </p>
+  )
 }
 
 function TarjetaDestacada({
   salida,
   contexto,
-  esFutura,
+  rotulo,
+  miDriverId,
+  informe,
   onMapa,
   onInformar,
   puedeInformar,
@@ -2122,7 +2574,9 @@ function TarjetaDestacada({
 }: {
   salida: Salida
   contexto?: ContextoHermano | null
-  esFutura: boolean
+  rotulo: string
+  miDriverId: string | null
+  informe: { informada: boolean; texto: string } | null
   onMapa: () => void
   onInformar: (action: InformePredicacionAction) => void
   puedeInformar: boolean
@@ -2131,7 +2585,7 @@ function TarjetaDestacada({
   const apodo = comoSeLlamaElDia(salida.fecha) ?? fechaLarga(salida.fecha)
   return (
     <section className="tarjeta">
-      <p className="rotulo">{esFutura ? 'La próxima salida' : 'La salida de hoy'}</p>
+      <p className="rotulo">{yaEmpezo(salida) ? `${rotulo} · ya pasó` : rotulo}</p>
       <p className="numeroGrande">
         <span className="numeroHora">{salida.hora}</span> <small>{apodo}</small>
       </p>
@@ -2143,9 +2597,9 @@ function TarjetaDestacada({
           <strong>{tituloSalida(salida, contexto)}</strong>
           {/* Sin barrio ni conductor decia "San Juan", que es donde vive todo
               el mundo que abre esto: un renglon que no informa nada. */}
-          {(salida.barrio || salida.conductor) && (
+          {(salida.barrio || quienConduce(salida, miDriverId).texto) && (
             <small>
-              {[salida.barrio, salida.conductor && `Conduce ${salida.conductor}`]
+              {[salida.barrio, quienConduce(salida, miDriverId).texto]
                 .filter(Boolean)
                 .join(' · ')}
             </small>
@@ -2154,7 +2608,9 @@ function TarjetaDestacada({
       </div>
       <div className="marcas">
         <ChipsDeSalida salida={salida} />
+        <ChipsDeConduccion salida={salida} miDriverId={miDriverId} />
       </div>
+      <EstadoInforme dato={informe} />
       <MapaMini salida={salida} onAbrir={onMapa} />
       <BotonesComoLlegar salida={salida} />
       {/* Sin numero extra: el chip ya dice el territorio y el mapa es el
@@ -2168,7 +2624,7 @@ function TarjetaDestacada({
       )}
       <BotonPdfSalida salida={salida} contexto={contexto} />
       {sePuedeInformarAhora(salida) && puedeInformar ? (
-        <AccionesConduccion onInformar={onInformar} puedeMarcarNoRealizada={puedeMarcarNoRealizada} />
+        <AccionesConduccion onInformar={onInformar} puedeMarcarNoRealizada={puedeMarcarNoRealizada} sinMapa={sinMapaLaSalida(salida)} />
       ) : null}
     </section>
   )
@@ -2177,6 +2633,8 @@ function TarjetaDestacada({
 function FilaSalida({
   salida,
   contexto,
+  miDriverId,
+  informe,
   abierta,
   onAbrir,
   onMapa,
@@ -2186,6 +2644,8 @@ function FilaSalida({
 }: {
   salida: Salida
   contexto?: ContextoHermano | null
+  miDriverId: string | null
+  informe: { informada: boolean; texto: string } | null
   abierta: boolean
   onAbrir: () => void
   onMapa: () => void
@@ -2198,22 +2658,24 @@ function FilaSalida({
   return (
     <div className="salidaBloque">
       <button
-        className={`salida${salida.fecha === hoyISO() ? ' esHoy' : ''}${paso ? ' pasada' : ''}`}
+        className={`salida${salida.fecha === hoyISO() ? ' esHoy' : ''}${paso ? ' pasada' : ''}${quienConduce(salida, miDriverId).esMia ? ' esMia' : ''}`}
         {...(puedeAbrir ? { 'aria-expanded': abierta } : {})}
         onClick={puedeAbrir ? onAbrir : undefined}
         style={puedeAbrir ? undefined : { cursor: 'default' }}
       >
         <span className="cuando">
           {salida.hora}
-          {paso && <span className="yaPaso" style={{ display: 'block' }}>ya pasó</span>}
+          {paso && <span className="yaPaso">ya pasó</span>}
         </span>
         <span className="donde">
           <strong>{tituloSalida(salida, contexto)}</strong>
           {salida.barrio && <span>{salida.barrio}</span>}
-          {salida.conductor && <span>Conduce {salida.conductor}</span>}
+          {!quienConduce(salida, miDriverId).esMia && salida.conductor && <span>Conduce {salida.conductor}</span>}
           <div className="marcas">
             <ChipsDeSalida salida={salida} />
+            <ChipsDeConduccion salida={salida} miDriverId={miDriverId} />
           </div>
+          <EstadoInforme dato={informe} />
         </span>
         {puedeAbrir && (
           <span className="flecha" aria-hidden="true">
@@ -2233,7 +2695,7 @@ function FilaSalida({
           )}
           <BotonPdfSalida salida={salida} contexto={contexto} />
           {sePuedeInformarAhora(salida) && puedeInformar ? (
-            <AccionesConduccion onInformar={onInformar} puedeMarcarNoRealizada={puedeMarcarNoRealizada} />
+            <AccionesConduccion onInformar={onInformar} puedeMarcarNoRealizada={puedeMarcarNoRealizada} sinMapa={sinMapaLaSalida(salida)} />
           ) : null}
         </div>
       )}
@@ -2245,6 +2707,8 @@ function ListaSalidas({
   salidas,
   contexto,
   cargando,
+  miDriverId,
+  informeDe,
   abierta,
   setAbierta,
   onMapa,
@@ -2255,6 +2719,8 @@ function ListaSalidas({
   salidas: Salida[]
   contexto?: ContextoHermano | null
   cargando: boolean
+  miDriverId: string | null
+  informeDe: (s: Salida) => { informada: boolean; texto: string } | null
   abierta: string | null
   setAbierta: (v: string | null) => void
   onMapa: (s: Salida) => void
@@ -2307,6 +2773,8 @@ function ListaSalidas({
             <FilaSalida
               salida={s}
               contexto={contexto}
+              miDriverId={miDriverId}
+              informe={informeDe(s)}
               abierta={abierta === `lista-${i}`}
               onAbrir={() => setAbierta(abierta === `lista-${i}` ? null : `lista-${i}`)}
               onMapa={() => onMapa(s)}
@@ -2448,6 +2916,11 @@ function HojaHistorial({
     return new Set([...latestEventsAt(eventos ?? [], corte).values()].filter((e) => e.estado === 'recorrido').map((e) => e.lado_id))
   }, [eventos, corte])
 
+  const estadosAl = useMemo(
+    () => Object.fromEntries([...latestEventsAt(eventos ?? [], corte).values()].map((e) => [e.lado_id, e.estado])),
+    [eventos, corte],
+  )
+
   const delDia = useMemo(
     () => (eventos ?? []).filter((e) => dia && soloDia(e.informado_at) === dia),
     [eventos, dia],
@@ -2470,23 +2943,23 @@ function HojaHistorial({
     if (!pts.length) return
     const b = L.latLngBounds(pts)
     if (!mapa.current) {
-      const m = L.map(caja.current, { zoomAnimation: false })
-      m.fitBounds(b.pad(0.08), { animate: false })
+      const m = L.map(caja.current, OPCIONES_MAPA)
+      m.fitBounds(b, ENCUADRE)
       ponerFondo(m)
+      ponerZoom(m)
       capa.current = L.layerGroup().addTo(m)
       mapa.current = m
       window.setTimeout(() => {
         m.invalidateSize({ animate: false, pan: false })
-        m.fitBounds(b.pad(0.08), { animate: false })
+        m.fitBounds(b, ENCUADRE)
       }, 60)
     }
     capa.current!.clearLayers()
-    pintarManzanas(capa.current!, manzanasDelDia, ladosDe, hechosAl)
-  }, [manzanasDelDia, ladosDe, hechosAl])
+    pintarManzanas(capa.current!, manzanasDelDia, ladosDe, estadosAl)
+  }, [manzanasDelDia, ladosDe, estadosAl])
 
   useEffect(() => {
-    const overflowAnterior = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
+    const soltarFondo = bloquearFondo()
     const esc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onCerrarRef.current()
       if (e.key === 'Tab') {
@@ -2500,11 +2973,11 @@ function HojaHistorial({
     // El foco entra a la ventana y vuelve de donde vino. Sin esto, cerrar
     // dejaba el foco en el fondo y el teclado seguia en otra pantalla.
     const veniaDe = document.activeElement as HTMLElement | null
-    cerrarRef.current?.focus()
+    enfocarSinMover(cerrarRef.current)
     return () => {
-      document.body.style.overflow = overflowAnterior
+      soltarFondo()
       window.removeEventListener('keydown', esc)
-      veniaDe?.focus?.()
+      enfocarSinMover(veniaDe)
       mapa.current?.remove()
       mapa.current = null
     }
@@ -2547,7 +3020,42 @@ function HojaHistorial({
     return [...m.values()].sort((a, b) => a.letra.localeCompare(b.letra))
   }, [cierreDelDia, manzanasDelDia, ladosDe, hechosAl, nombres])
 
-  const deshechos = cierreDelDia.filter((e) => e.estado !== 'recorrido').length
+  // Los movimientos del día, agrupados por momento (al minuto), manzana,
+  // estado y quién: marcar 4 cuadras de una manzana de una vez es un
+  // movimiento, no cuatro filas.
+  const movimientosAgrupados = useMemo(() => {
+    const m = new Map<string, {
+      clave: string; hora: string; letra: string; estado: string; quien: string; correccion: boolean
+      eventos: Evento[]; notas: string[]; ultimoAt: string
+    }>()
+    for (const e of delDia) {
+      const hora = hora24(e.informado_at)
+      const letra = (manzanas.find((x) => x.id === e.manzana_id)?.label ?? 'sin rótulo').toUpperCase()
+      const estado = nombreDeEstado(e.estado)
+      const quien = e.informado_por ? nombres[e.informado_por] ?? 'un hermano' : 'sin autor disponible'
+      const correccion = Boolean(e.corrige_evento_id)
+      const clave = [hora, e.manzana_id, e.estado, e.informado_por ?? '', correccion].join('|')
+      const g = m.get(clave) ?? { clave, hora, letra, estado, quien, correccion, eventos: [], notas: [], ultimoAt: e.informado_at }
+      g.eventos.push(e)
+      if (e.nota && !g.notas.includes(e.nota)) g.notas.push(e.nota)
+      if (e.informado_at > g.ultimoAt) g.ultimoAt = e.informado_at
+      m.set(clave, g)
+    }
+    return [...m.values()]
+  }, [delDia, manzanas, nombres])
+
+  // Lo que quedó al cierre del día en cada cuadra que no está «recorrida»,
+  // dicho por separado: no es lo mismo «no accesible» que «se quitó la marca».
+  const cierresSinRecorrer = useMemo(() => {
+    const cuenta = { no_accesible: 0, revisitar: 0, sin_dato: 0 }
+    for (const e of cierreDelDia) {
+      if (e.estado === 'no_accesible') cuenta.no_accesible++
+      else if (e.estado === 'revisitar') cuenta.revisitar++
+      else if (e.estado !== 'recorrido') cuenta.sin_dato++
+    }
+    return cuenta
+  }, [cierreDelDia])
+  const deshechos = cierresSinRecorrer.no_accesible + cierresSinRecorrer.revisitar + cierresSinRecorrer.sin_dato
 
   // El resumen se cuenta en manzanas, que es como se habla del territorio.
   // Una manzana sin cuadras cargadas no se cuenta como hecha ni como
@@ -2655,14 +3163,22 @@ function HojaHistorial({
                     </span>
                   </li>
                 ))}
-                {deshechos > 0 && (
+                {cierresSinRecorrer.no_accesible > 0 && (
+                  <li className="histDeshecho">
+                    <b>✕</b>
+                    <span>{textoCuadras(cierresSinRecorrer.no_accesible)} marcada{cierresSinRecorrer.no_accesible === 1 ? '' : 's'} como no accesible{cierresSinRecorrer.no_accesible === 1 ? '' : 's'}</span>
+                  </li>
+                )}
+                {cierresSinRecorrer.revisitar > 0 && (
+                  <li className="histDeshecho">
+                    <b>↻</b>
+                    <span>{textoCuadras(cierresSinRecorrer.revisitar)} para revisitar</span>
+                  </li>
+                )}
+                {cierresSinRecorrer.sin_dato > 0 && (
                   <li className="histDeshecho">
                     <b><Icono nombre="deshacer" tamaño={18} /></b>
-                    <span>
-                      {deshechos === 1
-                        ? '1 cuadra que se había marcado y quedó sin recorrer'
-                        : `${deshechos} cuadras que se habían marcado y quedaron sin recorrer`}
-                    </span>
+                    <span>{textoCuadras(cierresSinRecorrer.sin_dato)} a las que se les quitó la marca ese día</span>
                   </li>
                 )}
               </ul>
@@ -2674,33 +3190,41 @@ function HojaHistorial({
               <Icono nombre="historial" tamaño={18} />
               Ver el cierre del día
             </button>
-            <ol>{delDia.map((e) => (
-              <li key={e.id}>
-                {e.corrige_evento_id && <strong>Corrección · </strong>}
-                {new Date(e.informado_at).toLocaleTimeString('es-AR')} · Manzana {manzanas.find((m) => m.id === e.manzana_id)?.label ?? 'sin rótulo'} · {e.estado === 'recorrido' ? 'Recorrido' : e.estado === 'no_accesible' ? 'No accesible' : e.estado === 'revisitar' ? 'Revisitar' : 'Sin dato'} · {e.informado_por ? nombres[e.informado_por] ?? 'un hermano' : 'sin autor disponible'}
-                {e.nota && <p>{e.nota}</p>}
-                <button className="boton secundario" onClick={() => setInstante(e.informado_at)}>
+            <ol className="histMovimientos">{movimientosAgrupados.map((g) => (
+              <li key={g.clave}>
+                <p className="histMovimiento">
+                  {g.correccion && <strong>Corrección · </strong>}
+                  {g.hora} · <strong>Manzana {g.letra}</strong> · {g.eventos.length === 1 ? '1 cuadra' : `${g.eventos.length} cuadras`} · {g.estado} · {g.quien}
+                </p>
+                {g.notas.map((nota) => <p key={nota} className="histNota">{nota}</p>)}
+                <button type="button" className="botonChico histVerMapa" onClick={() => setInstante(g.ultimoAt)}>
                   <Icono nombre="territorios" tamaño={18} />
-                  Ver el mapa en ese momento
+                  Ver el mapa a esa hora
                 </button>
-                {canCorrect&&correcting!==e.id?<button className="boton secundario"
-                  disabled={cola.events.some(item=>item.corrige_evento_id===e.id)}
-                  onClick={()=>setCorrecting(e.id)}>
-                  <Icono nombre="dibujar" tamaño={18} />
-                  Corregir esta marca
-                </button>:null}
-                {canCorrect&&correcting===e.id?<CoverageCorrectionForm onCancel={()=>setCorrecting(null)}
-                  disabled={!!cola.error} onSubmit={async(state,note)=>{
-                    if(!profile)throw Error('Falta la sesión.')
-                    const side=lados.find(item=>item.id===e.lado_id)
-                    if(!side?.geometry_version)throw Error('No se pudo cargar la versión original del lado.')
-                    if(cola.events.some(item=>item.corrige_evento_id===e.id))throw Error('Esta marca ya tiene una corrección pendiente.')
-                    const input=prepareCoverageCorrection(profile,e,{...side,geometry_version:side.geometry_version},territorio.id,state,note)
-                    await cola.enqueue(input)
-                    setCorrecting(null)
-                    setCorrectionNotice('Corrección conservada en este dispositivo. Se incorpora al historial cuando el servidor la confirme.')
-                    void cola.sync()
-                  }}/>:null}
+                {canCorrect ? <details className="histCorregir">
+                  <summary>Corregir una cuadra de este grupo</summary>
+                  {g.eventos.map((e, i) => <div key={e.id} className="histCorregirFila">
+                    <span>Cuadra {i + 1} de {g.eventos.length}</span>
+                    {correcting!==e.id?<button className="boton secundario"
+                      disabled={cola.events.some(item=>item.corrige_evento_id===e.id)}
+                      onClick={()=>setCorrecting(e.id)}>
+                      <Icono nombre="dibujar" tamaño={18} />
+                      Corregir esta marca
+                    </button>:null}
+                    {correcting===e.id?<CoverageCorrectionForm onCancel={()=>setCorrecting(null)}
+                      disabled={!!cola.error} onSubmit={async(state,note)=>{
+                        if(!profile)throw Error('Falta la sesión.')
+                        const side=lados.find(item=>item.id===e.lado_id)
+                        if(!side?.geometry_version)throw Error('No se pudo cargar la versión original del lado.')
+                        if(cola.events.some(item=>item.corrige_evento_id===e.id))throw Error('Esta marca ya tiene una corrección pendiente.')
+                        const input=prepareCoverageCorrection(profile,e,{...side,geometry_version:side.geometry_version},territorio.id,state,note)
+                        await cola.enqueue(input)
+                        setCorrecting(null)
+                        setCorrectionNotice('Corrección conservada en este dispositivo. Se incorpora al historial cuando el servidor la confirme.')
+                        void cola.sync()
+                      }}/>:null}
+                  </div>)}
+                </details> : null}
               </li>
             ))}</ol>
           </details>
@@ -2718,9 +3242,12 @@ function HojaMapa({
   editable,
   modoMarcar,
   setModoMarcar,
+  estadoElegido,
+  setEstadoElegido,
   territorio,
   manzanas,
   dibujarPropio,
+  alTocar,
   avisos,
   onCerrar,
 }: {
@@ -2729,9 +3256,13 @@ function HojaMapa({
   editable?: boolean
   modoMarcar: 'manzana' | 'lado'
   setModoMarcar: (v: 'manzana' | 'lado') => void
+  estadoElegido?: CoverageInput['estado']
+  setEstadoElegido?: (v: CoverageInput['estado']) => void
   territorio: Territorio | null
   manzanas: Manzana[]
   dibujarPropio: (capa: L.LayerGroup) => void
+  /** Un toque en el mapa (para elegir la manzana o cuadra más cercana). Debe ser estable. */
+  alTocar?: (m: L.Map, p: L.Point) => void
   /** Avisos de la calle (marcas pendientes, deshacer), pegados al borde de abajo del mapa. */
   avisos?: ReactNode
   onCerrar: () => void
@@ -2760,20 +3291,32 @@ function HojaMapa({
     if (propio) setFormas(manzanas)
   }, [propio, manzanas])
 
+  // El mapa se arma UNA vez. Antes este efecto dependía de `dibujarPropio` y
+  // `onCerrar`, funciones que se crean de nuevo en cada render: cada marca
+  // desarmaba el mapa y volvía el zoom al territorio entero. Ahora solo se
+  // vuelven a pintar las capas; el encuadre es solo de la primera vez.
+  const onCerrarRef = useRef(onCerrar)
+  onCerrarRef.current = onCerrar
+  const alTocarRef = useRef(alTocar)
+  alTocarRef.current = alTocar
+
   useEffect(() => {
     if (!caja.current || !formas.length) return
     const pts = formas.flatMap((m) => (m.geometry_geojson ? anilloDe(m.geometry_geojson) : []))
     if (!pts.length) return
     const b = L.latLngBounds(pts)
     if (!mapa.current) {
-      const m = L.map(caja.current, { zoomAnimation: false })
-      m.fitBounds(b.pad(0.08), { animate: false })
+      const m = L.map(caja.current, OPCIONES_MAPA)
+      m.fitBounds(b, ENCUADRE)
       ponerFondo(m)
+      ponerZoom(m)
+      m.on('click', (e: L.LeafletMouseEvent) => alTocarRef.current?.(m, e.containerPoint))
       capa.current = L.layerGroup().addTo(m)
       mapa.current = m
       window.setTimeout(() => {
+        if (mapa.current !== m) return
         m.invalidateSize({ animate: false, pan: false })
-        m.fitBounds(b.pad(0.08), { animate: false })
+        m.fitBounds(b, ENCUADRE)
       }, 60)
     }
     const c = capa.current!
@@ -2785,20 +3328,49 @@ function HojaMapa({
     pintarSalida(c, formas, salida?.priorizar)
   }, [formas, propio, salida?.priorizar, dibujarPropio])
 
+  // La caja puede no tener su tamaño final cuando se crea el mapa. Mientras
+  // la persona no lo tocó (el primer segundo), cada cambio de tamaño vuelve a
+  // encuadrar al territorio entero con poco margen.
   useEffect(() => {
-    document.body.style.overflow = 'hidden'
-    const esc = (e: KeyboardEvent) => e.key === 'Escape' && onCerrar()
+    const m = mapa.current
+    const caja_ = caja.current
+    if (!m || !caja_ || !formas.length || typeof ResizeObserver === 'undefined') return
+    const pts = formas.flatMap((f) => (f.geometry_geojson ? anilloDe(f.geometry_geojson) : []))
+    if (!pts.length) return
+    const b = L.latLngBounds(pts)
+    const desde = Date.now()
+    const ro = new ResizeObserver(() => {
+      if (mapa.current !== m) return
+      m.invalidateSize({ animate: false, pan: false })
+      if (Date.now() - desde < 1200) m.fitBounds(b, ENCUADRE)
+    })
+    ro.observe(caja_)
+    return () => ro.disconnect()
+  }, [formas])
+
+  // Marcando, el doble clic no acerca (dos clics seguidos son un doble toque).
+  useEffect(() => {
+    const m = mapa.current
+    if (!m) return
+    const marcando = Boolean(propio && editable)
+    if (marcando) m.doubleClickZoom.disable(); else m.doubleClickZoom.enable()
+    m.getContainer().classList.toggle('mapaMarcando', marcando)
+  }, [propio, editable, formas])
+
+  useEffect(() => {
+    const soltarFondo = bloquearFondo()
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && onCerrarRef.current()
     window.addEventListener('keydown', esc)
     const veniaDe = document.activeElement as HTMLElement | null
-    cerrarRef.current?.focus()
+    enfocarSinMover(cerrarRef.current)
     return () => {
-      document.body.style.overflow = ''
+      soltarFondo()
       window.removeEventListener('keydown', esc)
-      veniaDe?.focus?.()
+      enfocarSinMover(veniaDe)
       mapa.current?.remove()
       mapa.current = null
     }
-  }, [onCerrar])
+  }, [])
 
   // El pie decia "Tocá una manzana" tambien en modo cuadra, donde tocar la
   // manzana no hace nada. Dice lo que el dedo puede hacer ahora.
@@ -2808,8 +3380,8 @@ function HojaMapa({
         texto: !editable
           ? 'En verde, lo que ya se recorrió.'
           : modoMarcar === 'manzana'
-            ? 'Las verdes ya las recorriste. Tocá una manzana para marcarla entera.'
-            : 'Las verdes ya las recorriste. Tocá una cuadra para marcarla.',
+            ? 'Las verdes ya las recorriste. Tocá una manzana para marcarla entera. Para acercar, usá + y − o la rueda del mouse.'
+            : 'Las verdes ya las recorriste. Tocá cerca de una cuadra para marcarla. Para acercar, usá + y − o la rueda del mouse.',
       }
     : salida
       ? leyendaDelMapa(salida)
@@ -2836,18 +3408,48 @@ function HojaMapa({
           abrirlo, justo donde se marca de verdad. */}
       {propio && editable && (
         <div id="sobreModos">
-          <div className="modos" role="group" aria-label="Cómo marcar">
-            {(['manzana', 'lado'] as const).map((k) => (
-              <button
-                key={k}
-                className="modo"
-                aria-pressed={modoMarcar === k}
-                onClick={() => setModoMarcar(k)}
-              >
-                {k === 'manzana' ? 'Manzana entera' : 'Por cuadra'}
-              </button>
-            ))}
-          </div>
+          {/* Qué se está marcando, dicho con palabras, y cómo cambiarlo sin
+              volver a la pantalla de atrás. Plegado: una línea de 56 px. */}
+          <details className="marcandoAhora">
+            <summary>
+              <Icono nombre="marcar" tamaño={20} />
+              <span>
+                Marcando: <strong>{ESTADOS_A_INFORMAR.find((e) => e.valor === estadoElegido)?.texto ?? 'Recorrida'}</strong>
+                {' · '}
+                <strong>{modoMarcar === 'manzana' ? 'Manzana entera' : 'Por cuadra'}</strong>
+              </span>
+              <span className="marcandoCambiar">Cambiar</span>
+            </summary>
+            {setEstadoElegido && (
+              <div className="modos estadosMapa" role="group" aria-label="Qué marcar">
+                {ESTADOS_A_INFORMAR.map((e) => (
+                  <button
+                    key={e.valor}
+                    type="button"
+                    className="modo"
+                    aria-pressed={estadoElegido === e.valor}
+                    onClick={() => setEstadoElegido(e.valor as CoverageInput['estado'])}
+                  >
+                    {e.texto}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="modos" role="group" aria-label="Cómo marcar">
+              {(['manzana', 'lado'] as const).map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  className="modo"
+                  aria-pressed={modoMarcar === k}
+                  onClick={() => setModoMarcar(k)}
+                >
+                  {k === 'manzana' ? 'Manzana entera' : 'Por cuadra'}
+                </button>
+              ))}
+            </div>
+            {estadoElegido === 'sin_dato' && <p className="marcandoAyuda">Sin dato quita la marca que tenga la cuadra o la manzana.</p>}
+          </details>
         </div>
       )}
       <div className="sobreCuerpo">

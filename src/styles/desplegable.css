@@ -120,7 +120,9 @@
 /* La opcion bajo el cursor o bajo la flecha del teclado se marca igual:
    una sola idea de "esta es la que va a entrar si apretas Enter". */
 .desplegable-opcion[data-activa='si'] {
-  background: var(--page-bg, #f0f6dd);
+  background: color-mix(in srgb, var(--accent, #5f7d0a) 16%, var(--panel-bg, #fff));
+  /* Borde además del fondo: se ve aunque el color cambie de tema. */
+  box-shadow: inset 0 0 0 2px var(--accent, #5f7d0a);
 }
 
 /* El segundo renglón de una opción: "Hace 96 días", "Punto 2 · en el mapa".

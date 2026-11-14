@@ -252,7 +252,9 @@ export function Desplegable({
                     setBusqueda(e.target.value)
                     setActiva(0)
                   }}
-                  onKeyDown={porTeclado}
+                  // Sin onKeyDown propio: la tecla sube sola hasta la lista,
+                  // que ya la maneja. Engancharla acá también la procesaba
+                  // dos veces (la flecha saltaba de a dos, Enter elegía dos).
                 />
               ) : null}
 

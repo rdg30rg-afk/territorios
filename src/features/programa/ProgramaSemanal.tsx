@@ -21,8 +21,11 @@
  *    un territorio se repite o si al punto le falta la ubicación, se dice ahí
  *    mismo y no al guardar.
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useMenusMas } from '../../lib/useMenusMas'
+import { periodoAlAbrir } from './periodoAlAbrir'
 import { createPortal } from 'react-dom'
+import { Link } from 'react-router-dom'
 import { Desplegable } from '../../components/Desplegable'
 import { Icono } from '../../components/Icono'
 import { decirElError } from '../../lib/decirElError'
@@ -50,6 +53,7 @@ import {
   contarDiasInclusive,
   crearEstadoPrograma,
   deClaveFecha,
+  desdeProgramable,
   fraseDelRango,
   rangoPorPreset,
   semanasDelRango,
@@ -120,6 +124,17 @@ type Props = {
   scope: 'general' | 'grupo'
   grupoId: string | null
   onGuardado: () => void
+  /* La agenda de Salidas genera el PDF y necesita saber si hay algo sin
+     guardar para avisarlo recién al pedir el PDF, no todo el tiempo. */
+  alCambiarPendientes?: (pendientes: PendientesDelPrograma | null) => void
+}
+
+export type PendientesDelPrograma = {
+  /* Salidas tildadas sin guardar; 0 con hayCambios = solo excepciones. */
+  cuantas: number
+  hayCambios: boolean
+  puedeGuardar: boolean
+  guardar: () => Promise<boolean>
 }
 
 const CLAVE_BORRADOR = 'territorios.programa.v2'
@@ -203,10 +218,12 @@ export function ProgramaSemanal({
   scope,
   grupoId,
   onGuardado,
+  alCambiarPendientes,
 }: Props) {
+  useMenusMas()
   const client = supabase
   const [borrador, setBorrador] = useState<Borrador>(leerBorrador)
-  const [periodo, setPeriodo] = useState(() => borrador.periodo ?? crearEstadoPrograma())
+  const [periodo, setPeriodo] = useState(() => periodoAlAbrir(borrador.periodo, borrador))
   const [borradorCargado, setBorradorCargado] = useState(false)
   const [versionBorrador, setVersionBorrador] = useState<number | null>(null)
   const [revisionBorrador, setRevisionBorrador] = useState(0)
@@ -230,6 +247,14 @@ export function ProgramaSemanal({
   const [configAbierta, setConfigAbierta] = useState(false)
   const [rotacion, setRotacion] = useState<Map<string, RotacionDeTerritorio>>(new Map())
   const [cargandoRotacion, setCargandoRotacion] = useState(true)
+  /* Si una lectura falla no se sigue con datos a medias: se muestra el error
+     y se frena el proponer y el guardar hasta que vuelva a andar. */
+  const [errorRotacion, setErrorRotacion] = useState<string | null>(null)
+  const [errorAgenda, setErrorAgenda] = useState<string | null>(null)
+  const [errorExcepciones, setErrorExcepciones] = useState<string | null>(null)
+  const [errorSemana, setErrorSemana] = useState<string | null>(null)
+  const [cargandoAgenda, setCargandoAgenda] = useState(true)
+  const [recargarLecturas, setRecargarLecturas] = useState(0)
   const [salidasEnAgenda, setSalidasEnAgenda] = useState<
     Array<{
       scheduled_for: string
@@ -248,6 +273,7 @@ export function ProgramaSemanal({
   const [destino, setDestino] = useState<{ clave: string; antes: boolean } | null>(null)
   const [semanaMovil, setSemanaMovil] = useState(0)
   const [periodoMovilAbierto, setPeriodoMovilAbierto] = useState(false)
+  const [indiceFalta, setIndiceFalta] = useState(0)
   const [hojaMovil, setHojaMovil] = useState<HojaMovil | null>(null)
   const focoAnterior = useRef<HTMLElement | null>(null)
   const hojaRef = useRef<HTMLDivElement | null>(null)
@@ -292,12 +318,17 @@ export function ProgramaSemanal({
     ? 'Borrador sin sincronizar'
     : borradorSinSincronizar ? 'Guardando borrador compartido…' : textoDelBorrador(guardadoEn)
 
+  const hoyClave = aClaveFecha(new Date())
+  const desdeEfectivo = desdeProgramable(periodo.desde)
+  const hayDiasPasadosEnElPeriodo = periodo.desde < hoyClave
   const configBase = useMemo(() => configDeLaCongregacion(conductores), [conductores])
   const config = configEditada ?? configSemana ?? configBase
   const dias = useMemo(() => {
     const unidos = { ...diasGuardados }
     for (const [fecha, motivo] of Object.entries(diasBorrador)) {
-      if (motivo) unidos[fecha] = motivo
+      /* Un motivo vacío sigue marcando el día: si no, al borrar el texto
+         para escribir otro el día se desmarcaba mientras tipeabas. */
+      if (motivo !== null && motivo !== undefined) unidos[fecha] = motivo
       else delete unidos[fecha]
     }
     return unidos
@@ -356,7 +387,7 @@ export function ProgramaSemanal({
         setRevisionBorrador(0)
         setVersionBorrador(version)
         setBorrador(cargado)
-        setPeriodo(cargado.periodo ?? local.periodo ?? crearEstadoPrograma())
+        setPeriodo(periodoAlAbrir(cargado.periodo ?? local.periodo, cargado))
         setErrorBorrador(null)
         setBorradorCargado(true)
         if (version === 0 && hayLocal) {
@@ -410,6 +441,8 @@ export function ProgramaSemanal({
       return
     }
     let vivo = true
+    setCargandoRotacion(true)
+    setErrorRotacion(null)
     const finDeHoy = aClaveFecha(new Date())
     void readAllRows<SalidaParaRotacion>((from, to) =>
       client
@@ -422,10 +455,15 @@ export function ProgramaSemanal({
       .then((salidas) => {
         if (vivo) setRotacion(rotacionPorTerritorio(salidas))
       })
-      .catch(() => {
-        /* Sin rotación la pantalla sigue sirviendo: solo no puede decir hace
-           cuánto que no se trabaja cada territorio. */
-        if (vivo) setRotacion(new Map())
+      .catch((caught) => {
+        /* Sin la rotación todo figuraría como «Nunca se programó» y la
+           propuesta saldría mal: se avisa y se frena. */
+        if (!vivo) return
+        setRotacion(new Map())
+        setErrorRotacion(decirElError(
+          caught instanceof Error ? { message: caught.message } : (caught as { message?: string }),
+          'No se pudo leer qué territorios se trabajaron.',
+        ))
       })
       .finally(() => {
         if (vivo) setCargandoRotacion(false)
@@ -433,40 +471,77 @@ export function ProgramaSemanal({
     return () => {
       vivo = false
     }
-  }, [client])
+  }, [client, recargarLecturas])
 
   useEffect(() => {
     if (!client) return
     let vivo = true
+    setErrorSemana(null)
     void cargarConfigSemana(client)
       .then((cargada) => {
         if (vivo) setConfigSemana(cargada)
       })
-      .catch(() => {
-        /* Si la lectura falla, la semana del código sigue siendo válida. */
+      .catch((caught) => {
+        /* Con la lectura caída, la semana del código no es la real: guardarla
+           pisaría la de todos. Se frena hasta que se pueda leer. */
+        if (vivo) setErrorSemana(decirElError(
+          caught instanceof Error ? { message: caught.message } : (caught as { message?: string }),
+          'No se pudo leer la semana de siempre.',
+        ))
       })
     return () => {
       vivo = false
     }
-  }, [client])
+  }, [client, recargarLecturas])
 
   /* Lo que ya está guardado en el período: el motor no lo pisa y la cabecera
      de cada semana lo cuenta. */
   useEffect(() => {
     if (!client) return
     let vivo = true
+    setCargandoAgenda(true)
     void client
       .from('salidas')
       .select('scheduled_for, territory_id, driver_id, tipo, meeting_point_name')
       .gte('scheduled_for', `${periodo.desde}T00:00:00-03:00`)
       .lt('scheduled_for', `${periodo.hasta}T23:59:59-03:00`)
-      .then(({ data }) => {
-        if (vivo) setSalidasEnAgenda(data ?? [])
+      .then(({ data, error: errorLectura }) => {
+        if (!vivo) return
+        if (errorLectura) {
+          /* Sin la agenda, «Proponer» rearmaría lo ya guardado y lo duplicaría. */
+          setErrorAgenda(decirElError(errorLectura, 'No se pudo leer la agenda de esas fechas.'))
+        } else {
+          setErrorAgenda(null)
+          setSalidasEnAgenda(data ?? [])
+        }
+        setCargandoAgenda(false)
+      }, (caught) => {
+        if (!vivo) return
+        setErrorAgenda(decirElError(
+          caught instanceof Error ? { message: caught.message } : (caught as { message?: string }),
+          'No se pudo leer la agenda de esas fechas.',
+        ))
+        setCargandoAgenda(false)
       })
     return () => {
       vivo = false
     }
-  }, [client, periodo.desde, periodo.hasta, recargarSalidas])
+  }, [client, periodo.desde, periodo.hasta, recargarSalidas, recargarLecturas])
+
+  /* Si alguien borra o cambia una salida desde la agenda, el programa se
+     entera al volver a esta pestaña (si no, un conductor quedaba «ocupado»
+     por una salida que ya no existe). */
+  useEffect(() => {
+    const alVolver = () => {
+      if (document.visibilityState === 'visible') setRecargarSalidas((n) => n + 1)
+    }
+    document.addEventListener('visibilitychange', alVolver)
+    window.addEventListener('focus', alVolver)
+    return () => {
+      document.removeEventListener('visibilitychange', alVolver)
+      window.removeEventListener('focus', alVolver)
+    }
+  }, [])
 
   useEffect(() => {
     if (!client) return
@@ -478,6 +553,9 @@ export function ProgramaSemanal({
         .gte('fecha', periodo.desde).lte('fecha', periodo.hasta),
     ]).then(([respuestaDias, respuestaFilas]) => {
       if (!vivo) return
+      setErrorExcepciones(respuestaDias.error || respuestaFilas.error
+        ? decirElError(respuestaDias.error ?? respuestaFilas.error, 'No se pudieron leer los días sin salida.')
+        : null)
       if (!respuestaDias.error) {
         setDiasGuardados(Object.fromEntries((respuestaDias.data ?? []).map((fila) => [fila.fecha, fila.motivo])))
       }
@@ -486,9 +564,14 @@ export function ProgramaSemanal({
           claveFila(fila.fecha, fila.turno as Turno),
         )))
       }
+    }, (caught) => {
+      if (vivo) setErrorExcepciones(decirElError(
+        caught instanceof Error ? { message: caught.message } : (caught as { message?: string }),
+        'No se pudieron leer los días sin salida.',
+      ))
     })
     return () => { vivo = false }
-  }, [client, periodo.desde, periodo.hasta, recargarExcepciones])
+  }, [client, periodo.desde, periodo.hasta, recargarExcepciones, recargarLecturas])
 
   useEffect(() => {
     try {
@@ -501,12 +584,14 @@ export function ProgramaSemanal({
   const diasDelPeriodo = useMemo(() => {
     const lista: Array<{ clave: string; dow: number }> = []
     const fin = deClaveFecha(periodo.hasta)
-    for (let d = deClaveFecha(periodo.desde); d.getTime() <= fin.getTime(); ) {
+    /* Los días que ya pasaron no se programan: crearían salidas en el pasado
+       que cuentan como trabajadas en la rotación. */
+    for (let d = deClaveFecha(desdeEfectivo); d.getTime() <= fin.getTime(); ) {
       lista.push({ clave: aClaveFecha(d), dow: d.getDay() })
       d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)
     }
     return lista
-  }, [periodo.desde, periodo.hasta])
+  }, [desdeEfectivo, periodo.hasta])
 
   /* Las filas del período: los turnos de la semana más las que se agregaron a
      mano, sin los días que quedaron marcados como asamblea, y en el orden que
@@ -514,7 +599,7 @@ export function ProgramaSemanal({
   const filasDelPeriodo = useMemo<FilaDelPrograma[]>(() => {
     const lista: FilaDelPrograma[] = []
     for (const dia of diasDelPeriodo) {
-      if (dias[dia.clave]) continue
+      if (dias[dia.clave] !== undefined) continue
       const turnosBase = turnosDelDia(config, dia.dow)
       /* Las de siempre y las agregadas a mano se arman por separado: una
          segunda salida de la mañana comparte el turno con la primera, y la
@@ -539,8 +624,10 @@ export function ProgramaSemanal({
   }, [diasDelPeriodo, config, extras, dias, orden])
 
   const semanas = useMemo(
-    () => semanasDelRango(deClaveFecha(periodo.desde), deClaveFecha(periodo.hasta)),
-    [periodo.desde, periodo.hasta],
+    () => deClaveFecha(desdeEfectivo).getTime() > deClaveFecha(periodo.hasta).getTime()
+      ? []
+      : semanasDelRango(deClaveFecha(desdeEfectivo), deClaveFecha(periodo.hasta)),
+    [desdeEfectivo, periodo.hasta],
   )
 
   const puntosDe = (territorioId: string) =>
@@ -572,6 +659,9 @@ export function ProgramaSemanal({
       } },
     })
 
+  const esSalidaDeGrupos = (salida: { meeting_point_name: string | null }) =>
+    /salidas? de grupos?/i.test(salida.meeting_point_name ?? '')
+
   const esHoy = (clave: string) => clave === aClaveFecha(new Date())
 
   const nombreConductor = (id: string) =>
@@ -591,7 +681,7 @@ export function ProgramaSemanal({
     filasDelPeriodo.some((otra) => otra.clave !== fila.clave && otra.fecha === fila.fecha
       && filas[otra.clave]?.tildada && filas[otra.clave]?.conductorId === conductorId)
     || salidasEnAgenda.some((salida) => aClaveFecha(new Date(salida.scheduled_for)) === fila.fecha
-      && salida.driver_id === conductorId)
+      && !esSalidaDeGrupos(salida) && salida.driver_id === conductorId)
   const territorioUsadoEn = (territorioId: string, fila: FilaDelPrograma) =>
     filasDelPeriodo.some((otra) => otra.clave !== fila.clave && filas[otra.clave]?.tildada
       && filas[otra.clave]?.territorioId === territorioId)
@@ -599,35 +689,27 @@ export function ProgramaSemanal({
 
   /* ---------- lo que se guarda ---------- */
   const tildadas = filasDelPeriodo.filter((f) => filas[f.clave]?.tildada)
+  const motivoFinal = (motivo: string | null | undefined) =>
+    motivo === null || motivo === undefined ? null : (motivo.trim() || 'Asamblea regional')
   const cambiosDias = Object.entries(diasBorrador)
-    .filter(([fecha, motivo]) => fecha >= periodo.desde && fecha <= periodo.hasta
-      && (motivo || null) !== (diasGuardados[fecha] ?? null))
-    .map(([fecha, motivo]) => ({ fecha, motivo }))
+    .map(([fecha, motivo]) => ({ fecha, motivo: motivoFinal(motivo) }))
+    .filter(({ fecha, motivo }) => fecha >= desdeEfectivo && fecha <= periodo.hasta
+      && motivo !== (diasGuardados[fecha] ?? null))
   const cambiosFilas = Object.entries(filasBorrador)
-    .filter(([clave, fila]) => clave.slice(0, 10) >= periodo.desde && clave.slice(0, 10) <= periodo.hasta
+    .filter(([clave, fila]) => clave.slice(0, 10) >= desdeEfectivo && clave.slice(0, 10) <= periodo.hasta
       && !clave.includes('-extra') && !clave.endsWith('-grupos')
       && fila.sinSalida !== filasGuardadasSinSalida.has(clave))
     .map(([clave, fila]) => ({ clave, fecha: clave.slice(0, 10), turno: clave.slice(11) as Turno, sin_salida: fila.sinSalida }))
+  const problemaDeLectura = errorSemana ?? errorAgenda ?? errorExcepciones ?? errorRotacion
+  const lecturasListas = !problemaDeLectura && !cargandoRotacion && !cargandoAgenda
+  const puedeProponer = puedeEscribir && lecturasListas
   const hayCambiosParaGuardar = tildadas.length > 0 || cambiosDias.length > 0 || cambiosFilas.length > 0
-  const sinCompletar = tildadas.filter((f) => {
-    const fila = filas[f.clave]!
-    return !fila.territorioId && f.turno !== 'telefono'
-  }).length
-  const sinConductor = tildadas.filter((f) => !filas[f.clave]?.conductorId).length
-  const sinPunto = tildadas.filter((f) => {
-    const fila = filas[f.clave]!
-    return !fila.puntoId && f.turno !== 'telefono'
-  }).length
-  const sinUbicacion = tildadas.filter((f) => {
-    const punto = puntos.find((p) => p.id === filas[f.clave]?.puntoId)
-    return Boolean(punto) && (punto!.lat === null || punto!.lng === null)
-  }).length
 
   /* ---------- avisos de una fila ---------- */
-  const avisosDe = (f: FilaDelPrograma): Array<{ clase: string; texto: string }> => {
+  const avisosDe = (f: FilaDelPrograma): Array<{ clase: string; texto: string; ir?: string; irTexto?: string }> => {
     const fila = filas[f.clave]
     if (!fila?.tildada) return []
-    const avisos: Array<{ clase: string; texto: string }> = []
+    const avisos: Array<{ clase: string; texto: string; ir?: string; irTexto?: string }> = []
     const esTelefono = f.turno === 'telefono'
     const esGrupos = f.turno === 'grupos'
     if (esGrupos) return avisos
@@ -635,7 +717,9 @@ export function ProgramaSemanal({
       avisos.push({ clase: 'prog-pastilla aviso', texto: 'Falta el territorio' })
     }
     if (!esTelefono && !fila.puntoId) {
-      avisos.push({ clase: 'prog-pastilla aviso', texto: 'Falta el punto de encuentro' })
+      avisos.push(fila.territorioId && puntosDe(fila.territorioId).length === 0
+        ? { clase: 'prog-pastilla aviso', texto: 'Este territorio no tiene punto cargado', ir: `/mapas?territorio=${encodeURIComponent(fila.territorioId)}`, irTexto: 'Cargarlo en Mapas' }
+        : { clase: 'prog-pastilla aviso', texto: 'Falta el punto de encuentro' })
     }
     if (!fila.conductorId) {
       avisos.push({ clase: 'prog-pastilla aviso', texto: 'Falta el conductor' })
@@ -662,7 +746,8 @@ export function ProgramaSemanal({
         })
       }
       const enLaAgenda = salidasEnAgenda.some(
-        (s) => aClaveFecha(new Date(s.scheduled_for)) === f.fecha && s.driver_id === fila.conductorId,
+        (s) => aClaveFecha(new Date(s.scheduled_for)) === f.fecha && !esSalidaDeGrupos(s)
+          && s.driver_id === fila.conductorId,
       )
       if (enLaAgenda) {
         avisos.push({
@@ -680,6 +765,8 @@ export function ProgramaSemanal({
       )
       if (repetido) {
         avisos.push({ clase: 'prog-pastilla aviso', texto: 'Ese territorio ya está en otra salida del período' })
+      } else if (salidasEnAgenda.some((s) => s.territory_id === fila.territorioId)) {
+        avisos.push({ clase: 'prog-pastilla aviso', texto: 'Ese territorio ya está en la agenda de este período' })
       }
     }
     return avisos
@@ -688,12 +775,79 @@ export function ProgramaSemanal({
   const chipDe = (fila: Fila, turno: Turno) => {
     if (!fila.tildada) return null
     const lista =
-      (Boolean(fila.territorioId) && Boolean(fila.conductorId)) ||
+      (Boolean(fila.territorioId) && Boolean(fila.puntoId) && Boolean(fila.conductorId)) ||
       (turno === 'telefono' && Boolean(fila.conductorId))
     /* Cuando falta algo, el aviso de la fila ya dice qué falta: un chip
        "Falta" al lado de "Falta el conductor" repetía la noticia dos veces. */
     return lista ? { clase: 'prog-pastilla bien', texto: 'Lista' } : null
   }
+
+  /* ---------- qué falta para guardar ----------
+     Un problema repetido se dice una vez, con número; el detalle vive en la
+     fila que lo tiene. */
+  const filasConFalta = (() => {
+    const lista: Array<{ clave: string; falta: string[] }> = []
+    for (const f of tildadas) {
+      const fila = filas[f.clave]!
+      const falta: string[] = []
+      if (!fila.hora) falta.push('horario')
+      if (!fila.conductorId) falta.push('conductor')
+      if (f.turno !== 'telefono') {
+        if (!fila.territorioId) falta.push('territorio')
+        else if (!fila.puntoId || !fila.puntoNombre) falta.push('punto')
+      }
+      if (!falta.length && avisosDe(f).some((aviso) => aviso.clase.includes('mal')
+        || aviso.texto.includes('ya está en otra salida del período'))) falta.push('repetido')
+      if (falta.length) lista.push({ clave: f.clave, falta })
+    }
+    return lista
+  })()
+  /* El servidor solo inserta lo que se le manda (no borra ni toca lo demás):
+     por eso se pueden guardar las salidas completas y dejar las otras como
+     borrador, sin trabar todo por una fila a medio armar. */
+  const clavesConFalta = new Set(filasConFalta.map((f) => f.clave))
+  const salidasListas = tildadas.filter((f) => !clavesConFalta.has(f.clave))
+  const textoDeLoQueFalta = (() => {
+    const n = filasConFalta.length
+    if (!n) return ''
+    const tipos = new Set(filasConFalta.flatMap((f) => f.falta))
+    if (tipos.size > 1) return `Faltan datos en ${n} salidas`
+    const [tipo] = [...tipos]
+    const frases: Record<string, [string, string]> = {
+      horario: ['Falta 1 horario', `Faltan ${n} horarios`],
+      conductor: ['Falta 1 conductor', `Faltan ${n} conductores`],
+      territorio: ['Falta 1 territorio', `Faltan ${n} territorios`],
+      punto: ['Falta 1 punto de encuentro', `Faltan ${n} puntos de encuentro`],
+      repetido: ['1 salida repite conductor o territorio', `${n} salidas repiten conductor o territorio`],
+    }
+    return frases[tipo!]![n === 1 ? 0 : 1]
+  })()
+  /* Lo que bloquea sin ser de una fila. Los errores de lectura y de borrador
+     ya tienen su propio aviso arriba: no se repiten acá. */
+  const estadoDelGuardado: { texto: string; falta: boolean } = (() => {
+    if (!puedeEscribir) return { texto: 'No tenés permiso para guardar el programa.', falta: false }
+    if (problemaDeLectura || errorBorrador) return { texto: '', falta: false }
+    if (borradorSinSincronizar) return { texto: 'Sincronizando el borrador…', falta: false }
+    if (scope === 'grupo' && !grupoId) return { texto: 'Elegí el grupo de servicio.', falta: false }
+    if (!hayCambiosParaGuardar) return { texto: 'Tildá los horarios, completá territorio y conductor, y guardá.', falta: false }
+    if (filasConFalta.length) {
+      const pendientes = filasConFalta.length
+      const resto = salidasListas.length
+        ? `se guardan las ${salidasListas.length} completas y ${pendientes === 1 ? 'queda 1 pendiente' : `quedan ${pendientes} pendientes`}`
+        : 'todavía no hay ninguna completa para guardar'
+      return { texto: `${textoDeLoQueFalta} · ${resto}`, falta: true }
+    }
+    const n = tildadas.length
+    return { texto: n ? `${n} ${n === 1 ? 'salida lista' : 'salidas listas'} para guardar` : 'Cambios listos para guardar', falta: false }
+  })()
+  const hayAlgoQueGuardarYa = salidasListas.length > 0 || cambiosDias.length > 0 || cambiosFilas.length > 0
+  const puedeGuardar = puedeEscribir && !guardando && !problemaDeLectura && hayCambiosParaGuardar
+    && hayAlgoQueGuardarYa && !borradorSinSincronizar && !errorBorrador
+  const textoBotonGuardar = guardando
+    ? 'Guardando…'
+    : filasConFalta.length && salidasListas.length
+      ? `Guardar las ${salidasListas.length} completas`
+      : 'Guardar programa'
 
   /* ---------- mover una fila ---------- */
   const moverFila = (clave: string, destinoFila: { clave: string; antes: boolean }) => {
@@ -826,7 +980,7 @@ export function ProgramaSemanal({
 
   const alternarAsamblea = (evento: React.MouseEvent | null, dia: { clave: string }) => {
     if (evento) cerrarElMenu(evento)
-    tocarBorrador({ dias: { ...diasBorrador, [dia.clave]: dias[dia.clave] ? null : 'Asamblea regional' } })
+    tocarBorrador({ dias: { ...diasBorrador, [dia.clave]: dias[dia.clave] !== undefined ? null : 'Asamblea regional' } })
   }
 
   /* ---------- proponer y guardar ---------- */
@@ -850,6 +1004,12 @@ export function ProgramaSemanal({
   })
 
   const proponer = (rehacer = false) => {
+    if (problemaDeLectura || cargandoRotacion || cargandoAgenda) {
+      setError(problemaDeLectura
+        ? `No se propone nada hasta que se pueda leer todo: ${problemaDeLectura}`
+        : 'Esperá un momento: todavía se está leyendo la agenda.')
+      return
+    }
     const filasBase = Object.fromEntries(Object.entries(filas).filter(([, fila]) => !rehacer || !fila.propuesta))
     const territoriosParaProponer: TerritorioParaProponer[] = territorios.map((t) => ({
       id: t.id,
@@ -918,37 +1078,30 @@ export function ProgramaSemanal({
     )
   }
 
-  const guardar = async () => {
-    if (!client || !puedeEscribir || !hayCambiosParaGuardar) return
+  const guardar = async (): Promise<boolean> => {
+    if (!client || !puedeEscribir || !hayCambiosParaGuardar) return false
+    if (problemaDeLectura) {
+      setError(`No se guarda hasta que se pueda leer todo: ${problemaDeLectura}`)
+      return false
+    }
     if (borradorSinSincronizar || errorBorrador) {
       setError('Esperá a que se sincronice el borrador antes de guardar el programa.')
-      return
+      return false
     }
     setError(null)
     setMensaje(null)
     if (scope === 'grupo' && !grupoId) {
       setError('Elegí el grupo de servicio antes de guardar.')
-      return
+      return false
     }
-    const incompleta = tildadas.find((f) => {
-      const fila = filas[f.clave]
-      return !fila?.hora || !fila.conductorId || (f.turno !== 'telefono' &&
-        (!fila.territorioId || !fila.puntoId || !fila.puntoNombre))
-    })
-    if (incompleta) {
-      setError(`Completá horario, conductor${incompleta.turno === 'telefono' ? '' : ', territorio y punto'} en ${NOMBRE_DIA[incompleta.dow]} ${incompleta.fecha} antes de guardar.`)
-      return
+    if (!hayAlgoQueGuardarYa) {
+      setError('Ninguna salida está completa todavía: falta horario, conductor, territorio o punto de encuentro.')
+      return false
     }
-    const conflicto = tildadas.find((f) => avisosDe(f).some((aviso) =>
-      aviso.clase.includes('mal') || aviso.texto.includes('ya está en otra salida del período'),
-    ))
-    if (conflicto) {
-      setError(`Revisá los avisos de ${NOMBRE_DIA[conflicto.dow]} ${conflicto.fecha}: hay conductor o territorio repetido.`)
-      return
-    }
+    const quedanSinCompletar = tildadas.length - salidasListas.length
     setGuardando(true)
     try {
-      const payload = tildadas.map((f) => {
+      const payload = salidasListas.map((f) => {
         const fila = filas[f.clave]!
         const territorio = territorios.find((t) => t.id === fila.territorioId)
         return {
@@ -977,9 +1130,9 @@ export function ProgramaSemanal({
       })
       if (errorGuardado) {
         setError(decirElError(errorGuardado, 'No se pudieron guardar las salidas.'))
-        return
+        return false
       }
-      const guardadas = new Set(tildadas.map((f) => f.clave))
+      const guardadas = new Set(salidasListas.map((f) => f.clave))
       const excepcionesGuardadas = new Set(cambiosFilas.map((f) => f.clave))
       const diasSinSalidaGuardados = new Set(cambiosDias.filter(({ motivo }) => Boolean(motivo)).map(({ fecha }) => fecha))
       setBorrador((actual) => {
@@ -992,12 +1145,12 @@ export function ProgramaSemanal({
         for (const { fecha } of cambiosDias) delete siguientesDias[fecha]
         const siguientesExtras = { ...actual.extras }
         for (const fecha of diasSinSalidaGuardados) delete siguientesExtras[fecha]
-        for (const f of tildadas.filter((fila) => fila.esExtra)) {
+        for (const f of salidasListas.filter((fila) => fila.esExtra)) {
           siguientesExtras[f.fecha] = (siguientesExtras[f.fecha] ?? []).filter((extra) => extra.id !== f.extraId)
         }
         const siguienteOrden = { ...actual.orden }
         for (const fecha of diasSinSalidaGuardados) delete siguienteOrden[fecha]
-        for (const f of tildadas.filter((fila) => fila.esExtra)) {
+        for (const f of salidasListas.filter((fila) => fila.esExtra)) {
           siguienteOrden[f.fecha] = (siguienteOrden[f.fecha] ?? []).filter((clave) => clave !== f.clave)
         }
         return { ...actual, filas: siguientesFilas, dias: siguientesDias, extras: siguientesExtras, orden: siguienteOrden,
@@ -1024,9 +1177,10 @@ export function ProgramaSemanal({
       setRecargarSalidas((n) => n + 1)
       setRecargarExcepciones((n) => n + 1)
       setMensaje(payload.length
-        ? `${payload.length} ${payload.length === 1 ? 'salida guardada' : 'salidas guardadas'}. Las excepciones del día también quedaron guardadas.`
+        ? `${payload.length} ${payload.length === 1 ? 'salida guardada' : 'salidas guardadas'}.${quedanSinCompletar ? ` ${quedanSinCompletar === 1 ? 'Queda 1 sin completar' : `Quedan ${quedanSinCompletar} sin completar`}: siguen en el borrador.` : ''}`
         : 'Los días y turnos sin salida quedaron guardados para todos.')
       onGuardado()
+      return true
     } catch (caught) {
       setError(
         decirElError(
@@ -1034,13 +1188,23 @@ export function ProgramaSemanal({
           'No se pudieron guardar las salidas.',
         ),
       )
+      return false
     } finally {
       setGuardando(false)
     }
   }
 
+  const guardarRef = useRef(guardar)
+  guardarRef.current = guardar
+  const guardarEstable = useCallback(() => guardarRef.current(), [])
+  const cuantasPendientes = tildadas.length
+  useEffect(() => {
+    alCambiarPendientes?.({ cuantas: cuantasPendientes, hayCambios: hayCambiosParaGuardar, puedeGuardar, guardar: guardarEstable })
+  }, [alCambiarPendientes, cuantasPendientes, hayCambiosParaGuardar, puedeGuardar, guardarEstable])
+  useEffect(() => () => alCambiarPendientes?.(null), [alCambiarPendientes])
+
   const guardarLaSemana = async () => {
-    if (!client || !puedeEscribir) return
+    if (!client || !puedeEscribir || errorSemana) return
     setGuardandoSemana(true)
     setError(null)
     try {
@@ -1061,6 +1225,12 @@ export function ProgramaSemanal({
     } finally {
       setGuardandoSemana(false)
     }
+  }
+
+  const cerrarConfig = () => {
+    if (configEditada && !window.confirm('Hay cambios de la semana sin guardar. Si cerrás, se pierden.')) return
+    setConfigEditada(null)
+    setConfigAbierta(false)
   }
 
   const descartar = () => {
@@ -1106,6 +1276,10 @@ export function ProgramaSemanal({
       setError(problema)
       return
     }
+    if (hasta < hoyClave) {
+      setError('Esa semana ya pasó. Elegí una desde hoy.')
+      return
+    }
     setError(null)
     setPeriodo({ preset, desde, hasta })
   }
@@ -1116,6 +1290,10 @@ export function ProgramaSemanal({
     const rango = rangoPorPreset('semana-del-super', new Date(), deClaveFecha(valor))
     if ('error' in rango) {
       setError(rango.error)
+      return
+    }
+    if (aClaveFecha(rango.hasta) < hoyClave) {
+      setError('Esa semana ya pasó. Elegí el día de una visita que no haya pasado.')
       return
     }
     setError(null)
@@ -1129,6 +1307,10 @@ export function ProgramaSemanal({
   const cambiarFecha = (campo: 'desde' | 'hasta', valor: string) => {
     if (!valor) return
     const siguiente = { ...periodo, [campo]: valor, preset: 'personalizado' as PresetPrograma }
+    if (siguiente.hasta < hoyClave) {
+      setError('Ese período ya pasó. Elegí fechas desde hoy.')
+      return
+    }
     const problema = validarRango(deClaveFecha(siguiente.desde), deClaveFecha(siguiente.hasta))
     if (problema) {
       setError(problema)
@@ -1165,6 +1347,24 @@ export function ProgramaSemanal({
     focoAnterior.current = document.activeElement as HTMLElement | null
     setHojaMovil(siguiente)
   }
+  const irALaFila = (clave: string) => {
+    const fecha = clave.slice(0, 10)
+    const indice = semanas.findIndex((semana) => fecha >= semana.desdeClave && fecha <= semana.hastaClave)
+    if (indice >= 0) setSemanaMovil(indice)
+    const lista = document.querySelector<HTMLElement>('.prog-movil')
+    if (lista && lista.offsetParent !== null) {
+      abrirHojaMovil({ tipo: 'fila', clave, paso: 'editar' })
+      return
+    }
+    window.setTimeout(() => {
+      const fila = [...document.querySelectorAll<HTMLElement>('[data-clave]')].find((el) => el.dataset.clave === clave)
+      if (!fila) return
+      fila.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      fila.classList.add('resaltada')
+      window.setTimeout(() => fila.classList.remove('resaltada'), 2000)
+      fila.querySelector<HTMLElement>('input, button')?.focus({ preventScroll: true })
+    }, 0)
+  }
   const cerrarHojaMovil = () => {
     setHojaMovil(null)
     requestAnimationFrame(() => focoAnterior.current?.focus())
@@ -1190,6 +1390,48 @@ export function ProgramaSemanal({
       </div>
     )
   }
+
+  const irALaSiguienteFalta = () => {
+    const n = filasConFalta.length
+    if (!n) return
+    irALaFila(filasConFalta[indiceFalta % n]!.clave)
+    setIndiceFalta(indiceFalta + 1)
+  }
+  const etiquetaVerCuales = filasConFalta.length === 1 ? 'Ver cuál'
+    : indiceFalta === 0 ? 'Ver cuáles'
+      : `Siguiente · ${(indiceFalta % filasConFalta.length) + 1} de ${filasConFalta.length}`
+  /* Un solo renglón de estado, pegado al botón de guardar: dice qué falta
+     (con número) o que está listo. El detalle vive en cada fila. */
+  const lineaDeEstado = estadoDelGuardado.texto ? (
+    <p className={estadoDelGuardado.falta ? 'prog-estado falta' : 'prog-estado'} role="status">
+      {estadoDelGuardado.falta ? <Icono nombre="error" tamaño={16} /> : null}
+      <span>{estadoDelGuardado.texto}</span>
+      {estadoDelGuardado.falta ? (
+        <>
+          <span aria-hidden="true">·</span>
+          <button type="button" className="prog-enlace" onClick={irALaSiguienteFalta}>{etiquetaVerCuales}</button>
+        </>
+      ) : null}
+    </p>
+  ) : null
+  /* Lo de poco uso va junto, en un solo menú. */
+  const menuMas = (
+    <details className="menu-mas">
+      <summary aria-label="Más opciones del programa">Más</summary>
+      <div className="menu-mas-caja">
+        {propuestaHecha ? (
+          <>
+            <button type="button" disabled={!puedeProponer} onClick={(e) => { cerrarElMenu(e); proponer(true) }}>Volver a proponer</button>
+            <button type="button" onClick={(e) => { cerrarElMenu(e); deshacerPropuesta() }}>Deshacer la propuesta</button>
+          </>
+        ) : null}
+        {guardadoEn ? <button type="button" onClick={(e) => { cerrarElMenu(e); descartar() }}>Descartar borrador</button> : null}
+        <button type="button" onClick={(e) => { cerrarElMenu(e); setConfigAbierta(true) }}>
+          La semana de siempre ({turnosDeLaSemana} turnos, {turnosConTitular} con titular)
+        </button>
+      </div>
+    </details>
+  )
 
   if (!borradorCargado) return (
     <section className="prog-panel" aria-label="Programa del período">
@@ -1221,19 +1463,18 @@ export function ProgramaSemanal({
           <h3>Salidas por día y horario</h3>
         </div>
         <div className="prog-acciones">
+          {lineaDeEstado}
+          {menuMas}
           <button
             type="button"
             className="primary-button"
             onClick={() => void guardar()}
-            disabled={!puedeEscribir || guardando || !hayCambiosParaGuardar || borradorSinSincronizar || Boolean(errorBorrador)}
+            disabled={!puedeGuardar}
           >
             <Icono nombre="guardar" tamaño={18} />
-            {guardando ? 'Guardando…' : 'Guardar programa'}
+            {textoBotonGuardar}
           </button>
         </div>
-        <p className="table-hint prog-cabecera-hint">
-          Tildá los horarios, completá territorio y conductor, y guardá.
-        </p>
       </div>
 
       <div className="prog-periodo">
@@ -1244,7 +1485,7 @@ export function ProgramaSemanal({
           onClick={() => setPeriodoMovilAbierto((abierto) => !abierto)}
         >
           <span>Período</span>
-          <strong>{PRESETS_PROGRAMA.find((p) => p.id === periodo.preset)?.etiqueta ?? 'Personalizado'} · {fechaCorta(periodo.desde)} – {fechaCorta(periodo.hasta)}</strong>
+          <strong title={hayDiasPasadosEnElPeriodo ? 'Los días que ya pasaron no se programan: se arma desde hoy.' : undefined}>{PRESETS_PROGRAMA.find((p) => p.id === periodo.preset)?.etiqueta ?? 'Personalizado'} · {fechaCorta(desdeEfectivo)} – {fechaCorta(periodo.hasta)}{hayDiasPasadosEnElPeriodo ? ' (desde hoy)' : ''}</strong>
           <span aria-hidden="true">{periodoMovilAbierto ? '⌃' : '⌄'}</span>
         </button>
         <div className={periodoMovilAbierto ? 'prog-periodo-opciones abierto' : 'prog-periodo-opciones'}>
@@ -1285,20 +1526,12 @@ export function ProgramaSemanal({
         <div className="prog-resumen">
           <span>
             {contarDiasInclusive(deClaveFecha(periodo.desde), deClaveFecha(periodo.hasta))} días,{' '}
-            {fraseDelRango(deClaveFecha(periodo.desde), deClaveFecha(periodo.hasta))} ·{' '}
-            <strong>{tildadas.length} {tildadas.length === 1 ? 'tildada' : 'tildadas'} para guardar{cambiosDias.length + cambiosFilas.length ? ` · ${cambiosDias.length + cambiosFilas.length} ${cambiosDias.length + cambiosFilas.length === 1 ? 'excepción' : 'excepciones'}` : ''}</strong>
-            {sinCompletar > 0 ? ` · ${sinCompletar} sin completar` : ''}
-            {sinConductor > 0 ? ` · ${sinConductor} sin conductor` : ''}
+            {fraseDelRango(deClaveFecha(periodo.desde), deClaveFecha(periodo.hasta))}
           </span>
           <span className="prog-borrador">
             <span className="prog-punto-vivo" aria-hidden="true" />
             {estadoBorrador}
           </span>
-          {guardadoEn ? (
-            <button type="button" className="prog-enlace" onClick={descartar}>
-              Descartar borrador
-            </button>
-          ) : null}
         </div>
         </div>
       </div>
@@ -1313,52 +1546,27 @@ export function ProgramaSemanal({
       </div>
 
       {error ? <div className="form-feedback error">{error}</div> : null}
+      {problemaDeLectura ? (
+        <div className="form-feedback error" role="alert">
+          {problemaDeLectura}{' '}
+          <button type="button" className="prog-enlace" onClick={() => setRecargarLecturas((n) => n + 1)}>Reintentar</button>
+        </div>
+      ) : null}
       {mensaje ? <div className="form-feedback success">{mensaje}</div> : null}
 
       {tildadas.length === 0 && !propuestaHecha ? (
         <div className="prog-invitacion">
           <div>
             <strong>Este período se puede armar solo</strong>
-            <p>
-              El sistema propone territorios por rotación —los que hace más que no se trabajan
-              primero—, alterna el turno, rota el punto de encuentro y respeta los titulares de cada
-              turno. Después lo revisás fila por fila.{' '}
-              <b>Nada se guarda hasta que aprietes Guardar.</b>
-            </p>
+            <p>Propone por rotación y respeta los titulares. Nada se guarda hasta que apretés Guardar.</p>
           </div>
           <button
             type="button"
             className="prog-boton-propuesta"
             onClick={() => proponer()}
-            disabled={!puedeEscribir || cargandoRotacion}
+            disabled={!puedeProponer}
           >
             ✦ Proponer el programa
-          </button>
-        </div>
-      ) : null}
-
-      {propuestaHecha ? (
-        <div className="prog-resumen-propuesta">
-          <div className="prog-cifras">
-            <strong>{tildadas.length} propuestas</strong>
-            <span>
-              · {tildadas.filter((f) => f.turno === 'manana').length} de mañana,{' '}
-              {tildadas.filter((f) => f.turno === 'tarde').length} de tarde
-            </span>
-            {sinConductor > 0 ? <span className="prog-pastilla aviso">{sinConductor} sin conductor</span> : null}
-            {sinPunto > 0 ? <span className="prog-pastilla aviso">{sinPunto} sin punto</span> : null}
-            {sinUbicacion > 0 ? (
-              <span className="prog-pastilla aviso">{sinUbicacion} sin ubicación</span>
-            ) : null}
-            {sinConductor === 0 && sinPunto === 0 && sinUbicacion === 0 ? (
-              <span className="prog-pastilla bien">Todas listas</span>
-            ) : null}
-          </div>
-          <button type="button" className="prog-enlace" onClick={() => proponer(true)} disabled={!puedeEscribir}>
-            Volver a proponer
-          </button>
-          <button type="button" className="prog-enlace" onClick={deshacerPropuesta}>
-            Deshacer
           </button>
         </div>
       ) : null}
@@ -1380,28 +1588,32 @@ export function ProgramaSemanal({
         </div>
         <div className="prog-m-resumen" role="status">
           <strong>{tildadas.length} {tildadas.length === 1 ? 'salida' : 'salidas'}{cambiosDias.length + cambiosFilas.length ? ` · ${cambiosDias.length + cambiosFilas.length} ${cambiosDias.length + cambiosFilas.length === 1 ? 'excepción' : 'excepciones'}` : ''} para guardar</strong>
-          {sinCompletar > 0 ? <span>· {sinCompletar} sin territorio</span> : null}
-          {sinConductor > 0 ? <span className="prog-m-chip aviso">{sinConductor} sin conductor</span> : null}
-          {sinPunto > 0 ? <span className="prog-m-chip aviso">{sinPunto} sin punto</span> : null}
           <span className="prog-m-borrador">{estadoBorrador}</span>
         </div>
+        {propuestaHecha ? (
+          <div className="prog-m-propuesta">
+            <button type="button" className="prog-enlace" onClick={() => proponer(true)} disabled={!puedeProponer}>Volver a proponer</button>
+            <button type="button" className="prog-enlace" onClick={deshacerPropuesta}>Deshacer</button>
+          </div>
+        ) : null}
         <div className="prog-m-dias" role="tabpanel">
           {diasVisibles.map((dia) => {
             const salidasDelDia = filasDelPeriodo.filter((fila) => fila.fecha === dia.clave)
             const agendaDelDia = salidasEnAgenda.filter((salida) => aClaveFecha(new Date(salida.scheduled_for)) === dia.clave)
             const vivas = salidasDelDia.filter((fila) => !filaDe(fila).sinSalida).length
             const asamblea = dias[dia.clave]
+            const diaMarcado = asamblea !== undefined
             return (
               <section key={dia.clave} className="prog-m-dia" aria-label={`${NOMBRE_DIA[dia.dow]} ${Number(dia.clave.slice(8))}`}>
                 <header className="prog-m-dia-cab">
                   <h4>{esHoy(dia.clave) ? 'Hoy · ' : ''}{NOMBRE_DIA[dia.dow].charAt(0).toUpperCase() + NOMBRE_DIA[dia.dow].slice(1)} {Number(dia.clave.slice(8))}</h4>
-                  <span>{asamblea ? '' : salidasDelDia.length ? `${vivas} de ${salidasDelDia.length}` : agendaDelDia.length ? `${agendaDelDia.length} en la agenda` : 'Sin salidas'}</span>
+                  <span>{diaMarcado ? '' : salidasDelDia.length ? `${vivas} de ${salidasDelDia.length}` : agendaDelDia.length ? `${agendaDelDia.length} en la agenda` : 'Sin salidas'}</span>
                   <button type="button" aria-label={`Opciones del ${NOMBRE_DIA[dia.dow]} ${Number(dia.clave.slice(8))}`} onClick={() => abrirHojaMovil({ tipo: 'dia', clave: dia.clave })}>⋯</button>
                 </header>
-                {asamblea ? (
+                {diaMarcado ? (
                   <div className="prog-m-asamblea">
                     <span className="prog-m-chip aviso">Sin salidas</span>
-                    <strong>{asamblea}</strong>
+                    <strong>{asamblea || 'Sin motivo'}</strong>
                     <button type="button" onClick={() => {
                       tocarBorrador({ dias: { ...diasBorrador, [dia.clave]: null } })
                     }}>Quitar</button>
@@ -1460,9 +1672,10 @@ export function ProgramaSemanal({
             )
           })}
         </div>
+        {lineaDeEstado}
         <div className="prog-m-barra">
-          <button type="button" className="prog-m-proponer" onClick={() => proponer()} disabled={!puedeEscribir || cargandoRotacion}>✦ {tildadas.length ? 'Completar' : 'Proponer'}</button>
-          <button type="button" className="primary-button" onClick={() => void guardar()} disabled={!puedeEscribir || guardando || !hayCambiosParaGuardar || borradorSinSincronizar || Boolean(errorBorrador)}>{guardando ? 'Guardando…' : 'Guardar'}</button>
+          <button type="button" className="prog-m-proponer" onClick={() => proponer()} disabled={!puedeProponer}>✦ {tildadas.length ? 'Completar' : 'Proponer'}</button>
+          <button type="button" className="primary-button" onClick={() => void guardar()} disabled={!puedeGuardar}>{guardando ? 'Guardando…' : filasConFalta.length && salidasListas.length ? `Guardar ${salidasListas.length}` : 'Guardar'}</button>
         </div>
       </div>
 
@@ -1487,6 +1700,7 @@ export function ProgramaSemanal({
               .map((dia) => {
                 const deLaFecha = filasDelPeriodo.filter((f) => f.fecha === dia.clave)
                 const asamblea = dias[dia.clave]
+                const diaMarcado = asamblea !== undefined
                 return (
                   <div key={dia.clave} className="prog-dia">
                     <div className="prog-dia-cab">
@@ -1495,9 +1709,9 @@ export function ProgramaSemanal({
                         {NOMBRE_DIA[dia.dow].charAt(0).toUpperCase() + NOMBRE_DIA[dia.dow].slice(1)}{' '}
                         {Number(dia.clave.slice(8))}
                       </strong>
-                      <details className="prog-menu-dia">
-                        <summary aria-label={`Opciones del ${NOMBRE_DIA[dia.dow]}`}>⋯ Día</summary>
-                        <div className="prog-menu-caja">
+                      <details className="menu-mas">
+                        <summary aria-label={`Opciones del ${NOMBRE_DIA[dia.dow]}`}>Día</summary>
+                        <div className="menu-mas-caja">
                           <button type="button" onClick={(e) => agregarExtra(e, dia, 'manana')}>
                             Agregar una salida a la mañana
                           </button>
@@ -1508,18 +1722,19 @@ export function ProgramaSemanal({
                             Sin salida ese día
                           </button>
                           <button type="button" onClick={(e) => alternarAsamblea(e, dia)}>
-                            {asamblea ? 'Quitar el motivo' : 'Marcar asamblea u otro motivo'}
+                            {diaMarcado ? 'Quitar el motivo' : 'Marcar asamblea u otro motivo'}
                           </button>
                         </div>
                       </details>
                     </div>
 
-                    {asamblea ? (
+                    {diaMarcado ? (
                       <div className="prog-banda">
                         <span className="prog-pastilla aviso">Sin salidas</span>
                         <input
                           className="prog-banda-nota"
-                          value={asamblea}
+                          value={asamblea ?? ''}
+                          placeholder="Motivo (por ejemplo, asamblea regional)"
                           aria-label="Motivo del día sin salidas"
                           onChange={(e) => tocarBorrador({ dias: { ...diasBorrador, [dia.clave]: e.target.value } })}
                         />
@@ -1537,12 +1752,40 @@ export function ProgramaSemanal({
                     ) : deLaFecha.length === 0 ? (
                       <div className="prog-banda">
                         <span className="prog-pastilla punteada">Sin salida habitual</span>
-                        <span className="prog-rotacion">Podés agregar una desde ⋯ Día.</span>
+                        <span className="prog-rotacion">Podés agregar una desde «Día».</span>
                       </div>
                     ) : (
-                      deLaFecha.map((filaDelPrograma) => {
+                      deLaFecha.map((filaDelPrograma, indiceEnElDia) => {
                         const clave = filaDelPrograma.clave
                         const fila = filaDe(filaDelPrograma)
+                        /* Lo que ya se guardó en la agenda se ve como guardado,
+                           no como una fila vacía que parece perdida. */
+                        if (!fila.tildada && !fila.sinSalida) {
+                          const indiceDelTurno = deLaFecha.slice(0, indiceEnElDia).filter((anterior) =>
+                            anterior.turno === filaDelPrograma.turno && !filaDe(anterior).tildada && !filaDe(anterior).sinSalida,
+                          ).length
+                          const guardada = salidasEnAgenda
+                            .filter((salida) => aClaveFecha(new Date(salida.scheduled_for)) === dia.clave
+                              && turnoEnAgenda(salida) === filaDelPrograma.turno)[indiceDelTurno]
+                          if (guardada) {
+                            const territorioGuardado = territorios.find((t) => t.id === guardada.territory_id)
+                            const conductorGuardado = conductores.find((c) => c.id === guardada.driver_id)
+                            const hora = new Intl.DateTimeFormat('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false })
+                              .format(new Date(guardada.scheduled_for))
+                            return (
+                              <div key={clave} className="prog-fila sin-salida" data-clave={clave}>
+                                <span className="prog-pastilla bien">En la agenda</span>
+                                <span className="prog-rotacion">
+                                  {hora} · {territorioGuardado ? `Territorio ${territorioGuardado.name}`
+                                    : filaDelPrograma.turno === 'telefono' ? 'Predicación telefónica'
+                                      : filaDelPrograma.turno === 'grupos' ? 'Salidas de Grupos' : 'Salida'}
+                                  {[guardada.meeting_point_name, conductorGuardado?.full_name].filter(Boolean).length
+                                    ? ` · ${[guardada.meeting_point_name, conductorGuardado?.full_name].filter(Boolean).join(' · ')}` : ''}
+                                </span>
+                              </div>
+                            )
+                          }
+                        }
                         const esTelefono = filaDelPrograma.turno === 'telefono'
                         const esGrupos = filaDelPrograma.turno === 'grupos'
                         const opcionesDePunto = puntosDe(fila.territorioId)
@@ -1787,7 +2030,9 @@ export function ProgramaSemanal({
                                 {chip ? <span className={chip.clase}>{chip.texto}</span> : null}
                                 {avisos.map((aviso, indice) => (
                                   <span key={`${aviso.texto}-${indice}`} className={aviso.clase}>
+                                    <Icono nombre="error" tamaño={14} />
                                     {aviso.texto}
+                                    {aviso.ir ? <Link to={aviso.ir} className="prog-enlace">{aviso.irTexto}</Link> : null}
                                   </span>
                                 ))}
                                 {fila.propuesta && puedeEscribir ? (
@@ -1850,7 +2095,7 @@ export function ProgramaSemanal({
                   <button type="button" onClick={() => {
                     alternarAsamblea(null, diaAbierto)
                     cerrarHojaMovil()
-                  }}>{dias[diaAbierto.clave] ? 'Quitar la asamblea' : 'Asamblea regional'} <span aria-hidden="true">›</span></button>
+                  }}>{dias[diaAbierto.clave] !== undefined ? 'Quitar la asamblea' : 'Asamblea regional'} <span aria-hidden="true">›</span></button>
                 </div>
               </div>
             ) : hojaMovil.tipo === 'fila' && filaAbierta && datoAbierto ? (
@@ -1919,7 +2164,7 @@ export function ProgramaSemanal({
                           cambiar(filaAbierta, { puntoId: punto.id, puntoNombre: punto.nombre, lat: punto.lat, lng: punto.lng })
                           setHojaMovil({ ...hojaMovil, paso: 'editar' })
                         }}><span><strong>Punto {indice + 1}</strong><small>{punto.nombre}{punto.lat === null ? ' · sin ubicación en el mapa' : ''}</small></span><em>{punto.lat !== null ? 'En el mapa' : '—'}</em></button>) }
-                      </div> : <p className="prog-m-hoja-nota">Este territorio todavía no tiene puntos. Se agregan desde Mapas y Territorios.</p>}</>
+                      </div> : <p className="prog-m-hoja-nota">Este territorio todavía no tiene puntos. <Link to="/mapas">Cargar un punto en Mapas y Territorios</Link></p>}</>
                     ) : hojaMovil.paso === 'conductor' ? (
                       <div className="prog-m-hoja-lista">
                         {conductores.filter((conductor) => conductor.status === 'activo').map((conductor) => {
@@ -1957,7 +2202,7 @@ export function ProgramaSemanal({
           aria-modal="true"
           aria-label="Configuración de la semana"
           onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setConfigAbierta(false)
+            if (e.target === e.currentTarget) cerrarConfig()
           }}
         >
           <div className="prog-cajon">
@@ -1973,13 +2218,19 @@ export function ProgramaSemanal({
               <button
                 type="button"
                 className="ghost-button"
-                onClick={() => setConfigAbierta(false)}
+                onClick={cerrarConfig}
                 aria-label="Cerrar"
               >
                 <Icono nombre="cerrar" tamaño={18} />
               </button>
             </header>
             <div className="prog-cajon-cuerpo">
+              {errorSemana ? (
+                <div className="form-feedback error" role="alert">
+                  {errorSemana} No se puede guardar la semana hasta que se pueda leer la real.{' '}
+                  <button type="button" className="prog-enlace" onClick={() => setRecargarLecturas((n) => n + 1)}>Reintentar</button>
+                </div>
+              ) : null}
               <h4>Horarios</h4>
               <div className="prog-horario-grilla">
                 {[1, 2, 3, 4, 5, 6, 0].map((dow) => (
@@ -2099,7 +2350,7 @@ export function ProgramaSemanal({
                 )}
               </div>
               <p className="prog-nota">
-                {configSemana
+                {errorSemana ? 'No se pudo leer la semana guardada.' : configSemana
                   ? 'La semana está guardada en la base: lo que cambies acá vale para todos, en todas las pantallas.'
                   : 'La semana todavía vive en el código. Guardala acá y va a pasar a la base, donde vale para todos.'}
               </p>
@@ -2108,7 +2359,7 @@ export function ProgramaSemanal({
               <button
                 type="button"
                 className="secondary-button"
-                onClick={() => setConfigAbierta(false)}
+                onClick={cerrarConfig}
               >
                 Cerrar
               </button>
@@ -2116,7 +2367,7 @@ export function ProgramaSemanal({
                 type="button"
                 className="primary-button"
                 onClick={() => void guardarLaSemana()}
-                disabled={!puedeEscribir || guardandoSemana}
+                disabled={!puedeEscribir || guardandoSemana || Boolean(errorSemana)}
               >
                 <Icono nombre="guardar" tamaño={18} />
                 {guardandoSemana ? 'Guardando…' : 'Guardar la semana'}

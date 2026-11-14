@@ -10,9 +10,10 @@
  * `{ version, projectRef, userId, events: [...] }`. Acá solo se LEE ese JSON;
  * este archivo nunca escribe ni borra nada de la cola.
  *
- * Cuentan todas las marcas que siguen en la cola, sea cual sea su estado
- * (`pending`, `sending` o `error`): igual que el aviso de `beforeunload` de
- * `useCoverageOutbox`, una marca que sigue ahí es una marca que no llegó.
+ * Cuentan las marcas que siguen en camino (`pending` o `sending`): igual que
+ * el aviso de `beforeunload` de `useCoverageOutbox`. Las rechazadas para
+ * siempre (`error`) no cuentan: no se van a enviar solas y no pueden frenar
+ * «Actualizar»; se ven y se descartan desde la pantalla de marcar.
  */
 
 /**
@@ -60,7 +61,9 @@ export function leerColaCobertura(almacen: AlmacenLectura): LecturaCola {
       if (crudo === null) continue
       try {
         const eventos = (JSON.parse(crudo) as { events?: unknown } | null)?.events
-        if (Array.isArray(eventos)) marcas += eventos.length
+        if (Array.isArray(eventos)) {
+          marcas += eventos.filter((e) => (e as { status?: unknown } | null)?.status !== 'error').length
+        }
         else ilegible = true
       } catch {
         ilegible = true

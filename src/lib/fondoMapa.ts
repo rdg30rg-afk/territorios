@@ -79,7 +79,10 @@ const OSM = {
  */
 export function ponerFondo(L: typeof import('leaflet'), mapa: L.Map) {
   const capa = L.tileLayer(FONDO_MAPA.url, {
-    maxZoom: 19,
+    // Las teselas llegan hasta el 19; más acá se agrandan, que alcanza para
+    // distinguir una cuadra de la de enfrente en la computadora.
+    maxNativeZoom: 19,
+    maxZoom: 21,
     attribution: FONDO_MAPA.credito,
   }).addTo(mapa)
   const contenedor = capa.getContainer()
@@ -89,6 +92,9 @@ export function ponerFondo(L: typeof import('leaflet'), mapa: L.Map) {
 
   // Una tesela suelta falla por cualquier cosa. Varias seguidas es la cuota.
   let fallas = 0
+  // Una tesela que carga bien corta la racha: sin señal las fallas son
+  // intermitentes y no deben sumarse hasta cambiar de proveedor.
+  capa.on('tileload', () => { fallas = 0 })
   capa.on('tileerror', () => {
     fallas += 1
     if (fallas < 6) return

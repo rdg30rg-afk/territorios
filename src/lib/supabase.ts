@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { instalarSimulacion, modoSimulacion } from './simulacion'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -16,6 +17,9 @@ if (
     'Configuracion bloqueada: el entorno de desarrollo no puede conectarse a Supabase de produccion.',
   )
 }
+
+// Antes de crear el cliente: el candado tiene que estar puesto en el primer pedido.
+if (modoSimulacion && supabaseUrl) instalarSimulacion(supabaseUrl)
 
 export const supabase =
   supabaseUrl && supabaseAnonKey

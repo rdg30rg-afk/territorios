@@ -1,3 +1,5 @@
+import { formatearPorcentaje } from './inicioAvisos.ts'
+
 export type TerritoryCoverage = {
   territory_id: string; name: string; lados: number | string
   lados_hechos?: number | string | null
@@ -25,10 +27,10 @@ export function suggestTerritories(rows: TerritoryCoverage[], now = Date.now()) 
     // decide, y para leer tres territorios habia que leer nueve renglones.
     // La aclaracion metodologica vive en el "Como se ordenan" del panel.
     const reason = category === 'asignado' ? 'Con reserva activa · coordinar'
-      : category === 'sin_geometria' ? 'Sin lados cargados'
+      : category === 'sin_geometria' ? 'Sin cuadras cargadas'
       : category === 'verificar' ? 'Sin dato concluyente · verificar'
-      : category === 'completar' ? `${walkedSides} de ${sides} ${sides === 1 ? 'lado' : 'lados'} · ${percent}%`
-      : 'Todos los lados · revisar antigüedad'
+      : category === 'completar' ? `${walkedSides} de ${sides} ${sides === 1 ? 'cuadra' : 'cuadras'} · ${formatearPorcentaje(percent ?? 0)}`
+      : 'Todas las cuadras · revisar antigüedad'
     return { ...row, percent, age, category, reason }
   }).sort((a,b) => {
     const order = { completar:0, verificar:1, completo:2, sin_geometria:3, asignado:4 }

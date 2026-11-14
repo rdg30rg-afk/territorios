@@ -1565,7 +1565,9 @@ function avisar (html) { document.getElementById('aviso').innerHTML = html }
 // `exigir`: una palabra que hay que escribir en el campo para poder aceptar
 // (por ejemplo "vaciar"). Mientras no coincida, Aceptar queda apagado y Enter
 // no hace nada.
-function dialogo ({ titulo, cuerpo, campo, aceptar = 'Aceptar', peligro = false, exigir = null }) {
+// `alternativa`: un tercer boton explicito. Resuelve 'alternativa'; Cancelar,
+// Escape y el clic afuera siguen resolviendo null.
+function dialogo ({ titulo, cuerpo, campo, aceptar = 'Aceptar', peligro = false, exigir = null, alternativa = null }) {
   return new Promise((resolver) => {
     const velo = document.createElement('div')
     velo.className = 'velo'
@@ -1575,6 +1577,7 @@ function dialogo ({ titulo, cuerpo, campo, aceptar = 'Aceptar', peligro = false,
       ${campo !== undefined ? `<input id="dlgCampo" value="${String(campo).replace(/"/g, '&quot;')}"${exigir ? ` placeholder="Escribí ${escHtml(exigir)}" autocomplete="off" aria-label="Escribí ${escHtml(exigir)} para confirmar"` : ''}>` : ''}
       <div class="acc" style="margin-top:14px">
         <button class="b sec" data-r="0">${icono('cerrar')} Cancelar</button>
+        ${alternativa ? `<button class="b sec" data-r="2">${alternativa}</button>` : ''}
         <button class="b ${peligro ? 'dan' : 'pri'}" data-r="1">${icono(peligro ? 'eliminar' : 'completo')} ${aceptar}</button>
       </div></div>`
     document.body.appendChild(velo)
@@ -1587,9 +1590,10 @@ function dialogo ({ titulo, cuerpo, campo, aceptar = 'Aceptar', peligro = false,
       entrada.addEventListener('input', () => { aceptarBtn.disabled = !coincide() })
     }
 
-    const cerrar = (ok) => {
+    const cerrar = (ok, alt = false) => {
       velo.remove()
       removeEventListener('keydown', teclas, true)
+      if (alt) { resolver('alternativa'); return }
       resolver(ok ? (entrada ? entrada.value.trim() : true) : null)
     }
     const teclas = (e) => {
@@ -1598,7 +1602,7 @@ function dialogo ({ titulo, cuerpo, campo, aceptar = 'Aceptar', peligro = false,
     }
     addEventListener('keydown', teclas, true)
     velo.onclick = (e) => { if (e.target === velo) cerrar(false) }
-    velo.querySelectorAll('[data-r]').forEach(b => { b.onclick = () => cerrar(b.dataset.r === '1') })
+    velo.querySelectorAll('[data-r]').forEach(b => { b.onclick = () => cerrar(b.dataset.r === '1', b.dataset.r === '2') })
   })
 }
 
@@ -2485,6 +2489,19 @@ addEventListener('beforeunload', (e) => {
   e.returnValue = ''
 })
 
+// Embebido en Mapas: le avisa al padre si hay trabajo sin guardar, para que
+// pregunte antes de salir (menu, pestaña o boton). No toca nada mas.
+if (window.self !== window.top && ORIGEN_APP) {
+  let avisadoSinGuardar = null
+  const avisarSinGuardar = () => {
+    const ahora = Boolean(hayTrabajoSinGuardar())
+    if (ahora === avisadoSinGuardar) return
+    avisadoSinGuardar = ahora
+    parent.postMessage({ type: 'territorios:editor:cambios', sinGuardar: ahora }, ORIGEN_APP)
+  }
+  setInterval(avisarSinGuardar, 500)
+}
+
 document.getElementById('bExport').onclick = () => {
   const datos = {
     generado: new Date().toISOString(),
@@ -2880,15 +2897,31 @@ if (remoto && local && firmaDe(remoto) !== firmaDe(local)) {
   const cuandoBase = borradorSello
     ? new Date(borradorSello).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })
     : 'sin fecha'
-  const usarBase = await dialogo({
-    titulo: 'Hay dos versiones distintas',
-    cuerpo:
-      `<b>En esta computadora:</b> ${resumenDe(local)}<br><small>${cuando}</small><br><br>` +
-      `<b>Guardado en la base:</b> ${resumenDe(remoto)}<br><small>${cuandoBase}</small><br><br>` +
-      'Elegí con cuál seguir. Lo que ya publicaste con “Guardar el territorio” no se toca: esto es solo el trabajo a medio hacer.',
-    aceptar: 'Usar el de la base',
-  })
-  if (usarBase) {
+  // Lo seguro es la base: Cancelar, Escape y el clic afuera NUNCA suben la
+  // copia de esta computadora. Usarla es un boton aparte y pide otra
+  // confirmacion, porque reemplaza el borrador de todos los administradores.
+  let eleccion = null
+  while (!eleccion) {
+    const r = await dialogo({
+      titulo: 'Hay dos versiones distintas',
+      cuerpo:
+        `<b>En esta computadora:</b> ${resumenDe(local)}<br><small>${cuando}</small><br><br>` +
+        `<b>Guardado en la base:</b> ${resumenDe(remoto)}<br><small>${cuandoBase}</small><br><br>` +
+        'Si cerrás esto, se sigue con el de la base. Lo que ya publicaste con “Guardar el territorio” no se toca: esto es solo el trabajo a medio hacer.',
+      aceptar: 'Usar el de la base',
+      alternativa: 'Usar el de esta computadora',
+    })
+    if (r === 'alternativa') {
+      const seguro = await confirmar(
+        'Esto reemplaza el borrador de todos',
+        `Se sube lo de esta computadora (${resumenDe(local)}) y pisa el borrador de la base (${resumenDe(remoto)}) que ven los demás administradores. No se puede deshacer.`,
+        'Sí, reemplazar el borrador', true)
+      if (seguro) eleccion = 'local'
+    } else {
+      eleccion = 'base'
+    }
+  }
+  if (eleccion === 'base') {
     guardado = remoto
     vinoDe = 'la base'
   } else {

@@ -44,6 +44,8 @@ export function cambiosParaMarcar(
   const cambios: CambioDeMarca[] = []
   for (const lado of lados) {
     if (estadosActuales[lado.id] === estadoNuevo) continue
+    // Quitar la marca de una cuadra que no tiene ninguna no cambia nada.
+    if (estadoNuevo === 'sin_dato' && normalizarEstado(estadosActuales[lado.id]) === 'sin_dato') continue
     if (!lado.geometry_version) throw new Error('Falta la versión del dibujo. Actualizá antes de marcar.')
     cambios.push({
       ladoId: lado.id,

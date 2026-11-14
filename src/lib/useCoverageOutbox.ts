@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { CreateOutbox, type CoverageInput, type CoverageOutbox, type CoverageQueuedEvent } from './coverageOutbox'
+import { CreateOutbox, mensajeSiFaltaHabilitarOrigen, type CoverageInput, type CoverageOutbox, type CoverageQueuedEvent } from './coverageOutbox'
 import { supabase } from './supabase'
 
 const DEV = 'rkmioktcsgqqjshrlkmy'
@@ -12,7 +12,7 @@ export function useCoverageOutbox(userId: string | undefined) {
   const [sending, setSending] = useState(false)
   const [remoteRevision, setRemoteRevision] = useState(0)
 
-  const sync = useCallback(async () => {
+  const sync = useCallback(async (forzar = false) => {
     const scope = active.current
     if (!scope?.live || scope.running || !navigator.onLine) return
     try {
@@ -21,7 +21,7 @@ export function useCoverageOutbox(userId: string | undefined) {
     scope.running = true
     setSending(true)
     try {
-      const result = await scope.box.drain()
+      const result = await scope.box.drain(undefined, { ignoreBackoff: forzar })
       if (scope.live && result.confirmed) setRemoteRevision(value => value + 1)
       if (scope.live) { setEvents(scope.box.getEvents()); setError(null) }
     } catch (failure) {
@@ -53,7 +53,16 @@ export function useCoverageOutbox(userId: string | undefined) {
             p_corrige_evento_id: event.corrige_evento_id ?? null,
             p_nota: event.nota ?? null, p_geometry_version: event.geometry_version,
           }).setHeader('Authorization', `Bearer ${data.session.access_token}`)
-          if (response.error) return { confirmed: false, error: response.error.message }
+          if (response.error) {
+            // Un rechazo del servidor (la reserva ya no es tuya, se republicó el dibujo)
+            // no se arregla esperando. Sin señal, con el servidor caído o con la sesión
+            // vencida, en cambio, la marca sigue en camino y se reintenta sola.
+            const estado = response.status
+            const definitivo = estado >= 400 && estado < 500 && ![401, 408, 425, 429].includes(estado)
+            const faltaHabilitar = mensajeSiFaltaHabilitarOrigen(event.origen, response.error.message)
+            if (faltaHabilitar) return { confirmed: false, error: faltaHabilitar, transient: false }
+            return { confirmed: false, error: response.error.message, transient: !definitivo }
+          }
           if (response.data !== event.id) return { confirmed: false, error: 'El servidor no confirmó el identificador de la marca.' }
           if (scope.live) {
             const order = ++confirmationOrder.current
@@ -70,9 +79,9 @@ export function useCoverageOutbox(userId: string | undefined) {
       setError(failure instanceof Error ? failure.message : 'No se pudo abrir la cola de marcas.')
       return
     }
-    const refresh = () => {
+    const refresh = (forzar = false) => {
       try { setEvents(scope.box.getEvents()) } catch (failure) { setError(String(failure)) }
-      void sync()
+      void sync(forzar)
     }
     let knownIds = new Set(scope.box.getEvents().map(event => event.id))
     const storageChanged = (event: StorageEvent) => {
@@ -85,22 +94,24 @@ export function useCoverageOutbox(userId: string | undefined) {
         refresh()
       }
     }
+    const alVolverLaSenal = () => refresh(true)
+    const alVolverAlFoco = () => refresh(false)
     const beforeUnload = (event: BeforeUnloadEvent) => {
-      try { if (!scope.box.getEvents().length) return } catch { /* Advertir también si no podemos leer. */ }
+      try { if (!scope.box.getEvents().some(item => item.status !== 'error')) return } catch { /* Advertir también si no podemos leer. */ }
       event.preventDefault()
       event.returnValue = ''
     }
     window.addEventListener('storage', storageChanged)
-    window.addEventListener('online', refresh)
-    window.addEventListener('focus', refresh)
+    window.addEventListener('online', alVolverLaSenal)
+    window.addEventListener('focus', alVolverAlFoco)
     window.addEventListener('beforeunload', beforeUnload)
     void sync()
     return () => {
       scope.live = false
       if (active.current === scope) active.current = null
       window.removeEventListener('storage', storageChanged)
-      window.removeEventListener('online', refresh)
-      window.removeEventListener('focus', refresh)
+      window.removeEventListener('online', alVolverLaSenal)
+      window.removeEventListener('focus', alVolverAlFoco)
       window.removeEventListener('beforeunload', beforeUnload)
     }
   }, [userId, sync])
@@ -116,12 +127,37 @@ export function useCoverageOutbox(userId: string | undefined) {
   const retry = useCallback(async () => {
     const scope = active.current
     if (!scope?.live) return
-    try { await scope.box.retryErrors(); setEvents(scope.box.getEvents()); await sync() }
+    try { await scope.box.retryErrors(); setEvents(scope.box.getEvents()); await sync(true) }
     catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo reintentar.') }
   }, [sync])
+  const discard = useCallback(async (ids?: string[]) => {
+    const scope = active.current
+    if (!scope?.live) return 0
+    try {
+      const quitadas = await scope.box.discard(ids)
+      setEvents(scope.box.getEvents())
+      if (quitadas) setRemoteRevision(value => value + 1)
+      setError(null)
+      return quitadas
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : 'No se pudo descartar.')
+      return 0
+    }
+  }, [])
+  // Reintento automático: la marca en espera por mala señal vuelve a salir
+  // sola cuando se cumple su espera, sin que nadie toque nada.
+  useEffect(() => {
+    const scope = active.current
+    if (!scope?.live) return
+    let proximo: number | null = null
+    try { proximo = scope.box.nextAttemptAt() } catch { return }
+    if (proximo === null) return
+    const timer = window.setTimeout(() => void sync(), Math.max(500, proximo - Date.now()) + 50)
+    return () => window.clearTimeout(timer)
+  }, [events, sync])
   const checkpoint = useCallback(() => confirmationOrder.current, [])
   const acknowledgeSnapshot = useCallback((order: number) => {
     setConfirmed(previous => previous.filter(event => event.confirmationOrder > order))
   }, [])
-  return { events, confirmed, error, sending, remoteRevision, enqueue, sync, retry, checkpoint, acknowledgeSnapshot }
+  return { events, confirmed, error, sending, remoteRevision, enqueue, sync, retry, discard, checkpoint, acknowledgeSnapshot }
 }

@@ -2,13 +2,14 @@ import { validAt, latestEventsAt } from './coverageHistory.ts'
 import { coverageSummary, type CoverageState } from './coverageSummary.ts'
 
 type Validity = { vigente_desde: string | null; vigente_hasta: string | null }
-export type HeatmapBlock = Validity & { id: string; territory_id: string; geometry_version: number }
+export type HeatmapBlock = Validity & { id: string; territory_id: string; geometry_version: number; label?: string | null }
 export type HeatmapSide = Validity & {
   id: string; manzana_id: string; territory_id: string; geometry_version: number
-  geometry_geojson: unknown; largo_m: number | string
+  geometry_geojson: unknown; largo_m: number | string; orden?: number | null
 }
 export type HeatmapEvent = {
   id: string; lado_id: string; estado: string; informado_at: string
+  territory_id?: string; informado_por?: string | null; origen?: string; nota?: string | null
 }
 export const coverageLegend: Record<CoverageState, { label: string; color: string; dash: string | undefined }> = {
   recorrido: {label:'Recorrido',color:'#34734e',dash:undefined},
@@ -40,6 +41,8 @@ export function buildCoverageHeatmap(
   }).map(side=>{
     const event=latest.get(side.id)
     return {...side,state:asState(event?.estado),informedAt:event?.informado_at ?? null,
+      informedBy:event?.informado_por ?? null,origen:event?.origen ?? null,nota:event?.nota ?? null,
+      blockLabel:validBlocks.get(side.manzana_id)?.label ?? null,orden:side.orden ?? null,
       ageDays:event ? Math.floor((at-Date.parse(event.informado_at))/86400000) : null}
   })
   const grouped=new Map<string,typeof visibleSides>()

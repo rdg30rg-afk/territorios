@@ -44,7 +44,7 @@
 
 .resultado-datos dt {
   color: var(--text-soft);
-  font-size: 0.78rem;
+  font-size: 1rem;
   font-weight: 600;
 }
 
@@ -219,4 +219,42 @@
   /* Al enfocar un campo del final, el navegador lo sube por encima de la
      barra en vez de dejarlo debajo. */
   .app-shell .modal-cuerpo { scroll-padding-bottom: 6rem; }
+}
+
+
+/* --------------------------------------------------- el informe del hermano
+   Dentro de .vh la letra no baja de 16 px y lo que se toca mide al menos
+   56 px de alto. El estado se distingue por la palabra y el relleno, no solo
+   por el color. */
+.vh .informe-predicacion .resultado-form .status-pill,
+.vh .informe-predicacion .resultado-form .form-feedback,
+.vh .informe-predicacion .resultado-form .form-feedback p,
+.vh .informe-predicacion .resultado-form .resultado-rotulo,
+.vh .informe-predicacion .resultado-form .resultado-ayuda,
+.vh .informe-predicacion .resultado-form .resultado-datos dt,
+.vh .informe-predicacion .resultado-form .resultado-datos dd,
+.vh .informe-predicacion .resultado-form .resultado-nota,
+.vh .informe-predicacion .resultado-form .resultado-vacio,
+.vh .informe-predicacion .resultado-form label {
+  font-size: 1rem;
+}
+
+.vh .informe-predicacion .resultado-form .primary-button,
+.vh .informe-predicacion .resultado-form .secondary-button,
+.vh .informe-predicacion .resultado-form .cierre-estado-opciones button,
+.vh .informe-predicacion .resultado-form .desplegable,
+.vh .informe-predicacion .resultado-form input[type='datetime-local'] {
+  min-height: 56px;
+  font-size: 1rem;
+}
+
+.vh .informe-predicacion .resultado-form textarea {
+  min-height: 112px;
+  font-size: 1rem;
+}
+
+.vh .informe-predicacion .informe-instruccion .boton {
+  min-height: 56px;
+  margin-top: 8px;
+  font-size: 1rem;
 }

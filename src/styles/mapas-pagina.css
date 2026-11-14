@@ -153,10 +153,19 @@
   overflow: visible;
 }
 
+/* La lista no empuja el alto de la página más allá del mapa (dos columnas). */
+@media (min-width: 1281px) {
+  .mapas-pagina .territory-stage .territory-registry-panel {
+    max-height: calc(100dvh - 12rem);
+  }
+}
+
 .mapas-pagina .map-canvas {
   isolation: isolate;
   z-index: 0;
-  height: calc(100dvh - 8.5rem);
+  /* Encabezado, barra de herramientas y márgenes suman unos 16 rem: así el mapa
+     entra entero en la pantalla, sin barra de desplazamiento de la página. */
+  height: calc(100dvh - 16rem);
   min-height: 420px;
   margin-top: 0.4rem;
   border-radius: 16px;
@@ -229,8 +238,8 @@
 }
 
 .editor-selection-actions .danger-action {
-  border-color: color-mix(in srgb, var(--danger, #b42318) 38%, var(--panel-border));
-  color: var(--danger, #9f1c14);
+  border-color: color-mix(in srgb, var(--h-bad-fg, #b42318) 38%, var(--panel-border));
+  color: var(--h-bad-fg, #9f1c14);
 }
 
 .editor-side-tools {
@@ -379,4 +388,13 @@
   border: 1px solid var(--panel-border);
   border-radius: 12px;
   background: var(--panel-solid);
+}
+
+.mapas-franja-edicion {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
 }

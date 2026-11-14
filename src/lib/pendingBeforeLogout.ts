@@ -8,7 +8,9 @@ export function pendingBeforeLogout(storage: LocalStore, project: string, user: 
     if (raw !== null) {
       const box = JSON.parse(raw)
       if (box.version !== 1 || box.projectRef !== project || box.userId !== user || !Array.isArray(box.events)) throw Error('Formato inválido')
-      coverage = box.events.length
+      // Las rechazadas para siempre (status 'error') no se van a enviar solas:
+      // no frenan el cierre de sesión. Se ven y se descartan desde la pantalla.
+      coverage = box.events.filter((e: { status?: unknown } | null) => e?.status !== 'error').length
     }
     const prefix = `territorios:result-attempt:v1:${project}:${user}:`
     for (let i = 0; i < storage.length; i++) {

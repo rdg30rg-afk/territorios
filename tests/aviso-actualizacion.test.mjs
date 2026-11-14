@@ -60,8 +60,14 @@ test('una cola vacía no frena la actualización', () => {
   assert.equal(decidirActualizacion(leerColaCobertura(almacen)).puedeActualizar, true)
 })
 
-test('cualquier marca que siga en la cola frena la actualización, sea cual sea su estado', () => {
-  for (const status of ['pending', 'sending', 'error']) {
+test('las marcas en camino frenan la actualización; las rechazadas para siempre no', () => {
+  const rechazada = new AlmacenEnMemoria()
+  rechazada.setItem('coverage-outbox:v1:dev:u1', cola([evento('a', 'error')]))
+  assert.equal(decidirActualizacion(leerColaCobertura(rechazada)).puedeActualizar, true)
+  const mezcla = new AlmacenEnMemoria()
+  mezcla.setItem('coverage-outbox:v1:dev:u1', cola([evento('a', 'error'), evento('b', 'pending')]))
+  assert.equal(leerColaCobertura(mezcla).marcas, 1)
+  for (const status of ['pending', 'sending']) {
     const almacen = new AlmacenEnMemoria()
     almacen.setItem('coverage-outbox:v1:dev:u1', cola([evento('a', status)]))
     const decision = decidirActualizacion(leerColaCobertura(almacen))
@@ -132,9 +138,11 @@ test('contrato con la cola real: lee lo que escribe CreateOutbox y se libera al 
   assert.equal(conMarcas.puedeActualizar, false)
   assert.equal(conMarcas.marcas, 2)
 
-  // Una marca que falla queda en la cola con estado "error": sigue frenando.
-  await caja.drain(async () => ({ confirmed: false, error: 'sin red' }))
+  // Una marca que falla por señal sigue en camino y frena; una rechazada para siempre no.
+  await caja.drain(async () => ({ confirmed: false, error: 'sin red', transient: true }))
   assert.equal(decidirActualizacion(leerColaCobertura(almacen)).puedeActualizar, false)
+  await caja.drain(async () => ({ confirmed: false, error: 'rechazo' }), { ignoreBackoff: true })
+  assert.equal(decidirActualizacion(leerColaCobertura(almacen)).puedeActualizar, true)
 
   // Cuando el servidor las confirma, la cola queda vacía y se puede actualizar.
   await caja.retryErrors()

@@ -31,21 +31,23 @@ function fechaValida(value: string) {
   return Number.isNaN(date.getTime()) ? null : date
 }
 
-function ordenarDiaPdf(salidas: SalidaPdfData[]): SalidaPdfData[] {
-  const conOrden = salidas.filter((salida) => Number.isInteger(salida.programOrder) && (salida.programOrder ?? 0) > 0)
-    .sort((a, b) => a.programOrder! - b.programOrder!)
-  const sinOrden = salidas.filter((salida) => !Number.isInteger(salida.programOrder) || (salida.programOrder ?? 0) <= 0)
-  const resultado: SalidaPdfData[] = []
-  let i = 0
-  let j = 0
-  let posicion = 1
-  while (i < conOrden.length || j < sinOrden.length) {
-    if (i < conOrden.length && (conOrden[i].programOrder ?? 0) <= posicion) resultado.push(conOrden[i++])
-    else if (j < sinOrden.length) resultado.push(sinOrden[j++])
-    else resultado.push(conOrden[i++])
-    posicion += 1
-  }
-  return resultado
+function posicionPrograma(salida: SalidaPdfData) {
+  return Number.isInteger(salida.programOrder) && (salida.programOrder ?? 0) > 0
+    ? salida.programOrder!
+    : Number.MAX_SAFE_INTEGER
+}
+
+/** Corta las líneas a un máximo y, si sobró texto, lo avisa con «…». */
+function recortar(lineas: string[], maximo: number): string[] {
+  if (lineas.length <= maximo) return lineas
+  const corte = lineas.slice(0, maximo)
+  corte[maximo - 1] = `${corte[maximo - 1].replace(/\s+$/, '').replace(/[.,;:…]+$/, '')}…`
+  return corte
+}
+
+function esSinLugar(data: SalidaPdfData) {
+  const re = /^(predicaci[oó]n telef[oó]nica|salidas? de grupos?)$/i
+  return re.test(data.meetingPointName?.trim() ?? '') || re.test(data.title?.trim() ?? '')
 }
 
 function horaSalidaPdf(value: string) {
@@ -92,12 +94,14 @@ export function fechaSalidaPdf(value: string) {
 }
 
 export function enlaceMapaSalida(data: SalidaPdfData) {
+  // La telefónica y las de grupo no tienen un lugar al que llegar, aunque
+  // arrastren coordenadas viejas de otro punto.
+  if (esSinLugar(data)) return null
   if (data.meetingCoords) {
     const [lng, lat] = data.meetingCoords
     return `https://www.google.com/maps?q=${lat},${lng}`
   }
   const place = data.meetingPointName?.trim()
-  if (/^(predicaci[oó]n telef[oó]nica|salidas? de grupos?)$/i.test(place ?? '')) return null
   return place
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place)}`
     : null
@@ -240,7 +244,7 @@ export async function crearPdfSalida(data: SalidaPdfData): Promise<ArchivoPdf> {
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(10)
   const notes = doc.splitTextToSize(textoO(data.notes, 'Sin indicaciones adicionales.'), 164) as string[]
-  doc.text(notes.slice(0, 8), 22, y + 14)
+  doc.text(recortar(notes, 8), 22, y + 14)
 
   pie(doc, 1, 1)
   return { blob: doc.output('blob'), filename: nombrePdfSalida(data) }
@@ -255,16 +259,10 @@ export async function crearPdfAgenda(
   const porFecha = [...outings].sort((a, b) => {
     const dia = claveDia(a.scheduledFor).localeCompare(claveDia(b.scheduledFor))
     if (dia) return dia
-    return (fechaValida(a.scheduledFor)?.getTime() ?? 0) - (fechaValida(b.scheduledFor)?.getTime() ?? 0)
+    const hora = (fechaValida(a.scheduledFor)?.getTime() ?? 0) - (fechaValida(b.scheduledFor)?.getTime() ?? 0)
+    return hora || posicionPrograma(a) - posicionPrograma(b)
   })
-  const ordered: SalidaPdfData[] = []
-  for (let inicio = 0; inicio < porFecha.length;) {
-    const dia = claveDia(porFecha[inicio].scheduledFor)
-    let fin = inicio + 1
-    while (fin < porFecha.length && claveDia(porFecha[fin].scheduledFor) === dia) fin += 1
-    ordered.push(...ordenarDiaPdf(porFecha.slice(inicio, fin)))
-    inicio = fin
-  }
+  const ordered = porFecha
   const firstDate = ordered[0] ? fechaValida(ordered[0].scheduledFor) : null
   const lastDate = ordered.at(-1) ? fechaValida(ordered.at(-1)!.scheduledFor) : null
   const shortDate = (date: Date) =>
@@ -321,9 +319,9 @@ export async function crearPdfAgenda(
       ? `${place}\n${outing.neighborhood.trim()}`
       : place
     return {
-      place: (doc.splitTextToSize(placeWithNeighborhood, columns[1].width) as string[]).slice(0, 2),
-      driver: (doc.splitTextToSize(textoO(outing.driverName, 'A confirmar'), columns[3].width) as string[]).slice(0, 2),
-      priority: (doc.splitTextToSize(textoO(outing.priority, 'Todo el territorio'), columns[5].width) as string[]).slice(0, 2),
+      place: recortar(doc.splitTextToSize(placeWithNeighborhood, columns[1].width) as string[], 2),
+      driver: recortar(doc.splitTextToSize(textoO(outing.driverName, 'A confirmar'), columns[3].width) as string[], 2),
+      priority: recortar(doc.splitTextToSize(esSinLugar(outing) ? textoO(outing.priority, '-') : textoO(outing.priority, 'Todo el territorio'), columns[5].width) as string[], 2),
     }
   }
 
@@ -413,6 +411,7 @@ export async function crearPdfAgenda(
     doc.text(`${page} / ${pages}`, 283, 204, { align: 'right' })
   }
 
-  const today = new Date().toISOString().slice(0, 10)
+  const hoy = new Date()
+  const today = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
   return { blob: doc.output('blob'), filename: `agenda-salidas-${today}.pdf` }
 }

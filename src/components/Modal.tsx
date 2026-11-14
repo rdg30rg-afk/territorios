@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useId, useRef, type ReactNode } from 'react'
 import '../styles/modal.css'
 import { Icono } from './Icono'
 
@@ -34,6 +34,10 @@ export function Modal({
   children: ReactNode
 }) {
   const dialogo = useRef<HTMLDialogElement>(null)
+  const idTitulo = useId()
+  // Solo se cierra por el fondo si el botón se apretó Y se soltó ahí: si no,
+  // seleccionar texto arrastrando y soltar afuera cerraba el modal.
+  const apretoEnElFondo = useRef(false)
 
   useEffect(() => {
     const nodo = dialogo.current
@@ -59,18 +63,23 @@ export function Modal({
     <dialog
       ref={dialogo}
       className="modal"
-      aria-labelledby="modal-titulo"
+      aria-labelledby={idTitulo}
       // Un click en el fondo tiene como destino el <dialog> mismo; uno
       // adentro tiene como destino algo de la tarjeta. Asi se distingue
       // sin poner un div extra que tape la pantalla.
+      onMouseDown={(evento) => {
+        apretoEnElFondo.current = evento.target === dialogo.current
+      }}
       onClick={(evento) => {
-        if (evento.target === dialogo.current) alCerrar()
+        const cierra = apretoEnElFondo.current && evento.target === dialogo.current
+        apretoEnElFondo.current = false
+        if (cierra) alCerrar()
       }}
     >
       <div className="modal-tarjeta">
         <header className="modal-cabecera">
           <div>
-            <h3 id="modal-titulo">{titulo}</h3>
+            <h3 id={idTitulo}>{titulo}</h3>
             {bajada ? <p>{bajada}</p> : null}
           </div>
           <button

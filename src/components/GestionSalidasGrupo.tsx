@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { decirElError } from '../lib/decirElError'
 import type { ContextoHermano } from '../lib/vistaHermano'
 import { ElegirDeLista } from './ElegirDeLista'
 import { Icono } from './Icono'
@@ -12,10 +13,37 @@ type SalidaGrupo = {
   driver_id: string | null
 }
 
-function claveHoy() {
-  const ahora = new Date()
-  return `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, '0')}-${String(ahora.getDate()).padStart(2, '0')}`
+function claveDe(fecha: Date) {
+  return `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}-${String(fecha.getDate()).padStart(2, '0')}`
 }
+
+function claveHoy() {
+  return claveDe(new Date())
+}
+
+/**
+ * Qué día y hora proponer. Hoy a las 10 casi nunca es lo que se quiere.
+ * Si el grupo ya tiene salidas, se repite su día y su hora una semana
+ * después de la última; si no tiene ninguna, el próximo sábado a las 10.
+ */
+function proponerSalida(salidas: Array<{ scheduled_for: string }>, ahora = new Date()): { fecha: string; hora: string } {
+  const hoy = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate())
+  const ultima = salidas.length ? new Date(salidas[salidas.length - 1].scheduled_for) : null
+  if (ultima && !Number.isNaN(ultima.getTime())) {
+    const dia = new Date(ultima.getFullYear(), ultima.getMonth(), ultima.getDate() + 7)
+    while (dia < hoy) dia.setDate(dia.getDate() + 7)
+    return {
+      fecha: claveDe(dia),
+      hora: `${String(ultima.getHours()).padStart(2, '0')}:${String(ultima.getMinutes()).padStart(2, '0')}`,
+    }
+  }
+  const sabado = new Date(hoy)
+  sabado.setDate(sabado.getDate() + ((6 - hoy.getDay() + 7) % 7))
+  return { fecha: claveDe(sabado), hora: '10:00' }
+}
+
+const porNombre = (a: { name: string }, b: { name: string }) =>
+  a.name.localeCompare(b.name, 'es', { numeric: true })
 
 function fechaLegible(iso: string) {
   return new Intl.DateTimeFormat('es-AR', {
@@ -30,7 +58,7 @@ export function GestionSalidasGrupo({ contexto, onCambio }: {
   const [territorios, setTerritorios] = useState<Opcion[]>([])
   const [conductores, setConductores] = useState<Array<{ id: string; full_name: string }>>([])
   const [salidas, setSalidas] = useState<SalidaGrupo[]>([])
-  const [fecha, setFecha] = useState(claveHoy)
+  const [fecha, setFecha] = useState(() => proponerSalida([]).fecha)
   const [hora, setHora] = useState('10:00')
   const [territorioId, setTerritorioId] = useState('')
   const [conductorId, setConductorId] = useState('')
@@ -38,7 +66,15 @@ export function GestionSalidasGrupo({ contexto, onCambio }: {
   const [cargando, setCargando] = useState(true)
   const [guardando, setGuardando] = useState(false)
   const [aviso, setAviso] = useState<string | null>(null)
+  const [avisoEsError, setAvisoEsError] = useState(false)
+  const formulario = useRef<HTMLDivElement>(null)
+  const tocoFecha = useRef(false)
   const [lugar, setLugar] = useState(contexto.punto_grupo_nombre ?? '')
+
+  const avisar = (texto: string | null, esError = false) => {
+    setAviso(texto)
+    setAvisoEsError(esError)
+  }
 
   const cargar = async () => {
     if (!supabase || !contexto.group_id) return
@@ -53,11 +89,21 @@ export function GestionSalidasGrupo({ contexto, onCambio }: {
     ])
     const error = territoriosResult.error ?? conductoresResult.error ?? salidasResult.error
     if (error) {
-      setAviso(`No pudimos cargar las opciones: ${error.message}`)
+      avisar(decirElError(error, 'No pudimos cargar las salidas del grupo.'), true)
     } else {
-      setTerritorios((territoriosResult.data as Opcion[] | null) ?? [])
-      setConductores((conductoresResult.data as Array<{ id: string; full_name: string }> | null) ?? [])
-      setSalidas((salidasResult.data as SalidaGrupo[] | null) ?? [])
+      const lista = ((territoriosResult.data as Opcion[] | null) ?? []).slice().sort(porNombre)
+      const gente = ((conductoresResult.data as Array<{ id: string; full_name: string }> | null) ?? [])
+        .slice()
+        .sort((a, b) => a.full_name.localeCompare(b.full_name, 'es'))
+      const proximas = (salidasResult.data as SalidaGrupo[] | null) ?? []
+      setTerritorios(lista)
+      setConductores(gente)
+      setSalidas(proximas)
+      if (!tocoFecha.current) {
+        const propuesta = proponerSalida(proximas)
+        setFecha(propuesta.fecha)
+        setHora(propuesta.hora)
+      }
     }
     setCargando(false)
   }
@@ -81,11 +127,11 @@ export function GestionSalidasGrupo({ contexto, onCambio }: {
     if (!supabase || !contexto.group_id || guardando) return
     const instante = new Date(`${fecha}T${hora}:00`)
     if (!fecha || !hora || !territorioId || !conductorId || lugarEscrito.length < 2 || Number.isNaN(instante.getTime())) {
-      setAviso('Elegí fecha, hora, territorio, conductor y dónde se juntan.')
+      avisar('Elegí fecha, hora, territorio, conductor y dónde se juntan.', true)
       return
     }
     setGuardando(true)
-    setAviso(null)
+    avisar(null)
     const nombreGrupo = contexto.group_number ? `Grupo ${contexto.group_number}` : contexto.group_name ?? 'tu grupo'
     const { error } = await supabase.rpc('crear_salida', {
       p_scope: 'grupo',
@@ -102,16 +148,21 @@ export function GestionSalidasGrupo({ contexto, onCambio }: {
     })
     setGuardando(false)
     if (error) {
-      setAviso(error.message)
+      avisar(decirElError(error, 'No se pudo programar la salida.'), true)
       return
     }
-    setAviso('La salida quedó programada para tu grupo.')
+    avisar('La salida quedó programada para tu grupo.')
     setAbierto(false)
     setTerritorioId('')
     setConductorId('')
     await cargar()
     onCambio()
   }
+
+  // El formulario se abre debajo de la lista: se lo trae a la vista.
+  useEffect(() => {
+    if (abierto) formulario.current?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  }, [abierto])
 
   return (
     <div className="gestion-salidas-grupo">
@@ -126,7 +177,7 @@ export function GestionSalidasGrupo({ contexto, onCambio }: {
         </button>
       </div>
 
-      {aviso ? <p className="nota" role="status">{aviso}</p> : null}
+      {aviso ? <p className={avisoEsError ? 'nota error' : 'nota ok'} role={avisoEsError ? 'alert' : 'status'}>{aviso}</p> : null}
       {cargando ? <p role="status">Cargando salidas…</p> : null}
       {!cargando && salidas.length === 0 ? <p className="sub">Todavía no hay salidas propias del grupo.</p> : null}
       {salidas.length > 0 ? (
@@ -142,7 +193,7 @@ export function GestionSalidasGrupo({ contexto, onCambio }: {
       ) : null}
 
       {abierto ? (
-        <div className="form-stack gestion-salida-form">
+        <div ref={formulario} className="form-stack gestion-salida-form">
           <label className="sub">
             Dónde se juntan
             <input
@@ -158,8 +209,8 @@ export function GestionSalidasGrupo({ contexto, onCambio }: {
               : 'Sin un punto en el mapa no hay cómo llegar, y la salida se puede programar igual.'}
           </p>
           <div className="gestion-salida-fecha">
-            <label>Fecha<input type="date" min={claveHoy()} value={fecha} onChange={(event) => setFecha(event.target.value)} /></label>
-            <label>Hora<input type="time" value={hora} onChange={(event) => setHora(event.target.value)} /></label>
+            <label>Fecha<input type="date" min={claveHoy()} value={fecha} onChange={(event) => { tocoFecha.current = true; setFecha(event.target.value) }} /></label>
+            <label>Hora<input type="time" value={hora} onChange={(event) => { tocoFecha.current = true; setHora(event.target.value) }} /></label>
           </div>
           <ElegirDeLista
             etiqueta="Territorio"

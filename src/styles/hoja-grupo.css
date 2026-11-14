@@ -1,0 +1,169 @@
+/* La hoja «Mi grupo»: la del superintendente en el teléfono y la que abre
+   «Administrar hermanos, punto y código» en el panel.
+
+   Es autosuficiente a propósito: en el panel no existe `.vh`, así que sus
+   colores, tamaños y botones no se pueden heredar. Los valores son los de la
+   vista del hermano (letra >= 16 px, zonas táctiles >= 56 px).
+
+   Y se desplaza sola: antes medía ~1.330 px sin overflow y el dedo movía la
+   pantalla de atrás. Alto máximo en dvh, desplazamiento propio y el fondo
+   bloqueado (el bloqueo lo hace el componente con la clase en <html>). */
+html.hoja-grupo-abierta,
+html.hoja-grupo-abierta body {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+.hoja-grupo,
+.hoja-grupo .sobre {
+  --hg-canvas: #f6f4ee;
+  --hg-surface: #ffffff;
+  --hg-line: #e5e0d4;
+  --hg-ink: #16191d;
+  --hg-lime: #cbea5b;
+  --hg-lime-deep: #b4d63c;
+  --hg-fg-2: #4b4f57;
+  --hg-fg-3: #6a6e77;
+  --hg-tap: 56px;
+  --hg-pad: 20px;
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
+  box-sizing: border-box;
+  background: var(--hg-canvas);
+  color: var(--hg-ink);
+  font: 400 18px/1.4 Urbanist, system-ui, sans-serif;
+  overscroll-behavior: contain;
+}
+.hoja-grupo .sobre { z-index: 61; }
+.hoja-grupo *, .hoja-grupo *::before, .hoja-grupo *::after { box-sizing: border-box; }
+
+.hoja-grupo .sobreBarra {
+  flex: 0 0 auto;
+  display: flex; align-items: center; gap: 14px;
+  padding: 12px var(--hg-pad);
+  background: var(--hg-surface);
+  border-bottom: 1px solid var(--hg-line);
+}
+.hoja-grupo .sobreBarra h2 {
+  flex: 1; min-width: 0; margin: 0;
+  font-size: 21px; font-weight: 600; letter-spacing: -.02em;
+}
+.hoja-grupo .sobreBarra h2 small {
+  display: block; font-size: 16px; font-weight: 500; color: var(--hg-fg-3);
+}
+.hoja-grupo .sobreBarra .boton { width: auto; flex: 0 0 auto; margin-top: 0; padding-inline: 18px; }
+
+/* El cuerpo es lo que se desplaza. Especificidad alta para ganarle a
+   `.vh .sobreCuerpo` sin depender del orden en que carguen las hojas. */
+.hoja-grupo.sobre .sobreCuerpo,
+.hoja-grupo.sobre .hoja-grupo-cuerpo,
+.hoja-grupo .sobre .sobreCuerpo {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 16px var(--hg-pad) calc(32px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+@media (min-width: 720px) {
+  .hoja-grupo.sobre { align-items: center; background: rgba(22, 25, 29, .42); padding: 24px 0; }
+  .hoja-grupo.sobre > * { width: 100%; max-width: 560px; }
+  .hoja-grupo.sobre > .sobreBarra { border-radius: 18px 18px 0 0; flex: 0 0 auto; }
+  .hoja-grupo.sobre > .sobreCuerpo { background: var(--hg-canvas); border-radius: 0 0 18px 18px; }
+}
+
+/* Botones */
+.hoja-grupo .boton {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  width: 100%; min-height: var(--hg-tap);
+  padding: 8px 16px;
+  border-radius: 16px; border: 1px solid transparent; cursor: pointer;
+  font: 600 18px/1.15 Urbanist, system-ui, sans-serif;
+  margin-top: 10px;
+}
+.hoja-grupo .boton:disabled { opacity: .6; cursor: default; }
+.hoja-grupo .boton.principal { background: var(--hg-lime); color: var(--hg-ink); }
+.hoja-grupo .boton.principal:active { background: var(--hg-lime-deep); }
+.hoja-grupo .boton.secundario { background: var(--hg-surface); color: var(--hg-ink); border-color: var(--hg-line); }
+.hoja-grupo .boton.peligro { background: #fff; color: #9b1c1c; border: 2px solid #9b1c1c; }
+.hoja-grupo .boton:focus-visible { outline: 3px solid var(--hg-ink); outline-offset: 2px; }
+
+/* Tarjetas, textos y avisos */
+.hoja-grupo .panel {
+  background: var(--hg-surface); border: 1px solid var(--hg-line);
+  border-radius: 22px; padding: 20px; margin: 0;
+  scroll-margin-top: 12px; scroll-margin-bottom: 24px;
+}
+.hoja-grupo .panel h2 { margin: 0 0 6px; font-size: 24px; font-weight: 600; letter-spacing: -.02em; }
+.hoja-grupo h3 { font-size: 21px; margin: 0; }
+.hoja-grupo p { margin: 0 0 10px; }
+.hoja-grupo .sub { color: var(--hg-fg-2); font-size: 16px; }
+.hoja-grupo p.sub { margin: 0 0 14px; }
+.hoja-grupo .nota {
+  display: block; margin: 0; padding: 14px 16px; border-radius: 16px;
+  background: var(--hg-surface); border: 1px solid var(--hg-line);
+  font-size: 16px; color: var(--hg-fg-2); line-height: 1.45;
+}
+.hoja-grupo .nota.error { background: #fdecec; border-color: #e7a9a9; color: #7a1414; }
+.hoja-grupo .nota.ok { background: #e3f2e9; border-color: #aed6c1; color: #0f6b47; }
+.hoja-grupo .nota .boton { margin-top: 10px; }
+.hoja-grupo .codigo-grande { font-size: 44px; letter-spacing: .18em; font-weight: 700; margin: 8px 0; }
+/* El código no se parte nunca: si no entra, la letra se achica. */
+.vh .hoja-grupo .codigo-grande {
+  font-size: clamp(22px, 8vw, 44px); letter-spacing: .12em; white-space: nowrap;
+  overflow-wrap: normal; word-break: normal; max-width: 100%; overflow: hidden;
+}
+.hoja-grupo .lista-hermanos { display: grid; gap: 12px; }
+.hoja-grupo .lista-hermanos article { border-top: 1px solid var(--hg-line); padding-top: 12px; }
+.hoja-grupo .lista-hermanos article:first-child { border-top: 0; padding-top: 0; }
+.hoja-grupo .confirmar-sacar { border: 2px solid #9b1c1c; }
+.hoja-grupo label { display: grid; gap: 6px; font-size: 16px; color: var(--hg-fg-2); }
+.hoja-grupo input:not([type="checkbox"]):not([type="radio"]) {
+  min-height: var(--hg-tap); padding: 8px 14px; font: 500 18px Urbanist, system-ui, sans-serif;
+  border: 1px solid var(--hg-line); border-radius: 14px; background: #fff; color: var(--hg-ink); width: 100%;
+}
+
+/* Salidas del grupo */
+.hoja-grupo .gestion-salidas-grupo { border-top: 1px solid var(--hg-line); margin-top: 20px; padding-top: 20px; }
+.hoja-grupo .gestion-salidas-grupo-cabecera { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; margin-bottom: 8px; }
+.hoja-grupo .gestion-salidas-grupo-cabecera .sub { margin: 2px 0 0; }
+.hoja-grupo .lista-hermanos .boton,
+.vh .hoja-grupo .lista-hermanos .boton { justify-content: center; }
+.hoja-grupo .gestion-salidas-grupo-cabecera .boton,
+.vh .hoja-grupo .gestion-salidas-grupo-cabecera .boton { width: auto; justify-self: stretch; margin-top: 8px; }
+.hoja-grupo .salidas-grupo-resumen { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px; }
+.hoja-grupo .salidas-grupo-resumen li {
+  display: grid; gap: 2px; padding: 12px 14px; border: 1px solid var(--hg-line);
+  border-radius: 14px; background: var(--hg-canvas); font-size: 16px;
+}
+.hoja-grupo .salidas-grupo-resumen span { color: var(--hg-fg-2); }
+.hoja-grupo .form-stack { display: grid; gap: 12px; }
+.hoja-grupo .gestion-salida-form { margin-top: 16px; scroll-margin-top: 12px; scroll-margin-bottom: 24px; }
+.hoja-grupo .gestion-salida-fecha { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+/* Elegir de una lista (ElegirDeLista) y buscador del punto, sin `.vh` */
+.hoja-grupo .elegir-lista {
+  justify-content: space-between; text-align: left; gap: 12px; padding: 9px 16px; line-height: 1.25;
+  background: var(--hg-surface); color: var(--hg-ink); border: 1px solid var(--hg-line);
+}
+.hoja-grupo .elegir-lista > span:first-child { display: grid; gap: 2px; min-width: 0; }
+.hoja-grupo .elegir-lista small { display: block; font-size: 16px; color: var(--hg-fg-3); font-weight: 500; }
+.hoja-grupo .elegir-lista strong {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.hoja-grupo .elegir-lista-opcion { flex-direction: column; align-items: flex-start; }
+.hoja-grupo .elegir-lista-opcion.elegida { border-color: var(--hg-ink); box-shadow: inset 0 0 0 2px var(--hg-ink); }
+.hoja-grupo .elegir-lista-opcion small { font-size: 16px; color: var(--hg-fg-3); font-weight: 500; }
+.hoja-grupo .panel.panel-plano { box-shadow: none; }

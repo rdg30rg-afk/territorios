@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useMenusMas } from '../lib/useMenusMas'
 import { Desplegable } from '../components/Desplegable'
 import { Falta } from '../components/Falta'
 import { Vacio } from '../components/Vacio'
@@ -147,6 +148,7 @@ function formatDriverAvailability(availability: DriverAvailability | null) {
 }
 
 export function ConductoresPage() {
+  useMenusMas()
   const { profile } = useAuth()
   const client = supabase
   const [drivers, setDrivers] = useState<DriverRecord[]>([])
@@ -166,7 +168,12 @@ export function ConductoresPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  // El error del formulario vive dentro de la ventana. El de la pantalla
+  // (la carga, eliminar) se ve afuera: la ventana puede estar cerrada.
+  const [formError, setFormError] = useState<string | null>(null)
+  const [pageError, setPageError] = useState<string | null>(null)
+  const [loadFailed, setLoadFailed] = useState(false)
+  const [reloadKey, setReloadKey] = useState(0)
   const [message, setMessage] = useState<string | null>(null)
 
   const canManageDrivers = profile?.role === 'admin'
@@ -200,10 +207,12 @@ export function ConductoresPage() {
       }
 
       if (loadError) {
-        setError(decirElError(loadError))
+        setPageError(decirElError(loadError, 'No se pudo cargar la lista de conductores.'))
+        setLoadFailed(true)
         setDrivers([])
       } else {
-        setError(null)
+        setPageError(null)
+        setLoadFailed(false)
         setDrivers((data as DriverRecord[]) ?? [])
       }
 
@@ -215,7 +224,7 @@ export function ConductoresPage() {
     return () => {
       isMounted = false
     }
-  }, [client])
+  }, [client, reloadKey])
 
   const filteredDrivers = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase()
@@ -247,12 +256,14 @@ export function ConductoresPage() {
   const cerrarFormulario = () => {
     setFormularioAbierto(false)
     resetForm()
-    setError(null)
+    setFormError(null)
+    // Cerrar «Editar» no abre la ficha del mismo conductor.
+    setSelectedDriverId(null)
   }
 
   const abrirNuevo = () => {
     resetForm()
-    setError(null)
+    setFormError(null)
     setMessage(null)
     setFormularioAbierto(true)
   }
@@ -268,14 +279,14 @@ export function ConductoresPage() {
 
   const startEditing = (driver: DriverRecord) => {
     setFormularioAbierto(true)
-    setSelectedDriverId(driver.id)
+    setSelectedDriverId(null)
     setEditingDriverId(driver.id)
     setFullName(driver.full_name)
     setPhone(driver.phone ?? '')
     setNotes(driver.notes ?? '')
     setStatus(driver.status)
     setAvailability(normalizeAvailability(driver.availability))
-    setError(null)
+    setFormError(null)
     setMessage(null)
   }
 
@@ -323,16 +334,46 @@ export function ConductoresPage() {
       return
     }
 
+    setPageError(null)
+    setMessage(null)
+
+    // Eliminar no es solo borrar la ficha: la base lo saca de las salidas y
+    // del programa semanal y suelta su cuenta. Se cuenta antes de preguntar.
+    const [salidas, turnos, cuentas] = await Promise.all([
+      client.from('salidas').select('id', { count: 'exact', head: true }).eq('driver_id', driver.id),
+      client.from('programa_titulares').select('conductor_id', { count: 'exact', head: true }).eq('conductor_id', driver.id),
+      client.from('profiles').select('id', { count: 'exact', head: true }).eq('driver_id', driver.id),
+    ])
+    const nSalidas = salidas.error ? null : salidas.count ?? 0
+    const nTurnos = turnos.error ? null : turnos.count ?? 0
+    const nCuentas = cuentas.error ? null : cuentas.count ?? 0
+
+    const efectos: string[] = []
+    efectos.push(
+      nSalidas === null
+        ? 'Deja de figurar en todas las salidas en las que está (no se pudo contar cuántas).'
+        : nSalidas === 0
+          ? 'No figura en ninguna salida.'
+          : `Deja de figurar en ${nSalidas} ${nSalidas === 1 ? 'salida, que queda' : 'salidas, que quedan'} sin conductor.`,
+    )
+    efectos.push(
+      nTurnos === null
+        ? 'Deja de figurar en el programa semanal.'
+        : nTurnos === 0
+          ? 'No está en el programa semanal.'
+          : `Deja de figurar en ${nTurnos} ${nTurnos === 1 ? 'turno' : 'turnos'} del programa semanal.`,
+    )
+    if (nCuentas === null || nCuentas > 0) {
+      efectos.push('Se desvincula de su cuenta de usuario (la cuenta sigue existiendo).')
+    }
+
     const confirmed = window.confirm(
-      `Se eliminara el conductor "${driver.full_name}".`,
+      `¿Eliminar a "${driver.full_name}"?\n\n${efectos.join('\n')}\n\nSe pierde su ficha (teléfono, disponibilidad y observaciones) y no se puede deshacer.`,
     )
 
     if (!confirmed) {
       return
     }
-
-    setError(null)
-    setMessage(null)
 
     const { error: deleteError } = await client
       .from('conductores')
@@ -340,7 +381,7 @@ export function ConductoresPage() {
       .eq('id', driver.id)
 
     if (deleteError) {
-      setError(decirElError(deleteError))
+      setPageError(decirElError(deleteError, 'No se pudo eliminar el conductor.'))
       return
     }
 
@@ -356,21 +397,21 @@ export function ConductoresPage() {
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    setError(null)
+    setFormError(null)
     setMessage(null)
 
     if (!client) {
-      setError('Falta conectar la base para cargar conductores.')
+      setFormError('Falta conectar la base para cargar conductores.')
       return
     }
 
     if (!canManageDrivers) {
-      setError('Solo un administrador puede cargar nuevos conductores.')
+      setFormError('Solo un administrador puede cargar nuevos conductores.')
       return
     }
 
     if (!fullName.trim()) {
-      setError('El nombre del conductor es obligatorio.')
+      setFormError('El nombre del conductor es obligatorio.')
       return
     }
 
@@ -396,7 +437,7 @@ export function ConductoresPage() {
       .single()
 
     if (saveError) {
-      setError(decirElError(saveError))
+      setFormError(decirElError(saveError))
       setIsSaving(false)
       return
     }
@@ -405,7 +446,6 @@ export function ConductoresPage() {
       [...current.filter((item) => item.id !== (data as DriverRecord).id), data as DriverRecord]
         .sort((left, right) => left.full_name.localeCompare(right.full_name, 'es')),
     )
-    setSelectedDriverId((data as DriverRecord).id)
     setMessage(
       editingDriverId
         ? 'Conductor actualizado correctamente.'
@@ -422,7 +462,7 @@ export function ConductoresPage() {
         <div>
           <h2>Conductores</h2>
           <p className="lead">
-            Quien puede llevar hermanos al territorio, y cuando esta disponible.
+            Quién puede llevar hermanos al territorio, y cuándo está disponible.
           </p>
         </div>
       </section>
@@ -432,20 +472,34 @@ export function ConductoresPage() {
             de conductores...") y cuatro cifras: Total, Activos, Pendientes
             e Inactivos, donde Total era la suma de las otras tres. Ninguna
             cambiaba una decision salvo Pendientes, que es la que quedo. */}
+        {pageError ? (
+          <div className="form-feedback error" role="alert">
+            {pageError}
+            {loadFailed ? (
+              <>
+                {' '}
+                <button type="button" className="secondary-button" onClick={() => setReloadKey((n) => n + 1)}>
+                  <Icono nombre="reintentar" tamaño={18} />
+                  Volver a intentar
+                </button>
+              </>
+            ) : null}
+          </div>
+        ) : null}
+        {message ? (
+          <div className="form-feedback success" role="status">
+            {message}
+          </div>
+        ) : null}
+
         <Falta
           cuantos={pendingCount}
           uno="Un conductor esta sin confirmar"
           varios="{n} conductores estan sin confirmar"
-          detalle="Todavia no se puede contar con ellos para una salida."
         />
 
         <section className="panel module-registry-panel">
           <div className="module-registry-toolbar">
-            <div>
-              <p className="eyebrow">Listado</p>
-              <h3>Conductores cargados</h3>
-            </div>
-
             <div className="module-registry-actions">
               {canManageDrivers ? (
                 <button type="button" className="primary-button" onClick={abrirNuevo}>
@@ -482,7 +536,7 @@ export function ConductoresPage() {
 
           {isLoading ? (
             <div className="status-card">Cargando conductores...</div>
-          ) : filteredDrivers.length === 0 ? (
+          ) : loadFailed ? null : filteredDrivers.length === 0 ? (
             <Vacio
               hay={drivers.length}
               sinNada="Todavía no hay ningún conductor cargado."
@@ -509,7 +563,7 @@ export function ConductoresPage() {
                   <div
                     key={driver.id}
                     className={
-                      selectedDriverId === driver.id
+                      selectedDriverId === driver.id || editingDriverId === driver.id
                         ? 'module-table module-table-row module-table-row-button driver-availability-table active'
                         : 'module-table module-table-row module-table-row-button driver-availability-table'
                     }
@@ -525,7 +579,7 @@ export function ConductoresPage() {
                     >
                       {driver.full_name}
                     </button>
-                    <span>{driver.phone || 'Sin telefono'}</span>
+                    <span>{driver.phone || 'Sin teléfono'}</span>
                     <span>{formatDriverAvailability(driver.availability)}</span>
                     <span>
                       <span className={`status-pill status-${driver.status}`}>
@@ -546,20 +600,25 @@ export function ConductoresPage() {
                             <Icono nombre="dibujar" tamaño={17} />
                             Editar
                           </button>
-                          <button
-                            type="button"
-                            className="danger-button"
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              void handleDelete(driver)
-                            }}
-                          >
-                            <Icono nombre="eliminar" tamaño={17} />
-                            Eliminar
-                          </button>
+                          <details className="menu-mas" onClick={(event) => event.stopPropagation()}>
+                            <summary>Más</summary>
+                            <div className="menu-mas-caja">
+                              <button
+                                type="button"
+                                className="danger-button"
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  void handleDelete(driver)
+                                }}
+                              >
+                                <Icono nombre="eliminar" tamaño={17} />
+                                Eliminar
+                              </button>
+                            </div>
+                          </details>
                         </>
                       ) : (
-                        <span className="table-hint">Solo lectura</span>
+                        <span className="table-hint">—</span>
                       )}
                     </span>
                   </div>
@@ -587,7 +646,7 @@ export function ConductoresPage() {
               </label>
 
               <label>
-                Telefono
+                Teléfono
                 <input
                   value={phone}
                   onChange={(event) => setPhone(event.target.value)}
@@ -616,7 +675,7 @@ export function ConductoresPage() {
                   <strong>Disponibilidad por día</strong>
                   {/* En bloque: strong y span pegados salian como
                       "Disponibilidad por diaMarca un dia...". */}
-                  <span style={{ display: 'block' }}>
+                  <span className="bloque">
                     Tildá un día y después elegí si puede conducir a la mañana, a
                     la tarde o por teléfono.
                   </span>
@@ -671,8 +730,7 @@ export function ConductoresPage() {
                 />
               </label>
 
-              {error ? <div className="form-feedback error">{error}</div> : null}
-              {message ? <div className="form-feedback success">{message}</div> : null}
+              {formError ? <div className="form-feedback error" role="alert">{formError}</div> : null}
 
               <button
                 type="button"

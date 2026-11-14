@@ -1,8 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { BuscadorPunto } from './BuscadorPunto'
 import { ElegirDeLista } from './ElegirDeLista'
 import { MeetingPointPickerMap } from './MeetingPointPickerMap'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../context/useAuth'
+import { decirElError } from '../lib/decirElError'
+import '../styles/hoja-grupo.css'
 import type { PuntoEncuentro } from '../lib/puntosEncuentro'
 import { rotuloRolGrupo, type ContextoHermano, type RolEnGrupo } from '../lib/vistaHermano'
 import { Icono } from './Icono'
@@ -35,6 +38,7 @@ function haceDias(iso: string): string {
 }
 
 export function HojaMiGrupo({ contexto, abierto, onCerrar, onCambio }: HojaMiGrupoProps) {
+  const { profile } = useAuth()
   const [miembros, setMiembros] = useState<Miembro[]>([])
   const [codigo, setCodigo] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
@@ -51,12 +55,71 @@ export function HojaMiGrupo({ contexto, abierto, onCerrar, onCambio }: HojaMiGru
   const [miembroParaTerritorio, setMiembroParaTerritorio] = useState<Miembro | null>(null)
   const [territorioElegido, setTerritorioElegido] = useState('')
   const [editandoPunto, setEditandoPunto] = useState(false)
+  const [cargando, setCargando] = useState(true)
+  const [falloCarga, setFalloCarga] = useState(false)
+  const [reintento, setReintento] = useState(0)
+  const [miembroParaSacar, setMiembroParaSacar] = useState<Miembro | null>(null)
+  const [exito, setExito] = useState<string | null>(null)
+  const cuerpo = useRef<HTMLDivElement>(null)
+  const seccionTerritorio = useRef<HTMLElement>(null)
+  const seccionSacar = useRef<HTMLElement>(null)
+
+  // Mientras la hoja está abierta el fondo no se mueve: antes el dedo
+  // arrastraba la pantalla de atrás y la hoja quedaba inalcanzable.
+  useEffect(() => {
+    if (!abierto) return
+    const raiz = document.documentElement
+    raiz.classList.add('hoja-grupo-abierta')
+    return () => raiz.classList.remove('hoja-grupo-abierta')
+  }, [abierto])
+
+  // Escape cierra solo esta hoja. Abierta desde la ficha del panel, el mismo
+  // Escape cerraba también la ventana de atrás. Se escucha primero (captura) y
+  // se frena la propagación; si arriba de la hoja hay otra capa (una lista para
+  // elegir), esa capa se ocupa de su Escape y acá solo se evita que el
+  // navegador cierre la ventana de atrás.
+  const raizHoja = useRef<HTMLDivElement>(null)
+  const onCerrarRef = useRef(onCerrar)
+  useEffect(() => { onCerrarRef.current = onCerrar }, [onCerrar])
+  useEffect(() => {
+    if (!abierto || !contexto.group_id) return
+    const tecla = (evento: KeyboardEvent) => {
+      if (evento.key !== 'Escape') return
+      evento.preventDefault()
+      const capas = document.querySelectorAll('.sobre[role="dialog"]')
+      if (capas.length && capas[capas.length - 1] !== raizHoja.current) return
+      evento.stopPropagation()
+      onCerrarRef.current()
+    }
+    document.addEventListener('keydown', tecla, true)
+    return () => document.removeEventListener('keydown', tecla, true)
+  }, [abierto, contexto.group_id])
+
+  // Los formularios se abren abajo de todo de la lista: se los trae a la vista.
+  useEffect(() => {
+    if (miembroParaTerritorio) seccionTerritorio.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }, [miembroParaTerritorio])
+  useEffect(() => {
+    if (miembroParaSacar) seccionSacar.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }, [miembroParaSacar])
+  // Un aviso nuevo también se trae a la vista (arriba del cuerpo).
+  useEffect(() => {
+    if (aviso || exito) cuerpo.current?.scrollTo({ top: 0, behavior: 'smooth' })
+  }, [aviso, exito])
 
   useEffect(() => {
     if (!abierto || !supabase || !contexto.group_id) return
     let vivo = true
+    setCargando(true)
+    setFalloCarga(false)
     void (async () => {
-      const [{ data: filas }, { data: inv }, { data: puntoGrupo }, { data: puntosData }, { data: territoriosData }] = await Promise.all([
+      const [
+        { data: filas, error: errFilas },
+        { data: inv, error: errInv },
+        { data: puntoGrupo },
+        { data: puntosData },
+        { data: territoriosData },
+      ] = await Promise.all([
         supabase
           .from('grupo_miembros')
           .select('id, profile_id, rol_en_grupo, estado, created_at')
@@ -84,10 +147,16 @@ export function HojaMiGrupo({ contexto, abierto, onCerrar, onCambio }: HojaMiGru
         supabase.rpc('territorios_disponibles_para_grupo', { p_group_id: contexto.group_id }),
       ])
       const ids = [...new Set((filas ?? []).map((fila) => fila.profile_id))]
-      const { data: perfiles } = ids.length
+      const { data: perfiles, error: errPerfiles } = ids.length
         ? await supabase.from('profiles').select('id, full_name, driver_id').in('id', ids)
-        : { data: [] }
+        : { data: [], error: null }
       if (!vivo) return
+      // Sin los hermanos no se puede decir «0 hermanos»: no se sabe.
+      if (errFilas || errPerfiles || errInv) {
+        setFalloCarga(true)
+        setCargando(false)
+        return
+      }
       const nombres = new Map(
         ((perfiles ?? []) as Array<{ id: string; full_name: string | null; driver_id: string | null }>).map((perfil) => [
           perfil.id,
@@ -120,11 +189,16 @@ export function HojaMiGrupo({ contexto, abierto, onCerrar, onCambio }: HojaMiGru
       )
       setPuntos((puntosData as PuntoEncuentro[] | null) ?? [])
       setTerritorios((territoriosData as TerritorioDisponible[] | null) ?? [])
-    })()
+      setCargando(false)
+    })().catch(() => {
+      if (!vivo) return
+      setFalloCarga(true)
+      setCargando(false)
+    })
     return () => {
       vivo = false
     }
-  }, [abierto, contexto.group_id])
+  }, [abierto, contexto.group_id, reintento])
 
   if (!abierto || !contexto.group_id) return null
 
@@ -132,10 +206,11 @@ export function HojaMiGrupo({ contexto, abierto, onCerrar, onCambio }: HojaMiGru
   const confirmados = miembros.filter((m) => m.estado === 'confirmado')
   const grupo = contexto.group_number ? `Grupo ${contexto.group_number}` : contexto.group_name ?? 'Tu grupo'
 
-  const decidir = async (id: string, accion: 'confirmar' | 'rechazar' | 'cambiar_rol', rol?: RolEnGrupo) => {
-    if (!supabase || ocupado) return
+  const decidir = async (id: string, accion: 'confirmar' | 'rechazar' | 'cambiar_rol', rol?: RolEnGrupo): Promise<boolean> => {
+    if (!supabase || ocupado) return false
     setOcupado(true)
     setAviso(null)
+    setExito(null)
     const { error } = await supabase.rpc('confirmar_miembro', {
       p_miembro_id: id,
       p_accion: accion,
@@ -143,8 +218,8 @@ export function HojaMiGrupo({ contexto, abierto, onCerrar, onCambio }: HojaMiGru
     })
     setOcupado(false)
     if (error) {
-      setAviso(error.message)
-      return
+      setAviso(decirElError(error, 'No se pudo hacer el cambio en el grupo.'))
+      return false
     }
     setMiembros((actuales) =>
       actuales
@@ -160,6 +235,7 @@ export function HojaMiGrupo({ contexto, abierto, onCerrar, onCambio }: HojaMiGru
         .filter((m) => m.estado !== 'retirado'),
     )
     onCambio()
+    return true
   }
 
   const guardarPunto = async () => {
@@ -175,9 +251,10 @@ export function HojaMiGrupo({ contexto, abierto, onCerrar, onCambio }: HojaMiGru
     })
     setOcupado(false)
     if (error) {
-      setAviso(error.message)
+      setAviso(decirElError(error, 'No se pudo guardar el punto.'))
       return
     }
+    setExito('Guardamos el punto del grupo.')
     setEditandoPunto(false)
     onCambio()
   }
@@ -193,27 +270,44 @@ export function HojaMiGrupo({ contexto, abierto, onCerrar, onCambio }: HojaMiGru
     })
     setOcupado(false)
     if (error) {
-      setAviso(error.message)
+      setAviso(decirElError(error, 'No se pudo dar el territorio.'))
       return
     }
     setTerritorios((actuales) => actuales.filter((territorio) => territorio.id !== territorioElegido))
     setMiembroParaTerritorio(null)
     setTerritorioElegido('')
-    setAviso(`Territorio asignado a ${miembroParaTerritorio.full_name}.`)
+    setExito(`Territorio asignado a ${miembroParaTerritorio.full_name}.`)
     onCambio()
   }
 
   const renovar = async () => {
     if (!supabase || ocupado) return
-    if (!window.confirm('El código viejo deja de servir. ¿Lo cambiás?')) return
+    if (codigo && !window.confirm('El código viejo deja de servir. ¿Lo cambiás?')) return
     setOcupado(true)
+    setAviso(null)
+    setExito(null)
     const { data, error } = await supabase.rpc('renovar_codigo_grupo', { p_group_id: contexto.group_id })
     setOcupado(false)
     if (error) {
-      setAviso(error.message)
+      setAviso(decirElError(error, 'No se pudo cambiar el código.'))
       return
     }
     setCodigo(typeof data === 'string' ? data : null)
+    setExito('Listo, el código quedó cambiado.')
+  }
+
+  const esUnoMismo = (m: Miembro) => m.profile_id === profile?.id
+  const esResponsable = (m: Miembro) => m.rol_en_grupo === 'superintendente' || m.rol_en_grupo === 'siervo'
+
+  const sacarDelGrupo = async () => {
+    const m = miembroParaSacar
+    if (!m) return
+    const eraUnoMismo = esUnoMismo(m)
+    const salio = await decidir(m.id, 'rechazar')
+    setMiembroParaSacar(null)
+    if (!salio) return
+    if (eraUnoMismo) onCerrar()
+    else setExito(`${m.full_name} ya no está en el grupo.`)
   }
 
   const compartir = () => {
@@ -225,29 +319,43 @@ export function HojaMiGrupo({ contexto, abierto, onCerrar, onCambio }: HojaMiGru
   }
 
   return (
-    <div className="sobre" role="dialog" aria-modal="true" aria-label={`Mi grupo · ${grupo}`}>
+    <div ref={raizHoja} className="sobre hoja-grupo" role="dialog" aria-modal="true" aria-label={`Mi grupo · ${grupo}`}>
       <div className="sobreBarra">
         <h2>
           {grupo}
-          <small>{confirmados.length} hermanos</small>
+          <small>{cargando ? 'Cargando…' : falloCarga ? 'No se pudo cargar' : `${confirmados.length} ${confirmados.length === 1 ? 'hermano' : 'hermanos'}`}</small>
         </h2>
         <button type="button" className="boton secundario" onClick={onCerrar}>
           <Icono nombre="cerrar" tamaño={18} />
           Cerrar
         </button>
       </div>
-      <div className="sobreCuerpo elegir-lista-cuerpo">
+      <div ref={cuerpo} className="sobreCuerpo hoja-grupo-cuerpo elegir-lista-cuerpo">
         {aviso ? (
-          <p className="nota" role="alert">
+          <p className="nota error" role="alert">
             {aviso}
           </p>
+        ) : null}
+        {exito && !aviso ? (
+          <p className="nota ok" role="status">
+            {exito}
+          </p>
+        ) : null}
+        {falloCarga ? (
+          <div className="nota error" role="alert">
+            <p>No pudimos cargar los datos del grupo. Fijate si tenés internet.</p>
+            <button type="button" className="boton secundario" onClick={() => setReintento((n) => n + 1)}>
+              <Icono nombre="reintentar" tamaño={18} />
+              Probar de nuevo
+            </button>
+          </div>
         ) : null}
 
         {pendientes.length > 0 ? (
           <section className="panel">
             <h2>Esperan confirmación</h2>
             {pendientes.map((m) => (
-              <article key={m.id} className="panel" style={{ boxShadow: 'none' }}>
+              <article key={m.id} className="panel panel-plano">
                 <p>
                   <strong>{m.full_name}</strong>
                   <span className="sub"> · {haceDias(m.created_at)}</span>
@@ -332,12 +440,16 @@ export function HojaMiGrupo({ contexto, abierto, onCerrar, onCambio }: HojaMiGru
           </button>
           <button type="button" className="boton secundario" disabled={ocupado} onClick={() => void renovar()}>
             <Icono nombre="reintentar" tamaño={18} />
-            Cambiar el código
+            {codigo ? 'Cambiar el código' : 'Crear el código'}
           </button>
         </section>
 
         <section className="panel">
           <h2>Hermanos del grupo</h2>
+          {cargando ? <p className="sub" role="status">Cargando los hermanos…</p> : null}
+          {!cargando && !falloCarga && confirmados.length === 0 ? (
+            <p className="sub">Todavía no hay hermanos confirmados en el grupo.</p>
+          ) : null}
           <div className="lista-hermanos">
             {confirmados.map((m) => (
               <article key={m.id}>
@@ -362,18 +474,44 @@ export function HojaMiGrupo({ contexto, abierto, onCerrar, onCambio }: HojaMiGru
                   type="button"
                   className="boton secundario"
                   disabled={ocupado}
-                  onClick={() => void decidir(m.id, 'rechazar')}
+                  onClick={() => setMiembroParaSacar(m)}
                 >
                   <Icono nombre="eliminar" tamaño={18} />
-                  Sacarlo del grupo
+                  {esUnoMismo(m) ? 'Salir del grupo' : 'Sacarlo del grupo'}
                 </button>
               </article>
             ))}
           </div>
         </section>
 
+        {miembroParaSacar ? (
+          <section
+            ref={seccionSacar}
+            className="panel confirmar-sacar"
+            role="alertdialog"
+            aria-label={`Sacar a ${miembroParaSacar.full_name} del grupo`}
+          >
+            <h2>{esUnoMismo(miembroParaSacar) ? '¿Salir del grupo?' : `¿Sacar a ${miembroParaSacar.full_name}?`}</h2>
+            <p>
+              {esUnoMismo(miembroParaSacar)
+                ? `Vas a salir del ${grupo}${esResponsable(miembroParaSacar) ? ' y el grupo se queda sin vos a cargo' : ''}. Dejás de ver la salida del grupo y de poder administrarlo. Para volver necesitás el código y que te confirmen.`
+                : esResponsable(miembroParaSacar)
+                  ? `${miembroParaSacar.full_name} está a cargo del grupo (${rotuloRolGrupo(miembroParaSacar.rol_en_grupo)}). Si lo sacás, el grupo se queda sin ese responsable y para ponerlo de nuevo hay que pedírselo a un administrador.`
+                  : `${miembroParaSacar.full_name} deja de ver la salida del grupo. Puede volver con el código, y alguien tiene que confirmarlo.`}
+            </p>
+            <button type="button" className="boton peligro" disabled={ocupado} onClick={() => void sacarDelGrupo()}>
+              <Icono nombre="eliminar" tamaño={18} />
+              {esUnoMismo(miembroParaSacar) ? 'Sí, salir del grupo' : `Sí, sacar a ${miembroParaSacar.full_name}`}
+            </button>
+            <button type="button" className="boton secundario" disabled={ocupado} onClick={() => setMiembroParaSacar(null)}>
+              <Icono nombre="cerrar" tamaño={18} />
+              No, dejarlo como está
+            </button>
+          </section>
+        ) : null}
+
         {miembroParaTerritorio ? (
-          <section className="panel" aria-label={`Darle un territorio a ${miembroParaTerritorio.full_name}`}>
+          <section ref={seccionTerritorio} className="panel" aria-label={`Darle un territorio a ${miembroParaTerritorio.full_name}`}>
             <h2>Darle un territorio</h2>
             <p className="sub">Para {miembroParaTerritorio.full_name}. Sólo aparecen territorios sin una asignación activa.</p>
             <ElegirDeLista

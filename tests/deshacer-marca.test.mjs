@@ -94,3 +94,10 @@ test('el aviso dice lo que se hizo con las palabras de la persona', () => {
   assert.equal(textoDeMarca('sin_dato', manzana), 'Quitaste la marca de la manzana B')
   assert.equal(TEXTO_DESHECHO, 'Listo, quedó como estaba')
 })
+
+test('«Sin dato» no emite nada para cuadras que no tienen marca, y sí quita no accesible y revisitar', async () => {
+  const { cambiosParaMarcar } = await import('../src/lib/deshacerMarca.ts')
+  const lados = ['a', 'b', 'c'].map(id => ({ id, manzana_id: 'm', geometry_version: 1 }))
+  const cambios = cambiosParaMarcar(lados, 'sin_dato', { a: 'no_accesible', b: 'revisitar' })
+  assert.deepEqual(cambios.map(c => c.ladoId), ['a', 'b'])
+})

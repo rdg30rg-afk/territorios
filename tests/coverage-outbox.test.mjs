@@ -102,3 +102,50 @@ test('sin Web Locks ni wrapper no afirma persistencia segura', async () => {
   const options=setup();delete options.lock
   await assert.rejects(CreateOutbox(options).enqueue(input()),/entre pestañas/)
 })
+
+test('falla por mala señal: sigue pendiente, espera creciente y no bloquea a las otras cuadras', async () => {
+  let ahora = 1_000_000
+  const box = CreateOutbox({ ...setup(), clock: () => ahora })
+  const first = await box.enqueue(input()), other = await box.enqueue(input({ lado_id: 'other' }))
+  const next = await box.enqueue(input({ estado: 'revisitar' }))
+  const r1 = await box.drain(async () => { throw new Error('Failed to fetch') })
+  assert.equal(r1.failed, 1)
+  const e = box.getEvents().find(x => x.id === first.id)
+  assert.equal(e.status, 'pending'); assert.ok(e.nextAttemptAt > ahora)
+  const espera1 = e.nextAttemptAt - ahora
+  // Todavía en espera: no se reintenta, y la siguiente de su misma cuadra no pasa adelante.
+  const calls = []
+  await box.drain(async ev => { calls.push(ev.id); return true })
+  assert.deepEqual(calls, [other.id])
+  ahora += 3000
+  const r2 = await box.drain(async () => ({ confirmed: false, error: 'sin red', transient: true }))
+  assert.equal(r2.attempted, 1)
+  const e2 = box.getEvents().find(x => x.id === first.id)
+  assert.ok(e2.nextAttemptAt - ahora > espera1)
+  ahora += 60_000
+  const orden = []
+  await box.drain(async ev => { orden.push(ev.id); return true })
+  assert.deepEqual(orden, [first.id, next.id])
+  assert.equal(box.getEvents().length, 0)
+})
+test('al volver la conexión se reintenta sin esperar la espera', async () => {
+  const box = CreateOutbox({ ...setup(), clock: () => 5 })
+  await box.enqueue(input())
+  await box.drain(async () => { throw new Error('offline') })
+  assert.equal((await box.drain(async () => assert.fail())).attempted, 0)
+  assert.equal((await box.drain(async () => true, { ignoreBackoff: true })).confirmed, 1)
+})
+test('descartar quita solo las rechazadas y destraba la cuadra', async () => {
+  const box = CreateOutbox(setup())
+  const bad = await box.enqueue(input()), after = await box.enqueue(input({ estado: 'revisitar' }))
+  await box.drain(async e => e.id === bad.id ? { confirmed: false, error: 'No' } : true)
+  assert.equal(await box.discard(['otro']), 0)
+  assert.equal(await box.discard([bad.id]), 1)
+  assert.equal(box.getEvents().length, 1)
+  const sent = []; await box.drain(async e => { sent.push(e.id); return true })
+  assert.deepEqual(sent, [after.id])
+  const x = await box.enqueue(input({ lado_id: 'a' })), y = await box.enqueue(input({ lado_id: 'b' }))
+  await box.drain(async () => ({ confirmed: false, error: 'No' }))
+  assert.equal(await box.discard(), 2); assert.ok(x && y)
+  assert.equal(box.getEvents().length, 0)
+})

@@ -37,3 +37,17 @@ test('leyenda distingue cuatro estados por etiqueta y patrón, no solo color',()
   assert.equal(Object.keys(coverageLegend).length,4)
   assert.equal(new Set(Object.values(coverageLegend).map(v=>v.dash)).size,4)
 })
+test('suma rótulo, orden, autor y origen de la última marca a cada cuadra',async()=>{
+  const {agruparPorManzana,ultimasMarcas,haceCuanto}=await import('../src/lib/coverageDetalle.ts')
+  const labeled={...block,label:'12'}
+  const e={...event,territory_id:'t',informado_por:'u1',origen:'app_hermano',nota:'x'}
+  const result=build([labeled],[{...side,orden:2}],[e])
+  assert.equal(result.sides[0].informedBy,'u1');assert.equal(result.sides[0].blockLabel,'12')
+  const grupos=agruparPorManzana(result.sides)
+  assert.equal(grupos.length,1);assert.equal(grupos[0].label,'12');assert.equal(grupos[0].recorridas,1);assert.equal(grupos[0].total,1)
+  const marcas=ultimasMarcas([e,{...e,id:'e2',informado_at:'2026-09-02T10:00:00Z',informado_por:'u2'}])
+  assert.equal(marcas.porTerritorio.get('t').by,'u2')
+  assert.equal(marcas.porPersona.get('t|u1'),'2026-09-02T00:00:00Z')
+  assert.equal(haceCuanto('2026-09-01T00:00:00Z',Date.parse('2026-09-04T00:00:00Z')),'hace 3 días')
+  assert.equal(haceCuanto(null),'sin fecha')
+})

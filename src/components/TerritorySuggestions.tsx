@@ -57,7 +57,7 @@ export function TerritorySuggestions() {
           {valor:'completar',texto:'Con cobertura pendiente'},
           {valor:'verificar',texto:'Sin datos concluyentes'},
           {valor:'completo',texto:'Con cobertura completa registrada'},
-          {valor:'sin_geometria',texto:'Sin lados suficientes'},
+          {valor:'sin_geometria',texto:'Sin cuadras suficientes'},
           {valor:'asignado',texto:'Con reserva activa'},
         ]}
       />

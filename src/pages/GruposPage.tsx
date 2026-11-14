@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useMenusMas } from '../lib/useMenusMas'
 import { Desplegable } from '../components/Desplegable'
 import { Falta } from '../components/Falta'
 import { Vacio } from '../components/Vacio'
@@ -57,21 +58,32 @@ function GrupoFichaExtra({ group, profile }: { group: GroupRecord; profile: Prof
   const [punto, setPunto] = useState<string | null>(null)
   const [administrando, setAdministrando] = useState(false)
   const [revision, setRevision] = useState(0)
+  const [falloCarga, setFalloCarga] = useState(false)
+  const [cargado, setCargado] = useState(false)
 
   useEffect(() => {
     if (!client) return
     let vivo = true
+    setFalloCarga(false)
     void Promise.all([
       client.from('grupo_invitaciones').select('codigo').eq('group_id', group.id).maybeSingle(),
       client.from('grupo_miembros').select('id, estado').eq('group_id', group.id).is('hasta', null),
       client.from('puntos_encuentro').select('nombre').eq('group_id', group.id).eq('tipo', 'grupo').eq('activo', true).maybeSingle(),
     ]).then(([inv, miembrosRes, puntoRes]) => {
       if (!vivo) return
+      // Si algo falló no se puede decir «0 hermanos» ni «sin código»: no se sabe.
+      if (inv.error || miembrosRes.error || puntoRes.error) {
+        setFalloCarga(true)
+        return
+      }
+      setCargado(true)
       setCodigo(inv.data?.codigo ?? null)
       const filas = miembrosRes.data ?? []
       setMiembros(filas.length)
       setPendientes(filas.filter((f) => f.estado === 'pendiente').length)
       setPunto(puntoRes.data?.nombre ?? null)
+    }).catch(() => {
+      if (vivo) setFalloCarga(true)
     })
     return () => {
       vivo = false
@@ -98,24 +110,36 @@ function GrupoFichaExtra({ group, profile }: { group: GroupRecord; profile: Prof
 
   return (
     <>
+      {falloCarga ? (
+        <div className="form-feedback error" role="alert">
+          No pudimos cargar los hermanos, el punto y el código de este grupo.{' '}
+          <button type="button" className="secondary-button" onClick={() => setRevision((actual) => actual + 1)}>
+            Probar de nuevo
+          </button>
+        </div>
+      ) : null}
       <div className="module-detail-card">
         <span>Hermanos</span>
         <strong>
-          {miembros}
-          {pendientes ? ` · ${pendientes} esperan confirmación` : ''}
+          {falloCarga ? 'No se pudo cargar' : !cargado ? 'Cargando…' : (
+            <>
+              {miembros}
+              {pendientes ? ` · ${pendientes} esperan confirmación` : ''}
+            </>
+          )}
         </strong>
       </div>
       <div className="module-detail-card">
         <span>Punto de encuentro del grupo</span>
-        <strong>{punto ?? 'Todavía no está cargado'}</strong>
+        <strong>{falloCarga ? 'No se pudo cargar' : !cargado ? 'Cargando…' : (punto ?? 'Todavía no está cargado')}</strong>
       </div>
       <div className="module-detail-card">
         <span>Código de invitación</span>
-        <strong>{codigo ?? 'Se crea al aplicar la migración'}</strong>
+        <strong>{falloCarga ? 'No se pudo cargar' : !cargado ? 'Cargando…' : (codigo ?? 'Este grupo todavía no tiene código')}</strong>
       </div>
       <button type="button" className="primary-button full-width" onClick={() => setAdministrando(true)}>
         <Icono nombre="grupo" tamaño={18} />
-        Administrar hermanos, punto y código
+        Administrar el grupo
       </button>
       <HojaMiGrupo
         contexto={contextoAdmin}
@@ -128,6 +152,7 @@ function GrupoFichaExtra({ group, profile }: { group: GroupRecord; profile: Prof
 }
 
 export function GruposPage() {
+  useMenusMas()
   const { profile } = useAuth()
   const client = supabase
   const [groups, setGroups] = useState<GroupRecord[]>([])
@@ -144,8 +169,12 @@ export function GruposPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
+  // `error` es del formulario (se ve dentro de la ventana). `errorPagina` y
+  // `message` van sobre el listado: la ventana ya se cerró cuando llegan.
   const [error, setError] = useState<string | null>(null)
+  const [errorPagina, setErrorPagina] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
+  const [recarga, setRecarga] = useState(0)
 
   const canManageGroups = profile?.role === 'admin'
   // Antes se contaban grupos, superintendentes, siervos y auxiliares. Son
@@ -185,6 +214,7 @@ export function GruposPage() {
 
     const loadData = async () => {
       setIsLoading(true)
+      setErrorPagina(null)
 
       const [
         { data: groupsData, error: groupsError },
@@ -208,11 +238,10 @@ export function GruposPage() {
       const loadError = groupsError?.message || driversError?.message
 
       if (loadError) {
-        setError(loadError)
+        setErrorPagina(decirElError(groupsError ?? driversError, 'No pudimos cargar los grupos.'))
         setGroups([])
         setDrivers([])
       } else {
-        setError(null)
         setGroups((groupsData as GroupRecord[]) ?? [])
         setDrivers((driversData as DriverOption[]) ?? [])
       }
@@ -225,7 +254,7 @@ export function GruposPage() {
     return () => {
       isMounted = false
     }
-  }, [client])
+  }, [client, recarga])
 
   const filteredGroups = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase()
@@ -295,8 +324,8 @@ export function GruposPage() {
   }
 
   const startEditing = (group: GroupRecord) => {
+    // No se marca selectedGroupId: al cerrar «Editar» se abría la ficha.
     setFormularioAbierto(true)
-    setSelectedGroupId(group.id)
     setEditingGroupId(group.id)
     setGroupNumber(group.group_number ? String(group.group_number) : '')
     setDriverId(group.driver_id ?? '')
@@ -311,14 +340,14 @@ export function GruposPage() {
     }
 
     const confirmed = window.confirm(
-      `Se eliminara la asignacion de "${group.manager_name}" en ${getGroupDisplayName(group)}.`,
+      `Se eliminará la asignación de "${group.manager_name}" en ${getGroupDisplayName(group)}.`,
     )
 
     if (!confirmed) {
       return
     }
 
-    setError(null)
+    setErrorPagina(null)
     setMessage(null)
 
     const { error: deleteError } = await client
@@ -327,7 +356,7 @@ export function GruposPage() {
       .eq('id', group.id)
 
     if (deleteError) {
-      setError(decirElError(deleteError))
+      setErrorPagina(decirElError(deleteError, 'No se pudo eliminar la asignación.'))
       return
     }
 
@@ -338,7 +367,7 @@ export function GruposPage() {
     if (editingGroupId === group.id) {
       resetForm()
     }
-    setMessage('Asignacion eliminada correctamente.')
+    setMessage('Asignación eliminada correctamente.')
   }
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -367,6 +396,19 @@ export function GruposPage() {
 
     if (!selectedDriver) {
       setError('Elegí un conductor de los que ya están cargados.')
+      return
+    }
+
+    // La base guarda UNA fila por número de grupo (índice único). Sumar un
+    // auxiliar repitiendo el número no se puede en este modelo: antes la base
+    // contestaba «Ya existe uno con esos datos» sin explicar nada.
+    const mismoNumero = groups.find(
+      (group) => group.id !== editingGroupId && group.group_number === parsedGroupNumber,
+    )
+    if (mismoNumero) {
+      setError(
+        `El grupo ${parsedGroupNumber} ya está cargado con ${mismoNumero.manager_name}. Hoy cada grupo es una sola fila: para cambiar quién está a cargo, tocá «Editar» en esa fila.`,
+      )
       return
     }
 
@@ -420,11 +462,10 @@ export function GruposPage() {
           return left.manager_name.localeCompare(right.manager_name, 'es')
         }),
     )
-    setSelectedGroupId((data as GroupRecord).id)
     setMessage(
       editingGroupId
-        ? 'Asignacion actualizada correctamente.'
-        : 'Asignacion guardada correctamente.',
+        ? 'Asignación actualizada correctamente.'
+        : 'Asignación guardada correctamente.',
     )
     resetForm()
     setFormularioAbierto(false)
@@ -437,7 +478,7 @@ export function GruposPage() {
         <div>
           <h2>Grupos para el Servicio</h2>
           <p className="lead">
-            Cada grupo con su numero, quien esta a cargo y quien lo acompania.
+            Cada grupo con su número, quién está a cargo y quién lo acompaña.
           </p>
         </div>
       </section>
@@ -447,21 +488,15 @@ export function GruposPage() {
           cuantos={gruposSinResponsable}
           uno="Un grupo no tiene a nadie a cargo"
           varios="{n} grupos no tienen a nadie a cargo"
-          detalle="Sin superintendente ni siervo asignado."
         />
 
         <section className="panel module-registry-panel">
           <div className="module-registry-toolbar">
-            <div>
-              <p className="eyebrow">Listado</p>
-              <h3>Asignaciones cargadas</h3>
-            </div>
-
             <div className="module-registry-actions">
               {canManageGroups ? (
                 <button type="button" className="primary-button" onClick={abrirNuevo}>
                   <Icono nombre="grupo" tamaño={18} />
-                  Nueva asignacion
+                  Nueva asignación
                 </button>
               ) : null}
               <label className="module-search-field">
@@ -470,14 +505,14 @@ export function GruposPage() {
                   type="search"
                   value={searchTerm}
                   onChange={(event) => setSearchTerm(event.target.value)}
-                  placeholder="Buscar por grupo, nombre o asignacion"
+                  placeholder="Buscar por grupo, nombre o asignación"
                 />
               </label>
 
               <label className="inline-filter">
-                Asignacion
+                Asignación
                 <Desplegable
-                  etiqueta="Asignacion"
+                  etiqueta="Asignación"
                   valor={assignmentFilter}
                   alElegir={(valor) =>
                     setAssignmentFilter(valor as 'todos' | GroupAssignment)
@@ -493,9 +528,21 @@ export function GruposPage() {
             </div>
           </div>
 
+          {errorPagina ? (
+            <div className="form-feedback error" role="alert">
+              {errorPagina}{' '}
+              <button type="button" className="secondary-button" onClick={() => setRecarga((n) => n + 1)}>
+                Probar de nuevo
+              </button>
+            </div>
+          ) : null}
+          {message ? (
+            <div className="form-feedback success" role="status">{message}</div>
+          ) : null}
+
           {isLoading ? (
             <div className="status-card">Cargando grupos...</div>
-          ) : filteredGroups.length === 0 ? (
+          ) : errorPagina ? null : filteredGroups.length === 0 ? (
             <Vacio
               hay={groups.length}
               sinNada="Todavía no hay ningún grupo armado."
@@ -515,16 +562,16 @@ export function GruposPage() {
                   <article key={getGroupKey(firstAssignment)} className="group-assignment-card">
                     <div className="group-assignment-head">
                       <div>
-                        <span>Numero de Grupo</span>
+                        <span>Número de grupo</span>
                         <strong>{getGroupDisplayName(firstAssignment)}</strong>
                       </div>
-                      <small>{assignments.length} asignacion/es</small>
+                      {assignments.length > 1 ? <small>{assignments.length} asignaciones</small> : null}
                     </div>
 
                     <div className="module-table-shell">
                       <div className="module-table module-table-head group-member-table">
                         <span>Nombre y Apellido</span>
-                        <span>Asignacion</span>
+                        <span>Asignación</span>
                         <span>Acciones</span>
                       </div>
 
@@ -537,7 +584,7 @@ export function GruposPage() {
                           <div
                             key={group.id}
                             className={
-                              selectedGroupId === group.id
+                              selectedGroupId === group.id || editingGroupId === group.id
                                 ? 'module-table module-table-row module-table-row-button group-member-table active'
                                 : 'module-table module-table-row module-table-row-button group-member-table'
                             }
@@ -574,20 +621,25 @@ export function GruposPage() {
                                     <Icono nombre="dibujar" tamaño={17} />
                                     Editar
                                   </button>
-                                  <button
-                                    type="button"
-                                    className="danger-button"
-                                    onClick={(event) => {
-                                      event.stopPropagation()
-                                      void handleDelete(group)
-                                    }}
-                                  >
-                                    <Icono nombre="eliminar" tamaño={17} />
-                                    Eliminar
-                                  </button>
+                                  <details className="menu-mas" onClick={(event) => event.stopPropagation()}>
+                                    <summary>Más</summary>
+                                    <div className="menu-mas-caja">
+                                      <button
+                                        type="button"
+                                        className="danger-button"
+                                        onClick={(event) => {
+                                          event.stopPropagation()
+                                          void handleDelete(group)
+                                        }}
+                                      >
+                                        <Icono nombre="eliminar" tamaño={17} />
+                                        Eliminar
+                                      </button>
+                                    </div>
+                                  </details>
                                 </>
                               ) : (
-                                <span className="table-hint">Solo lectura</span>
+                                <span className="table-hint">—</span>
                               )}
                             </span>
                           </div>
@@ -604,12 +656,12 @@ export function GruposPage() {
         <Modal
           abierto={formularioAbierto}
           alCerrar={cerrarFormulario}
-          titulo={editingGroupId ? 'Editar asignacion' : 'Nueva asignacion'}
-          bajada="Una fila por hermano. Para sumar un auxiliar, repeti el mismo numero de grupo."
+          titulo={editingGroupId ? 'Editar asignación' : 'Nueva asignación'}
+          bajada="Una fila por grupo: el número y quién está a cargo."
         >
           <form className="form-stack" onSubmit={handleSubmit}>
               <label>
-                Numero de Grupo
+                Número de grupo
                 <input
                   type="number"
                   min="1"
@@ -638,9 +690,9 @@ export function GruposPage() {
               </label>
 
               <label>
-                Asignacion
+                Asignación
                 <Desplegable
-                  etiqueta="Asignacion"
+                  etiqueta="Asignación"
                   valor={assignment}
                   alElegir={(valor) => setAssignment(valor as GroupAssignment)}
                   deshabilitado={!canManageGroups}
@@ -652,7 +704,6 @@ export function GruposPage() {
               </label>
 
               {error ? <div className="form-feedback error">{error}</div> : null}
-              {message ? <div className="form-feedback success">{message}</div> : null}
 
               <button
                 type="button"
@@ -673,8 +724,8 @@ export function GruposPage() {
                 {isSaving
                   ? 'Guardando...'
                   : editingGroupId
-                    ? 'Actualizar asignacion'
-                    : 'Guardar asignacion'}
+                    ? 'Actualizar asignación'
+                    : 'Guardar asignación'}
               </button>
           </form>
         </Modal>
@@ -695,7 +746,7 @@ export function GruposPage() {
                   <strong>{selectedGroup.manager_name}</strong>
                 </div>
                 <div className="module-detail-card">
-                  <span>Asignacion</span>
+                  <span>Asignación</span>
                   <strong>{assignmentLabels[selectedGroup.manager_role]}</strong>
                 </div>
                 {profile ? <GrupoFichaExtra group={selectedGroup} profile={profile} /> : null}

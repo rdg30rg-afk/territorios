@@ -29,7 +29,7 @@ test('sólo el administrador recibe el iframe; SanJuanMap queda como fallback de
 
   const iframeStart = pageSource.indexOf('<iframe')
   const iframeGuard = pageSource.slice(Math.max(0, iframeStart - 800), iframeStart)
-  assert.match(iframeGuard, /canEditMap\s*\?\s*\($/m)
+  assert.match(iframeGuard, /enEdicion\s*\?\s*\($/m)
 
   const mapStart = pageSource.indexOf('<SanJuanMap')
   assert.notEqual(mapStart, -1, 'debe conservar SanJuanMap como fallback')
@@ -38,10 +38,9 @@ test('sólo el administrador recibe el iframe; SanJuanMap queda como fallback de
   assert.match(mapRegion, /editingEnabled\s*=\s*\{false\}/)
 })
 
-test('cambiar a Cobertura oculta el iframe sin desmontarlo', () => {
+test('cambiar a Cobertura oculta el contenedor del editor', () => {
   const region = iframeRegion()
 
   assert.match(region, /hidden\s*=\s*\{\s*view\s*!==\s*['"]editor['"]\s*\}/)
-  assert.doesNotMatch(region, /view\s*===\s*['"]editor['"]\s*\?/)
-  assert.match(pageSource, /setView\(['"]cobertura['"]\)/)
+  assert.match(pageSource, /cambiarVista\(['"]cobertura['"]\)/)
 })

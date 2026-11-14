@@ -1,0 +1,23 @@
+.personal-free-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.personal-free-list .ghost-button { min-height: 44px; }
+.personal-reservation-card label small { display: block; margin-top: 4px; opacity: .75; }
+
+/* «Más» ocupa su propio renglón debajo de la ficha; antes quedaba como una
+   columna angosta a la derecha y, abierto, apretaba el texto y el campo. */
+.personal-reservation-card { flex-wrap: wrap; align-items: flex-start; }
+.personal-reservation-card > details { flex: 1 1 100%; }
+.personal-reservation-card > details > p { margin: 0.4rem 0; }
+.personal-reservation-card > details label { display: grid; gap: 0.3rem; max-width: 520px; font-weight: 600; }
+.personal-reservation-card > details textarea { width: 100%; }
+.personal-reservation-card > details .module-table-actions { margin-top: 0.6rem; align-items: flex-end; }
+
+/* «Ver lo marcado» alineado con el texto de la tarjeta, no corrido a la derecha. */
+.personal-reservation-card > div > .module-table-actions { justify-content: flex-start; margin-top: 0.6rem; }
+
+/* Un nombre de territorio muy largo se corta con puntos suspensivos y no
+   rompe la tarjeta ni la lista de libres. */
+.personal-nombre-largo { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.personal-free-list li { max-width: 100%; min-width: 0; }
+.personal-free-list .ghost-button { max-width: 100%; }
+.personal-free-nombre { min-width: 0; max-width: 28ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.personal-reservation-card > div { min-width: 0; }

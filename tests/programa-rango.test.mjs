@@ -6,7 +6,9 @@ import {
   crearEstadoPrograma,
   deClaveFecha,
   fraseDelRango,
+  desdeProgramable,
   hayDiasPasados,
+  periodoVigente,
   presetInicial,
   rangoPorPreset,
   repetirPrimeraSemana,
@@ -158,4 +160,19 @@ test('repite la primera semana solo en días que existen después', () => {
 test('marca cuando el desde ya pasó', () => {
   assert.equal(hayDiasPasados(deClaveFecha('2026-09-05'), domingo), true)
   assert.equal(hayDiasPasados(deClaveFecha('2026-09-06'), domingo), false)
+})
+
+test('el lunes no abre la semana pasada que quedó en el borrador', () => {
+  const vieja = { preset: 'esta-semana', desde: '2026-08-31', hasta: '2026-09-06' }
+  const vigente = periodoVigente(vieja, lunes)
+  assert.equal(vigente.desde, '2026-09-07')
+  assert.equal(vigente.hasta, '2026-09-13')
+  const buena = { preset: 'esta-semana', desde: '2026-09-07', hasta: '2026-09-13' }
+  assert.equal(periodoVigente(buena, miercoles), buena)
+  assert.equal(periodoVigente(null, lunes).desde, '2026-09-07')
+})
+
+test('los días que ya pasaron no se pueden programar', () => {
+  assert.equal(desdeProgramable('2026-09-01', miercoles), '2026-09-09')
+  assert.equal(desdeProgramable('2026-09-12', miercoles), '2026-09-12')
 })

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import vm from 'node:vm'
 import ts from 'typescript'
+import { contarSalidasIncompletas } from '../src/lib/inicioAvisos.ts'
 
 const source=await readFile(new URL('../src/pages/DashboardPage.tsx',import.meta.url),'utf8')
 const component=source.slice(source.indexOf('function QueNecesitaAtencion()'),source.indexOf('function UserAccessPanel()'))
@@ -22,7 +23,7 @@ async function render({failTable=null,missingClient=false,usersError=null,counts
   const exports={}
   const jsx=(type,props)=>({type,props})
   vm.runInNewContext(compiled,{
-    exports,require:()=>({jsx,jsxs:jsx}),Link:'a',Date,
+    exports,require:()=>({jsx,jsxs:jsx}),Link:'a',Date,contarSalidasIncompletas,
     supabase:missingClient?null:client,Icono:()=>null,
     useAuth:()=>({profile:{role:'admin'},managedUsers:users,managedUsersError:usersError,loadManagedUsers:async()=>{}}),
     useState(initial){const i=cursor++;if(!(i in slots))slots[i]=initial;return [slots[i],value=>{slots[i]=typeof value==='function'?value(slots[i]):value}]},
@@ -41,7 +42,7 @@ test('solo confirma al día cuando todas las consultas respondieron sin pendient
   assert.match(await render(),/No hay nada esperándote/)
 })
 test('error en cada fuente o falta de cliente impide falso al día',async()=>{
-  for(const failTable of ['importaciones','importacion_registros','salidas','territorio_personal_reservas']) {
+  for(const failTable of ['importaciones','importacion_registros','salidas','territorio_personal_reservas','grupo_miembros']) {
     const output=await render({failTable})
     assert.match(output,/No se pudo comprobar/);assert.doesNotMatch(output,/No hay nada esperándote/)
   }
@@ -54,4 +55,10 @@ test('conserva pendientes confirmados aunque falle otra fuente',async()=>{
   const output=await render({failTable:'salidas',counts:{territorio_personal_reservas:3}})
   assert.match(output,/3 hermanos pidieron territorio/)
   assert.match(output,/salidas sin conductor/)
+})
+
+test('pedidos de ingreso a grupos cuentan como pendiente',async()=>{
+  const output=await render({counts:{grupo_miembros:2}})
+  assert.match(output,/2 personas pidieron entrar a un grupo/)
+  assert.doesNotMatch(output,/No hay nada esperándote/)
 })

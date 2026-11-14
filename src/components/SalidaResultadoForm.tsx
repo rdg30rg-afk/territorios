@@ -37,7 +37,13 @@ export type SalidaResultadoFormProps = {
   salidaId: string
   canReport: boolean
   canCorrect: boolean
+  /** Si quien informó puede corregir su propio informe (hoy la base solo deja
+   *  corregir a un administrador, por eso por defecto no se ofrece). */
+  canCorrectOwn?: boolean
+  /** Solo para casos en que el resultado ya está decidido (p. ej. «No se
+   *  realizó»). Sin valor, no viene ningún resultado elegido. */
   initialEstado?: SalidaResultadoEstado
+  onDirtyChange?: (dirty: boolean) => void
   occurredAt?: string
   autoEdit?: boolean
   hideOccurredAt?: boolean
@@ -143,7 +149,9 @@ export function SalidaResultadoForm({
   salidaId,
   canReport,
   canCorrect,
-  initialEstado = 'realizada',
+  canCorrectOwn = false,
+  initialEstado,
+  onDirtyChange,
   occurredAt,
   autoEdit = false,
   hideOccurredAt = false,
@@ -155,7 +163,7 @@ export function SalidaResultadoForm({
   const attemptUser = useRef<string | null>(null)
   const submissionRunning = useRef(false)
   const [resultado, setResultado] = useState<SalidaResultadoActual | null>(null)
-  const [estado, setEstado] = useState<SalidaResultadoEstado>('realizada')
+  const [estado, setEstado] = useState<SalidaResultadoEstado | ''>(initialEstado ?? '')
   const [motivo, setMotivo] = useState<SalidaResultadoMotivo | ''>('')
   const [observaciones, setObservaciones] = useState('')
   const [ocurrioAt, setOcurrioAt] = useState('')
@@ -164,8 +172,20 @@ export function SalidaResultadoForm({
   const [hasLoaded, setHasLoaded] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [unconfirmed, setUnconfirmed] = useState(false)
+  const [sinLectura, setSinLectura] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
+
+  const puedeCorregir = canCorrect || canCorrectOwn
+  const baseline = useRef({ estado: '', motivo: '', observaciones: '' })
+  // Avisa al padre si hay algo escrito que todavía no se guardó, para que
+  // «Cerrar» pregunte solo cuando de verdad se pierde algo.
+  const hayCambios = modoEdicion && !unconfirmed && (
+    estado !== baseline.current.estado ||
+    motivo !== baseline.current.motivo ||
+    observaciones !== baseline.current.observaciones
+  )
+  useEffect(() => { onDirtyChange?.(hayCambios) }, [hayCambios, onDirtyChange])
 
   useEffect(() => {
     if (!unconfirmed) return
@@ -193,6 +213,7 @@ export function SalidaResultadoForm({
 
       if (showLoading) setIsLoading(true)
       setHasLoaded(false)
+      setSinLectura(false)
 
       try {
         const recovered = await pendingResult(salidaId)
@@ -214,11 +235,15 @@ export function SalidaResultadoForm({
         setResultado(currentResult)
         setHasLoaded(true)
         pendingAttempt.current = pending
-        setEstado((pending?.p_estado ?? currentResult?.estado ?? initialEstado) as SalidaResultadoEstado)
-        setMotivo((pending ? pending.p_motivo ?? '' : currentResult?.motivo ?? '') as SalidaResultadoMotivo | '')
-        setObservaciones(pending ? pending.p_observaciones ?? '' : currentResult?.observaciones ?? '')
+        const startEstado = (pending?.p_estado ?? (currentResult?.estado === 'sin_dato' ? undefined : currentResult?.estado) ?? initialEstado ?? '') as SalidaResultadoEstado | ''
+        const startMotivo = (pending ? pending.p_motivo ?? '' : currentResult?.motivo ?? '') as SalidaResultadoMotivo | ''
+        const startObs = pending ? pending.p_observaciones ?? '' : currentResult?.observaciones ?? ''
+        baseline.current = { estado: startEstado, motivo: startMotivo, observaciones: startObs }
+        setEstado(startEstado)
+        setMotivo(startMotivo)
+        setObservaciones(startObs)
         setOcurrioAt(toLocalDateTimeValue(pending ? pending.p_ocurrio_at : currentResult?.ocurrio_at ?? occurredAt ?? null))
-        setModoEdicion(Boolean(pending) || Boolean(autoEdit && (!currentResult || canCorrect)))
+        setModoEdicion(Boolean(pending) || Boolean(autoEdit && (!currentResult || puedeCorregir)))
         attemptId.current = pending?.p_id ?? null
         setUnconfirmed(Boolean(pending))
         if (pending) setMessage('Hay un envío conservado en este dispositivo sin confirmación. Reintentá el mismo envío para comprobarlo sin duplicarlo.')
@@ -231,12 +256,14 @@ export function SalidaResultadoForm({
         return false
       }
     },
-    [autoEdit, canCorrect, client, initialEstado, occurredAt, salidaId],
+    [autoEdit, puedeCorregir, client, initialEstado, occurredAt, salidaId],
   )
 
   useEffect(() => {
     setResultado(null)
-    setEstado(initialEstado)
+    setEstado(initialEstado ?? '')
+    setSinLectura(false)
+    baseline.current = { estado: initialEstado ?? '', motivo: '', observaciones: '' }
     setMotivo('')
     setObservaciones('')
     setOcurrioAt(toLocalDateTimeValue(occurredAt ?? null))
@@ -264,7 +291,17 @@ export function SalidaResultadoForm({
           setMessage(refreshed ? 'Resultado guardado.' : 'El resultado se guardó, pero no se pudo volver a cargar.')
           onSaved?.()
         } catch (caught) {
-          setError(errorMessage(caught, 'No se pudo guardar el resultado de la salida.'))
+          const texto = errorMessage(caught, 'No se pudo guardar el resultado de la salida.')
+          if ((caught as { definitivo?: boolean } | null)?.definitivo) {
+            pendingAttempt.current = null
+            attemptId.current = null
+            setUnconfirmed(false)
+            setModoEdicion(false)
+            await loadCurrentResult(false)
+            setError(`${texto} Mirá cómo quedó la salida y, si hace falta, volvé a intentar.`)
+          } else {
+            setError(texto)
+          }
         } finally {
           submissionRunning.current = false
           setIsSaving(false)
@@ -275,9 +312,24 @@ export function SalidaResultadoForm({
     return () => window.removeEventListener('online', reintentarAlVolver)
   }, [loadCurrentResult, onSaved])
 
+  // Sin señal no se puede ver si la salida ya tiene resultado. Se deja
+  // informar igual: el envío queda en el teléfono y sale cuando vuelva la señal.
+  // Si ya había uno, el servidor lo va a rechazar y se avisa.
+  const informarSinLectura = () => {
+    baseline.current = { estado: '', motivo: '', observaciones: '' }
+    setSinLectura(true)
+    setEstado(initialEstado ?? '')
+    setModoEdicion(true)
+    setError(null)
+    setMessage(null)
+    attemptId.current = null
+  }
+
   const openEditor = () => {
     if (!hasLoaded) return
-    setEstado(resultado?.estado === 'sin_dato' ? initialEstado : resultado?.estado ?? initialEstado)
+    const startEstado = (resultado?.estado === 'sin_dato' ? initialEstado : resultado?.estado ?? initialEstado) ?? ''
+    baseline.current = { estado: startEstado, motivo: resultado?.motivo ?? '', observaciones: resultado?.observaciones ?? '' }
+    setEstado(startEstado)
     setMotivo(resultado?.motivo ?? '')
     setObservaciones(resultado?.observaciones ?? '')
     setOcurrioAt(toLocalDateTimeValue(resultado?.ocurrio_at ?? occurredAt ?? null))
@@ -298,7 +350,7 @@ export function SalidaResultadoForm({
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
-    if (!client || submissionRunning.current || isSaving || !hasLoaded) return
+    if (!client || submissionRunning.current || isSaving || (!hasLoaded && !sinLectura)) return
 
     if (!canReport && !canCorrect) {
       setError('No tenés permiso para informar este resultado.')
@@ -306,8 +358,12 @@ export function SalidaResultadoForm({
     }
 
     const isCorrection = pendingAttempt.current ? Boolean(pendingAttempt.current.p_corrige_id) : Boolean(resultado)
-    if (isCorrection && !canCorrect) {
-      setError('Sólo un administrador puede corregir un resultado ya informado.')
+    if (isCorrection && !puedeCorregir) {
+      setError('Este informe ya estaba cargado. Para corregirlo, pedíselo a un administrador.')
+      return
+    }
+    if (!pendingAttempt.current && !estado) {
+      setError('Elegí qué pasó con la salida antes de guardar.')
       return
     }
 
@@ -336,7 +392,7 @@ export function SalidaResultadoForm({
       const payload = pendingAttempt.current ?? {
         p_id: stableAttemptId,
         p_salida_id: salidaId,
-        p_estado: estado,
+        p_estado: estado as SalidaResultadoEstado,
         p_motivo: motivo || null,
         p_observaciones: trimmedObservations || null,
         p_ocurrio_at: occurredAtIso,
@@ -363,7 +419,20 @@ export function SalidaResultadoForm({
       }
       onSaved?.()
     } catch (caught) {
-      setError(errorMessage(caught, 'No se pudo guardar el resultado de la salida.'))
+      const texto = errorMessage(caught, 'No se pudo guardar el resultado de la salida.')
+      if ((caught as { definitivo?: boolean } | null)?.definitivo) {
+        // El servidor dijo que no: se suelta el intento y se vuelve a leer lo
+        // que quedó guardado (por ejemplo, otra persona ya lo informó).
+        pendingAttempt.current = null
+        attemptId.current = null
+        setUnconfirmed(false)
+        setSinLectura(false)
+        setModoEdicion(false)
+        await loadCurrentResult(false)
+        setError(`${texto} Mirá cómo quedó la salida y, si hace falta, volvé a intentar.`)
+      } else {
+        setError(texto)
+      }
     } finally {
       submissionRunning.current = false
       setIsSaving(false)
@@ -394,6 +463,11 @@ export function SalidaResultadoForm({
           <Icono nombre="reintentar" tamaño={18} />
           Volver a consultar
         </button>
+        {canReport && typeof navigator !== 'undefined' && navigator.onLine === false && !modoEdicion ? <button type="button" className="primary-button" onClick={informarSinLectura}>
+          <Icono nombre="completo" tamaño={18} />
+          Informar igual, sin señal
+        </button> : null}
+        {canReport && typeof navigator !== 'undefined' && navigator.onLine === false && !modoEdicion ? <p>El informe queda guardado en el teléfono y se envía solo cuando vuelva la señal.</p> : null}
       </div> : null}
 
       {hasLoaded ? (
@@ -444,11 +518,15 @@ export function SalidaResultadoForm({
         </div>
       ) : null}
 
-      {hasLoaded && resultado && canCorrect && !modoEdicion ? (
+      {hasLoaded && resultado && puedeCorregir && !modoEdicion ? (
         <button type="button" className="secondary-button full-width" onClick={openEditor}>
           <Icono nombre="dibujar" tamaño={18} />
-          Corregir resultado
+          Corregir el informe
         </button>
+      ) : null}
+
+      {hasLoaded && resultado && !puedeCorregir && canReport && !modoEdicion ? (
+        <p className="resultado-ayuda">Este informe ya está cargado. Si hay que corregirlo, pedíselo a un administrador.</p>
       ) : null}
 
       {hasLoaded && !resultado && canReport && !modoEdicion ? (
@@ -468,7 +546,7 @@ export function SalidaResultadoForm({
             </button>
           </div> : null}
           <fieldset className="cierre-estado">
-            <legend>¿Qué pasó?</legend>
+            <legend>¿Qué pasó?{!estado ? ' (elegí una opción)' : ''}</legend>
             <div className="cierre-estado-opciones">
               {estadoOptions.map((option) => (
                 <button

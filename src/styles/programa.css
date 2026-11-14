@@ -44,10 +44,6 @@
 
 .prog-cabecera h3 { margin: .1rem 0 0; }
 
-/* La explicación va abajo y a todo el ancho: al lado del título dejaba un
-   hueco muerto entre el párrafo y los botones. */
-.prog-cabecera-hint { flex: 1 1 100%; margin: 0; }
-
 /* El texto cede ancho antes que los botones. Sin esto, al angostarse la
    pantalla la acción se iba sola a un renglón, pegada al borde izquierdo y
    con medio ancho vacío al lado. */
@@ -115,8 +111,17 @@
 }
 
 .prog-periodo .eyebrow { display: none; }
-.prog-periodo-opciones { display: contents; }
-.prog-m-periodo-toggle,
+/* El período vive plegado en una línea; las opciones se abren al tocarla. */
+.prog-periodo { padding-block: .55rem; }
+.prog-periodo-opciones { display: none; }
+.prog-periodo-opciones.abierto { display: flex; flex-direction: column; gap: .8rem; padding-block: .45rem .35rem; }
+.prog-m-periodo-toggle {
+  display: flex; align-items: center; gap: .55rem; width: 100%; min-height: 38px; padding: 0;
+  border: 0; background: transparent; color: var(--text-main); font: inherit; text-align: left; cursor: pointer;
+}
+.prog-m-periodo-toggle > span:first-child { flex: 0 0 auto; color: var(--text-soft); font-size: 13px; font-weight: 600; }
+.prog-m-periodo-toggle strong { flex: 1 1 auto; min-width: 0; font-size: 14px; }
+.prog-m-periodo-toggle > span:last-child { color: var(--text-soft); }
 .prog-movil { display: none; }
 
 .prog-presets { display: flex; flex-wrap: wrap; gap: .45rem; }
@@ -191,7 +196,7 @@
 
 /* ---------- la semana de siempre ---------- */
 .prog-strip {
-  display: flex;
+  display: none; /* en la computadora vive en «Más»; en teléfono se ve */
   align-items: center;
   gap: .5rem;
   flex-wrap: wrap;
@@ -319,56 +324,8 @@
 }
 .prog-dia-cab strong { font-size: .95rem; }
 
-/* ---------- el menú del día ---------- */
-.prog-menu-dia { position: relative; margin-left: auto; }
-
-.prog-menu-dia > summary {
-  display: inline-flex;
-  align-items: center;
-  list-style: none;
-  cursor: pointer;
-  padding: .3rem .6rem;
-  border-radius: 8px;
-  border: 1px solid var(--panel-border);
-  background: var(--panel-bg);
-  color: var(--text-soft);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.prog-menu-dia > summary::-webkit-details-marker { display: none; }
-.prog-menu-dia[open] > summary { color: var(--text-main); border-color: var(--accent, #5f7d0a); }
-
-.prog-menu-caja {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 4px);
-  z-index: 20;
-  display: flex;
-  flex-direction: column;
-  min-width: 250px;
-  padding: .3rem;
-  border-radius: 12px;
-  border: 1px solid var(--panel-border);
-  background: var(--panel-bg);
-  box-shadow: var(--shadow, 0 10px 24px rgba(22, 25, 29, .12));
-}
-
-.prog-menu-caja button {
-  min-height: 38px;
-  padding: .4rem .6rem;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--text-main);
-  font: inherit;
-  font-size: .85rem;
-  font-weight: 600;
-  text-align: left;
-  cursor: pointer;
-}
-
-.prog-menu-caja button:hover { background: var(--h-canvas, #f6f4ee); }
+/* El menú del día es el «menu-mas» común (index.css). */
+.prog-dia-cab .menu-mas { margin-left: auto; }
 
 /* ---------- el día sin salidas ---------- */
 .prog-banda {
@@ -439,7 +396,7 @@
   flex-direction: column;
   width: min(560px, 100%);
   background: var(--panel-bg);
-  box-shadow: var(--shadow-float, 0 16px 34px rgba(22, 25, 29, .12));
+  box-shadow: var(--h-shadow-float, 0 16px 34px rgba(22, 25, 29, .12));
 }
 
 .prog-cajon > header {
@@ -734,8 +691,7 @@
 @container programa (max-width: 520px) {
   /* En teléfono el orden es título, explicación y recién ahí la acción. */
   .prog-cabecera-titulo { order: 1; }
-  .prog-cabecera-hint { order: 2; }
-  .prog-acciones { order: 3; width: 100%; margin-left: 0; }
+  .prog-acciones { order: 2; width: 100%; margin-left: 0; }
   .prog-acciones .primary-button { flex: 1 1 auto; justify-content: center; }
   .prog-fila {
     grid-template-columns: 28px minmax(0, 1fr);
@@ -752,8 +708,10 @@
 }
 
 /* Lista táctil de la demo: una salida ocupa dos renglones. Los campos y las
-   excepciones se editan en una hoja; la grilla de formularios queda para PC. */
-@container programa (max-width: 1080px) {
+   excepciones se editan en una hoja; la grilla de formularios queda para PC.
+   Solo en ancho de teléfono: una notebook de 1280 px ve la grilla (en versión
+   compacta hasta 1080 px), no la lista. */
+@container programa (max-width: 760px) {
   .prog-cabecera,
   .prog-invitacion,
   .prog-resumen-propuesta,
@@ -770,7 +728,7 @@
   .prog-m-periodo-toggle > span:last-child { color: var(--text-soft); }
   .prog-periodo-opciones { display: none; }
   .prog-periodo-opciones.abierto { display: flex; flex-direction: column; gap: .7rem; padding: .2rem .85rem .9rem; }
-  .prog-strip { padding: .65rem .85rem; background: var(--panel-bg); }
+  .prog-strip { display: flex; padding: .65rem .85rem; background: var(--panel-bg); }
   .prog-strip .prog-pastilla { display: none; }
   .prog-strip > .prog-enlace { min-height: 40px; }
   .prog-movil { display: flex; flex-direction: column; gap: .7rem; min-width: 0; padding: .8rem .75rem 0; background: var(--h-canvas, #f6f4ee); }
@@ -813,11 +771,15 @@
   .prog-m-barra button:disabled { opacity: .55; cursor: not-allowed; }
 }
 
-@container programa (min-width: 761px) and (max-width: 1080px) {
-  .prog-movil { padding: 1rem; }
-  .prog-m-dias { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 1rem 1.25rem; }
-  .prog-m-barra { margin: .2rem -1rem 0; padding-inline: 1rem; }
-}
+/* Proponer de nuevo / deshacer en la vista de lista (la franja de arriba
+   solo existe en la grilla). */
+.prog-estado { display: inline-flex; align-items: center; flex-wrap: wrap; gap: .3rem .4rem; margin: 0; color: var(--text-soft); font-size: 13px; font-weight: 600; }
+.prog-estado.falta { color: var(--h-warn-fg, #955408); }
+.prog-estado .prog-enlace { min-height: 0; padding: 0; }
+.prog-movil .prog-estado { flex: 0 0 auto; padding: 0 .1rem; }
+.prog-fila.resaltada { outline: 2px solid var(--h-olive, #5f7d0a); outline-offset: -2px; }
+.prog-m-propuesta { display: flex; gap: .5rem; flex-wrap: wrap; }
+.prog-m-propuesta .prog-enlace { min-height: 44px; }
 
 .prog-m-capa { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: flex-end; background: rgba(22, 25, 29, .42); }
 .prog-m-hoja { display: flex; flex-direction: column; width: 100%; max-height: 88dvh; border-radius: 18px 18px 0 0; background: var(--panel-bg, #fff); color: var(--text-main, #16191d); box-shadow: 0 16px 34px rgba(22, 25, 29, .16); animation: prog-hoja-sube 220ms cubic-bezier(.16, 1, .3, 1); }

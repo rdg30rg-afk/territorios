@@ -26,8 +26,15 @@ import { buildCoverageHeatmap, type HeatmapBlock, type HeatmapSide, type Heatmap
  * falta para la lista de donde se elige.
  */
 export async function loadCoverageHeatmap(
-  client: SupabaseClient, instant: string, territoryId: string | null = null,
+  client: SupabaseClient, instant: string, territoryScope: string | string[] | null = null,
 ) {
+  // Uno, varios o todos. Una lista vacía no pide nada de las tablas grandes.
+  const ids=Array.isArray(territoryScope)?territoryScope:null
+  const territoryId=Array.isArray(territoryScope)?null:territoryScope
+  const acotar=<Q extends {eq:(c:string,v:string)=>unknown;in:(c:string,v:string[])=>unknown}>(query:Q)=>{
+    if(territoryId) query.eq('territory_id',territoryId)
+    else if(ids) query.in('territory_id',ids.length?ids:['00000000-0000-0000-0000-000000000000'])
+  }
   const timestamp=Date.parse(instant)
   if(!Number.isFinite(timestamp)) throw Error('Fecha de cobertura inválida')
   const iso=new Date(timestamp).toISOString()
@@ -38,24 +45,24 @@ export async function loadCoverageHeatmap(
       .select('id,name').order('id').range(from,to)),
     readAllRows<HeatmapBlock>((from,to)=>{
       const query=client.from('territorio_manzanas')
-        .select('id,territory_id,geometry_version,vigente_desde,vigente_hasta')
+        .select('id,territory_id,label,geometry_version,vigente_desde,vigente_hasta')
         .lte('vigente_desde',iso)
-      if(territoryId) query.eq('territory_id',territoryId)
+      acotar(query)
       return query.order('id').range(from,to)
     }),
     readAllRows<HeatmapSide>((from,to)=>{
       const query=client.from('manzana_lados')
-        .select('id,manzana_id,territory_id,geometry_version,geometry_geojson,largo_m,vigente_desde,vigente_hasta')
+        .select('id,manzana_id,territory_id,geometry_version,geometry_geojson,largo_m,orden,vigente_desde,vigente_hasta')
         .lte('vigente_desde',iso)
-      if(territoryId) query.eq('territory_id',territoryId)
+      acotar(query)
       return query.order('id').range(from,to)
     }),
     readAllRows<HeatmapEvent>((from,to)=>{
       const query=client.from('cobertura_eventos')
-        .select('id,lado_id,estado,informado_at').lte('informado_at',iso)
-      if(territoryId) query.eq('territory_id',territoryId)
+        .select('id,lado_id,territory_id,estado,origen,informado_por,nota,informado_at').lte('informado_at',iso)
+      acotar(query)
       return query.order('informado_at').order('id').range(from,to)
     }),
   ])
-  return buildCoverageHeatmap(territories,blocks,sides,events,iso)
+  return {...buildCoverageHeatmap(territories,blocks,sides,events,iso),events}
 }

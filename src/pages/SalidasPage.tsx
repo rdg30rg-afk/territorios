@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { Falta } from '../components/Falta'
 import { Vacio } from '../components/Vacio'
 import { SalidaResultadoForm } from '../components/SalidaResultadoForm'
+import { useMenusMas } from '../lib/useMenusMas'
 import { Icono } from '../components/Icono'
 import '../styles/importacion.css'
 import { Desplegable } from '../components/Desplegable'
@@ -38,7 +39,7 @@ import {
 } from '../lib/salidaPdf'
 import { supabase } from '../lib/supabase'
 import '../styles/agenda-salidas.css'
-import { ProgramaSemanal } from '../features/programa/ProgramaSemanal'
+import { ProgramaSemanal, type PendientesDelPrograma } from '../features/programa/ProgramaSemanal'
 
 const MeetingPointPickerMap = lazy(() =>
   import('../components/MeetingPointPickerMap').then((module) => ({
@@ -152,7 +153,19 @@ type PersonalTerritoryReservation = {
   reserved_at: string
 }
 
-type ScheduleFilter = 'todos' | 'hoy' | 'proximas' | 'pasadas' | 'sin-conductor'
+type ScheduleFilter = 'todos' | 'hoy' | 'proximas' | 'pasadas' | 'sin-conductor' | 'sin-punto' | 'sin-territorio'
+
+/* Mismo criterio que el aviso del Inicio (lib/inicioAvisos): las salidas de
+   teléfono, grupos o asamblea no llevan punto ni territorio. */
+const TIPOS_SIN_PUNTO_NI_TERRITORIO = new Set(['telefonica', 'grupos', 'asamblea'])
+function faltaPunto(o: Pick<OutingRecord, 'tipo' | 'meeting_point_id' | 'meeting_point_name'>) {
+  if (o.tipo && TIPOS_SIN_PUNTO_NI_TERRITORIO.has(o.tipo)) return false
+  return !o.meeting_point_id && !o.meeting_point_name?.trim()
+}
+function faltaTerritorio(o: Pick<OutingRecord, 'tipo' | 'territory_id'>) {
+  if (o.tipo && TIPOS_SIN_PUNTO_NI_TERRITORIO.has(o.tipo)) return false
+  return !o.territory_id && !o.tipo
+}
 type PlannerSlotKind = 'territorial' | 'phone'
 
 type PlannerSlot = {
@@ -529,15 +542,25 @@ function buildPlannerSlots(desde: Date, hasta: Date) {
 }
 
 export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {}) {
+  useMenusMas()
   const { profile } = useAuth()
   const client = supabase
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   /* El programa de la congregación es la pantalla principal de /salidas.
      La grilla anterior queda disponible temporalmente con
      ?programa=anterior, por si hace falta comparar un caso durante el pase. */
   const programaV2 =
     !groupServiceMode && searchParams.get('programa') !== 'anterior'
   const [recargar, setRecargar] = useState(0)
+  // Confirmaciones dentro de la página: el window.confirm del navegador a
+  // veces no se ve y el primer clic parecía no hacer nada.
+  const [confirmacion, setConfirmacion] = useState<{
+    titulo: string
+    texto: string
+    boton: string
+    peligro?: boolean
+    alConfirmar: () => void
+  } | null>(null)
   const [drivers, setDrivers] = useState<DriverRecord[]>([])
   const [groups, setGroups] = useState<GroupRecord[]>([])
   const [territories, setTerritories] = useState<TerritoryRecord[]>([])
@@ -562,6 +585,9 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
   const [lastSuggestedTitle, setLastSuggestedTitle] = useState<string | null>(null)
   const [title, setTitle] = useState('')
   const [territoryId, setTerritoryId] = useState('')
+  // Un punto elegido que es de otro territorio: no se cambia el territorio en
+  // silencio, se avisa y se ofrece el cambio.
+  const [puntoDeOtroTerritorio, setPuntoDeOtroTerritorio] = useState<{ puntoId: string; territoryId: string } | null>(null)
   const [driverId, setDriverId] = useState('')
   const [groupId, setGroupId] = useState('')
   const [meetingPointName, setMeetingPointName] = useState('')
@@ -589,6 +615,8 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
   const [isSaving, setIsSaving] = useState(false)
   const [pdfEnCurso, setPdfEnCurso] = useState<string | null>(null)
   const [rangoPdf, setRangoPdf] = useState(rangoPdfInicial)
+  const [pendientesPrograma, setPendientesPrograma] = useState<PendientesDelPrograma | null>(null)
+  const [avisoPdfPendiente, setAvisoPdfPendiente] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [gpsPendientes, setGpsPendientes] = useState<GpsPendiente[]>([])
@@ -857,14 +885,14 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
       : groupId
   const canManageOutings =
     canManageGeneralOutings || (groupServiceMode && serviceGroupAssignments.length > 0)
-  const rangoDesdeFecha = deClaveFecha(programa.desde)
-  const rangoHastaFecha = deClaveFecha(programa.hasta)
+  const rangoDesdeFecha = useMemo(() => deClaveFecha(programa.desde), [programa.desde])
+  const rangoHastaFecha = useMemo(() => deClaveFecha(programa.hasta), [programa.hasta])
   const diasDelPrograma = contarDiasInclusive(rangoDesdeFecha, rangoHastaFecha)
   const frasePrograma = fraseDelRango(rangoDesdeFecha, rangoHastaFecha)
   const tildadasDelPrograma = Object.values(plannerDrafts).filter((draft) => draft.enabled)
   const semanasPrograma = useMemo(
     () => semanasDelRango(rangoDesdeFecha, rangoHastaFecha),
-    [programa.desde, programa.hasta],
+    [rangoDesdeFecha, rangoHastaFecha],
   )
   const salidasYaEnRango = useMemo(() => {
     const porDia = new Map<string, number>()
@@ -1003,6 +1031,10 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
             ? saleSinConductor(outing) &&
               (outing.scheduleStatus.label === 'Hoy' ||
                 outing.scheduleStatus.label === 'Proxima')
+          : scheduleFilter === 'sin-punto'
+            ? scheduledDate.getTime() >= now.getTime() && faltaPunto(outing)
+          : scheduleFilter === 'sin-territorio'
+            ? scheduledDate.getTime() >= now.getTime() && faltaTerritorio(outing)
           : scheduleFilter === 'hoy'
             ? isSameLocalDay(scheduledDate, now)
             : scheduleFilter === 'proximas'
@@ -1042,9 +1074,127 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
     setPagina(0)
   }, [scheduleFilter, searchTerm, territoryFilter, grupoConsulta])
 
+  // Las 300 que se traen al abrir son las más recientes. Para que buscar y
+  // «Ver anteriores» lleguen a las más viejas, se le pregunta a la base y lo
+  // que vuelve se suma a la lista (sin repetir).
+  const sumarSalidas = (nuevas: OutingRecord[]) => {
+    let agregadas = 0
+    setOutings((current) => {
+      const ids = new Set(current.map((item) => item.id))
+      const faltan = nuevas.filter((item) => !ids.has(item.id))
+      agregadas = faltan.length
+      return faltan.length ? [...current, ...faltan] : current
+    })
+    return agregadas
+  }
+
   useEffect(() => {
-    if (searchParams.get('agenda') === 'sin-conductor') {
-      setScheduleFilter('sin-conductor')
+    const texto = searchTerm.trim()
+    if (!client || texto.length < 2 || cuantasSalidasHay === null || cuantasSalidasHay <= outings.length) {
+      return
+    }
+    let vigente = true
+    const espera = window.setTimeout(async () => {
+      // Los caracteres que tienen sentido propio en el filtro se cambian
+      // por espacios: buscar «a,b» o «(x)» no debe romper la consulta.
+      const limpio = texto.replace(/[,()%*\\_"]/g, ' ').trim()
+      if (limpio.length < 2) return
+      const minus = limpio.toLowerCase()
+      const ids = (lista: Array<{ id: string }>) => lista.map((item) => item.id).join(',')
+      const base = [
+        `title.ilike.%${limpio}%`,
+        `meeting_point_name.ilike.%${limpio}%`,
+        `notes.ilike.%${limpio}%`,
+      ]
+      const porNombre = [
+        ...(drivers.filter((d) => d.full_name.toLowerCase().includes(minus)).length
+          ? [`driver_id.in.(${ids(drivers.filter((d) => d.full_name.toLowerCase().includes(minus)))})`]
+          : []),
+        ...(territories.filter((t) => t.name.toLowerCase().includes(minus)).length
+          ? [`territory_id.in.(${ids(territories.filter((t) => t.name.toLowerCase().includes(minus)))})`]
+          : []),
+        ...(groups.filter((g) => getGroupLabel(g).toLowerCase().includes(minus)).length
+          ? [`group_id.in.(${ids(groups.filter((g) => getGroupLabel(g).toLowerCase().includes(minus)))})`]
+          : []),
+      ]
+      const completo = [...base, `conductor_texto.ilike.%${limpio}%`, `territorio_codigo.ilike.%${limpio}%`, ...porNombre]
+      const primero = await client
+        .from('salidas')
+        .select(CAMPOS_SALIDA)
+        .or(completo.join(','))
+        .order('scheduled_for', { ascending: false })
+        .limit(100)
+      let data: unknown = primero.data
+      let errorBusqueda: { message?: string } | null = primero.error
+      if (errorBusqueda) {
+        // Una base sin las columnas nuevas: se busca con lo básico.
+        const segundo = await client
+          .from('salidas')
+          .select(CAMPOS_SALIDA_VIEJOS)
+          .or([...base, ...porNombre].join(','))
+          .order('scheduled_for', { ascending: false })
+          .limit(100)
+        data = segundo.data
+        errorBusqueda = segundo.error
+      }
+      if (!vigente || errorBusqueda || !data) return
+      sumarSalidas(data as OutingRecord[])
+    }, 350)
+    return () => {
+      vigente = false
+      window.clearTimeout(espera)
+    }
+    // sumarSalidas solo usa el setter; outings.length se mira al disparar.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm, client, drivers, territories, groups, cuantasSalidasHay])
+
+  const [traendoAntiguas, setTraendoAntiguas] = useState(false)
+  const [noHayMasAntiguas, setNoHayMasAntiguas] = useState(false)
+  const hayMasEnLaBase =
+    !noHayMasAntiguas && cuantasSalidasHay !== null && cuantasSalidasHay > outings.length
+
+  const traerMasAntiguas = async () => {
+    if (!client || outings.length === 0) return
+    setTraendoAntiguas(true)
+    try {
+      const masVieja = outings.reduce(
+        (min, item) => (item.scheduled_for < min ? item.scheduled_for : min),
+        outings[0].scheduled_for,
+      )
+      const primero = await client
+        .from('salidas')
+        .select(CAMPOS_SALIDA)
+        .lte('scheduled_for', masVieja)
+        .order('scheduled_for', { ascending: false })
+        .limit(SALIDAS_POR_PAGINA * 2)
+      let data: unknown = primero.data
+      let errorMas: { message?: string } | null = primero.error
+      if (errorMas) {
+        const segundo = await client
+          .from('salidas')
+          .select(CAMPOS_SALIDA_VIEJOS)
+          .lte('scheduled_for', masVieja)
+          .order('scheduled_for', { ascending: false })
+          .limit(SALIDAS_POR_PAGINA * 2)
+        data = segundo.data
+        errorMas = segundo.error
+      }
+      if (errorMas || !data) {
+        setError('No se pudieron traer las salidas más antiguas. Probá de nuevo.')
+        return
+      }
+      const agregadas = sumarSalidas(data as OutingRecord[])
+      if (agregadas === 0) setNoHayMasAntiguas(true)
+      else setPagina((p) => p + 1)
+    } finally {
+      setTraendoAntiguas(false)
+    }
+  }
+
+  useEffect(() => {
+    const agenda = searchParams.get('agenda')
+    if (agenda === 'sin-conductor' || agenda === 'sin-punto' || agenda === 'sin-territorio') {
+      setScheduleFilter(agenda)
     }
   }, [searchParams])
 
@@ -1108,6 +1258,25 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
     () => outings.find((outing) => outing.id === resultadoOutingId) ?? null,
     [outings, resultadoOutingId],
   )
+  // De qué salida es el formulario de resultado: «Salida del jueves 12 de nov,
+  // 09:30 · Territorio X · Conductor: Y».
+  const resultadoResumen = useMemo(() => {
+    if (!resultadoOuting) return ''
+    const detalle = outingDetails.find((outing) => outing.id === resultadoOuting.id)
+    const fecha = new Date(resultadoOuting.scheduled_for)
+    const partes: string[] = []
+    if (Number.isFinite(fecha.getTime())) {
+      const p = new Intl.DateTimeFormat('es-AR', { weekday: 'long', day: 'numeric', month: 'short' }).formatToParts(fecha)
+      const tomar = (tipo: string) => (p.find((x) => x.type === tipo)?.value ?? '').replace(/\./g, '')
+      partes.push(`Salida del ${tomar('weekday')} ${tomar('day')} de ${tomar('month')}, ${horaCorta.format(fecha)}`)
+    } else {
+      partes.push('Salida sin fecha')
+    }
+    const territorio = detalle?.territoryName
+    if (territorio && territorio !== 'Sin territorio') partes.push(`Territorio ${territorio}`)
+    const conductor = detalle?.driverName
+    return `${partes.join(' · ')}${conductor && conductor !== 'Sin conductor' ? `. Conductor: ${conductor}` : '. Sin conductor asignado'}.`
+  }, [resultadoOuting, outingDetails])
 
   // Solo las salidas que alguien esta mirando de verdad.
   useEffect(() => {
@@ -1165,6 +1334,11 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
     setResultadoOutingId(null)
     resetForm()
     setError(null)
+    if (searchParams.has('informar')) {
+      const siguiente = new URLSearchParams(searchParams)
+      siguiente.delete('informar')
+      setSearchParams(siguiente, { replace: true })
+    }
   }
 
   const abrirNueva = () => {
@@ -1406,11 +1580,29 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
     }
   }, [plannerSlots, scheduledFor, title])
 
+  // Al editar una salida que ya existe no se filtra por un horario del
+  // planificador: el conductor que ya tiene tiene que verse siempre, aunque
+  // hoy no figure disponible en ese horario.
+  const opcionesDeConductor = (() => {
+    const slotQueFiltra = editingOutingId ? null : selectedPlannerSlot
+    const disponibles = slotQueFiltra ? getAvailableDriversForSlot(slotQueFiltra) : activeDrivers
+    const lista = disponibles.map((driver) => ({ valor: driver.id, texto: driver.full_name }))
+    if (driverId && !lista.some((o) => o.valor === driverId)) {
+      const actual = drivers.find((driver) => driver.id === driverId)
+      if (actual) lista.unshift({ valor: actual.id, texto: actual.full_name })
+    }
+    if (slotQueFiltra && lista.length === 0) {
+      return [{ valor: '', texto: 'No hay conductores disponibles', deshabilitada: true }]
+    }
+    return lista.map((o) => ({ ...o, deshabilitada: false }))
+  })()
+
   const startEditing = (outing: OutingRecord) => {
     setFormularioAbierto(true)
     setResultadoOutingId(null)
     setSelectedOutingId(outing.id)
     setEditingOutingId(outing.id)
+    setSelectedSlotKey(null)
     setTitle(outing.title)
     setTerritoryId(outing.territory_id ?? '')
     setDriverId(outing.driver_id ?? '')
@@ -1439,6 +1631,65 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
     setMessage(null)
   }
 
+  // /salidas?informar=<id>: el Inicio lleva directo al formulario de resultado.
+  // Si la salida no está entre las cargadas, se trae de la base.
+  const informarIdPedido = searchParams.get('informar')?.trim() || null
+  const informarAtendido = useRef<string | null>(null)
+  useEffect(() => {
+    if (!informarIdPedido) {
+      informarAtendido.current = null
+      return
+    }
+    if (isLoading || informarAtendido.current === informarIdPedido) return
+    informarAtendido.current = informarIdPedido
+    const yaCargada = outings.find((item) => item.id === informarIdPedido)
+    if (yaCargada) {
+      openResultFor(yaCargada)
+      return
+    }
+    if (!client) {
+      setError('Todavía no está configurada la conexión con la base.')
+      return
+    }
+    let vigente = true
+    void (async () => {
+      const primero = await client
+        .from('salidas')
+        .select(CAMPOS_SALIDA)
+        .eq('id', informarIdPedido)
+        .maybeSingle()
+      let data: unknown = primero.data
+      let fallo = primero.error
+      if (fallo) {
+        const segundo = await client
+          .from('salidas')
+          .select(CAMPOS_SALIDA_VIEJOS)
+          .eq('id', informarIdPedido)
+          .maybeSingle()
+        data = segundo.data
+        fallo = segundo.error
+      }
+      if (!vigente) return
+      if (fallo) {
+        setError('No se pudo traer esa salida. Probá de nuevo.')
+        return
+      }
+      if (!data) {
+        setError('No encontramos esa salida. Puede que se haya borrado.')
+        return
+      }
+      const salida = data as OutingRecord
+      sumarSalidas([salida])
+      openResultFor(salida)
+    })()
+    return () => {
+      vigente = false
+      // Si se canceló antes de terminar, que se vuelva a intentar.
+      informarAtendido.current = null
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [informarIdPedido, isLoading])
+
   const handleDelete = async (outing: OutingRecord) => {
     if (!client || !canManageOutings) {
       return
@@ -1449,9 +1700,17 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
       return
     }
 
-    const confirmed = window.confirm(`Se eliminara la salida "${outing.title}".`)
+    setConfirmacion({
+      titulo: 'Eliminar salida',
+      texto: `Se elimina la salida «${outing.title}». No se puede deshacer.`,
+      boton: 'Eliminar',
+      peligro: true,
+      alConfirmar: () => void eliminarSalida(outing),
+    })
+  }
 
-    if (!confirmed) {
+  const eliminarSalida = async (outing: OutingRecord) => {
+    if (!client || !canManageOutings) {
       return
     }
 
@@ -1466,6 +1725,16 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
       })
 
       if (deleteError) {
+        const noExiste =
+          deleteError.code === 'PGRST202' ||
+          deleteError.code === '42883' ||
+          /could not find the function|function .*borrar_salida|borrar_salida.*(does not exist|not found)/i.test(
+            deleteError.message ?? '',
+          )
+        if (noExiste) {
+          setError('Todavía no se puede eliminar desde acá. Estamos terminando de prepararlo: probá de nuevo más adelante.')
+          return
+        }
         setError(deleteError.code === '23503'
           ? 'Esta salida tiene registros relacionados y no puede borrarse. Conservá su historial y registrá una corrección o cancelación.'
           : mensajeErrorSalidas(deleteError, 'No se pudo eliminar la salida.'))
@@ -1568,6 +1837,24 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
     }
   }
 
+  /* El aviso de "esto está sin guardar" aparece al pedir el PDF, que es
+     cuando importa, y no fijo en la pantalla. */
+  const pedirPdfAgenda = () => {
+    if (pendientesPrograma?.hayCambios) {
+      setAvisoPdfPendiente(true)
+      return
+    }
+    void handleDownloadAgendaPdf()
+  }
+  const guardarYGenerarPdf = async () => {
+    setAvisoPdfPendiente(false)
+    if (pendientesPrograma && await pendientesPrograma.guardar()) await handleDownloadAgendaPdf()
+  }
+  const generarPdfIgual = () => {
+    setAvisoPdfPendiente(false)
+    void handleDownloadAgendaPdf()
+  }
+
   const handleDownloadAgendaPdf = async () => {
     if (!client) {
       setError('Todavía no está configurada la conexión con la base.')
@@ -1640,7 +1927,12 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
         `${salidasConDetalle.length} ${salidasConDetalle.length === 1 ? 'salida' : 'salidas'} · ${rangoPdf.desde} a ${rangoPdf.hasta}`,
       )
       descargarPdf(archivo)
-      setMessage(`PDF preparado con ${salidasConDetalle.length} ${salidasConDetalle.length === 1 ? 'salida' : 'salidas'} del período elegido.`)
+      const cuantas = salidasConDetalle.length
+      setMessage(
+        cuantas === 0
+          ? `Se descargó ${archivo.filename}, pero no hay salidas guardadas en ese período. Miralo en Descargas.`
+          : `Se descargó ${archivo.filename} con ${cuantas} ${cuantas === 1 ? 'salida guardada' : 'salidas guardadas'}. Miralo en Descargas.`,
+      )
       setError(null)
     } catch (caught) {
       setError(mensajeErrorSalidas(caught, 'No se pudo preparar el PDF de la agenda.'))
@@ -1688,6 +1980,13 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
     const selectedMeetingPoint = meetingPointId
       ? meetingPoints.find((point) => point.id === meetingPointId) ?? null
       : null
+    // Las coordenadas guardadas solo valen mientras el punto siga siendo el
+    // mismo: si cambió el nombre o el punto elegido, eran las del anterior.
+    const mismoPuntoQueAntes = Boolean(
+      existingOuting &&
+        meetingPointName.trim() === (existingOuting.meeting_point_name ?? '').trim() &&
+        (meetingPointId ?? null) === (existingOuting.meeting_point_id ?? null),
+    )
     const effectiveMeetingCoords: [number, number] | null =
       meetingCoords ??
       (selectedMeetingPoint &&
@@ -1695,6 +1994,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
       selectedMeetingPoint.lng !== null
         ? [selectedMeetingPoint.lng, selectedMeetingPoint.lat]
         : existingOuting &&
+            mismoPuntoQueAntes &&
             existingOuting.meeting_point_lat !== null &&
             existingOuting.meeting_point_lng !== null
           ? [existingOuting.meeting_point_lng, existingOuting.meeting_point_lat]
@@ -1840,7 +2140,12 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
         return
       }
 
+      // La respuesta del guardado trae solo las columnas básicas. Se pisan
+      // encima de lo que la tarjeta ya tenía para no perder el conductor y
+      // el territorio escritos del Excel (conductor_texto, territorio_codigo,
+      // barrio, orden): sin esto la tarjeta decía «Sin conductor» hasta recargar.
       const savedOuting: OutingRecord = {
+        ...(existingOuting ?? {}),
         ...(data as OutingRecord),
         provenance: existingOuting?.provenance ?? null,
       }
@@ -1875,18 +2180,11 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
     }
   }
 
-  const confirmarSiSePierdenTildadas = (desde: string, hasta: string) => {
-    const fuera = Object.entries(plannerDrafts).filter(
+  const salidasTildadasFuera = (desde: string, hasta: string) =>
+    Object.entries(plannerDrafts).filter(
       ([key, draft]) =>
         draft.enabled && (key.slice(0, 10) < desde || key.slice(0, 10) > hasta),
-    )
-    if (fuera.length === 0) return true
-    return window.confirm(
-      fuera.length === 1
-        ? 'Hay una salida tildada fuera de esas fechas. Se saca de este armado; la agenda no se toca.'
-        : `Hay ${fuera.length} salidas tildadas fuera de esas fechas. Se sacan de este armado; la agenda no se toca.`,
-    )
-  }
+    ).length
 
   const aplicarRango = (desde: string, hasta: string, preset: PresetPrograma) => {
     const errorRango = validarRango(deClaveFecha(desde), deClaveFecha(hasta))
@@ -1894,9 +2192,24 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
       setError(errorRango)
       return false
     }
-    if (!confirmarSiSePierdenTildadas(desde, hasta)) return false
-    setError(null)
-    setPrograma({ preset, desde, hasta })
+    const fuera = salidasTildadasFuera(desde, hasta)
+    const aplicar = () => {
+      setError(null)
+      setPrograma({ preset, desde, hasta })
+    }
+    if (fuera > 0) {
+      setConfirmacion({
+        titulo: 'Cambiar las fechas',
+        texto:
+          fuera === 1
+            ? 'Hay una salida tildada fuera de esas fechas. Se saca de este armado; la agenda no se toca.'
+            : `Hay ${fuera} salidas tildadas fuera de esas fechas. Se sacan de este armado; la agenda no se toca.`,
+        boton: 'Cambiar fechas',
+        alConfirmar: aplicar,
+      })
+      return false
+    }
+    aplicar()
     return true
   }
 
@@ -1972,25 +2285,29 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
       return key.slice(0, 10) > primera.hastaClave
     })
 
-    if (
-      hayDespues &&
-      !window.confirm(
-        'Se copian los horarios de la primera semana en las demás. Lo que ya tildaste ahí se reemplaza.',
+    const copiar = () => {
+      setPlannerDrafts((current) =>
+        repetirPrimeraSemana({
+          desdeClave: programa.desde,
+          hastaClave: programa.hasta,
+          rowKeysExistentes: plannerRows.map((row) => row.key),
+          drafts: current,
+        }),
       )
-    ) {
-      return
+      setError(null)
+      setMessage('Se copió la primera semana en el resto del período. Revisá y guardá.')
     }
 
-    setPlannerDrafts((current) =>
-      repetirPrimeraSemana({
-        desdeClave: programa.desde,
-        hastaClave: programa.hasta,
-        rowKeysExistentes: plannerRows.map((row) => row.key),
-        drafts: current,
-      }),
-    )
-    setError(null)
-    setMessage('Se copió la primera semana en el resto del período. Revisá y guardá.')
+    if (hayDespues) {
+      setConfirmacion({
+        titulo: 'Copiar la primera semana',
+        texto: 'Se copian los horarios de la primera semana en las demás. Lo que ya tildaste ahí se reemplaza.',
+        boton: 'Copiar',
+        alConfirmar: copiar,
+      })
+      return
+    }
+    copiar()
   }
 
   const handleSavePlannerDrafts = async () => {
@@ -2191,7 +2508,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
         </div>
       </section>
 
-      <div className="module-console">
+      <div className="module-console module-console-plano">
         <Falta
           cuantos={proximasSinConductor}
           uno="Una salida no tiene conductor"
@@ -2229,6 +2546,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
             scope={salidasWriteScope}
             grupoId={lockedGroupId || null}
             onGuardado={() => setRecargar((n) => n + 1)}
+            alCambiarPendientes={setPendientesPrograma}
           />
         ) : null}
 
@@ -2470,7 +2788,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                               meetingCoords:
                                 punto?.lat != null && punto?.lng != null
                                   ? [punto.lng, punto.lat]
-                                  : punto
+                                  : punto || draft?.meetingPointId
                                     ? null
                                     : draft?.meetingCoords ?? null,
                               mapOpen: Boolean(punto && (punto.lat == null || punto.lng == null)),
@@ -2613,7 +2931,11 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                   Pero se dice con un numero: el parrafo de tres renglones
                   que habia aca explicaba el recorte en el lugar donde se
                   busca una salida. */}
-              {cuantasSalidasHay !== null && cuantasSalidasHay > outings.length ? (
+              {searchTerm.trim() ? (
+                <p className="table-hint" role="status">
+                  {filteredOutings.length === 1 ? '1 resultado' : `${filteredOutings.length.toLocaleString('es-AR')} resultados`} para “{searchTerm.trim()}”
+                </p>
+              ) : cuantasSalidasHay !== null && cuantasSalidasHay > outings.length ? (
                 <p
                   className="table-hint"
                   title={`Se traen las ${outings.length} más recientes. Las más viejas quedan en el historial de cada territorio.`}
@@ -2640,8 +2962,8 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
               {/* Los dos filtros viven plegados: estaban siempre abiertos y
                   ocupaban el mismo lugar que las acciones, aunque casi
                   siempre dicen "Todos" y "Todas". */}
-              <details className="agenda-filtros">
-                <summary className="secondary-button">
+              <details className="agenda-filtros menu-mas">
+                <summary>
                   Filtros
                   {filtrosActivos ? <span className="agenda-filtros-marca" aria-hidden="true" /> : null}
                   <span className="sr-only">{filtrosActivos ? ' (hay filtros puestos)' : ''}</span>
@@ -2688,6 +3010,8 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                         { valor: 'proximas', texto: 'Próximas' },
                         { valor: 'pasadas', texto: 'Pasadas' },
                         { valor: 'sin-conductor', texto: 'Sin conductor' },
+                        { valor: 'sin-punto', texto: 'Sin punto de encuentro' },
+                        { valor: 'sin-territorio', texto: 'Sin territorio' },
                       ]}
                     />
                   </label>
@@ -2714,6 +3038,65 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                   Nueva salida
                 </button>
               ) : null}
+
+              {/* La exportación es de poco uso: va en «Más», con su período. */}
+              <details
+                className="agenda-filtros menu-mas"
+                onToggle={(event) => { if (!event.currentTarget.open) setAvisoPdfPendiente(false) }}
+              >
+                <summary>Más</summary>
+                <div className="agenda-filtros-caja agenda-pdf-caja">
+                  <strong>Exportar la agenda</strong>
+                  <div className="agenda-pdf-fechas">
+                    <label>
+                      Desde
+                      <input
+                        type="date"
+                        value={rangoPdf.desde}
+                        onChange={(event) => setRangoPdf((actual) => ({ ...actual, desde: event.target.value }))}
+                      />
+                    </label>
+                    <label>
+                      Hasta
+                      <input
+                        type="date"
+                        value={rangoPdf.hasta}
+                        onChange={(event) => setRangoPdf((actual) => ({ ...actual, hasta: event.target.value }))}
+                      />
+                    </label>
+                  </div>
+                  {avisoPdfPendiente ? (
+                    <div className="agenda-pdf-aviso" role="status">
+                      <p>
+                        {pendientesPrograma && pendientesPrograma.cuantas > 0
+                          ? `Hay ${pendientesPrograma.cuantas} ${pendientesPrograma.cuantas === 1 ? 'salida' : 'salidas'} sin guardar`
+                          : 'Hay cambios sin guardar'}
+                        ; el PDF trae solo lo guardado.
+                      </p>
+                      <div className="agenda-pdf-aviso-acciones">
+                        {pendientesPrograma?.puedeGuardar ? (
+                          <button type="button" className="primary-button" onClick={() => void guardarYGenerarPdf()}>
+                            Guardar y generar
+                          </button>
+                        ) : null}
+                        <button type="button" className="secondary-button" onClick={generarPdfIgual}>
+                          Generar igual
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={pedirPdfAgenda}
+                      disabled={pdfEnCurso !== null}
+                    >
+                      <Icono nombre="descargar" tamaño={18} />
+                      {pdfEnCurso === 'agenda' ? 'Preparando…' : 'Descargar agenda PDF'}
+                    </button>
+                  )}
+                </div>
+              </details>
               {/* Un solo boton principal en la pantalla: armar el programa es
                   lo que se viene a hacer aca. */}
               {canManageOutings && !programaV2 ? (
@@ -2729,41 +3112,6 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
               ) : null}
             </div>
           </div>
-
-          <section className="agenda-pdf-periodo" aria-labelledby="agenda-pdf-titulo">
-            <div className="agenda-pdf-copy">
-              <span>Exportación PDF</span>
-              <strong id="agenda-pdf-titulo">Descargar agenda</strong>
-              <p>El PDF incluye todas las salidas del período elegido.</p>
-            </div>
-            <div className="agenda-pdf-fechas">
-              <label>
-                Desde
-                <input
-                  type="date"
-                  value={rangoPdf.desde}
-                  onChange={(event) => setRangoPdf((actual) => ({ ...actual, desde: event.target.value }))}
-                />
-              </label>
-              <label>
-                Hasta
-                <input
-                  type="date"
-                  value={rangoPdf.hasta}
-                  onChange={(event) => setRangoPdf((actual) => ({ ...actual, hasta: event.target.value }))}
-                />
-              </label>
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={() => void handleDownloadAgendaPdf()}
-                disabled={pdfEnCurso !== null}
-              >
-                <Icono nombre="descargar" tamaño={18} />
-                {pdfEnCurso === 'agenda' ? 'Preparando…' : 'Descargar agenda PDF'}
-              </button>
-            </div>
-          </section>
 
           {error ? <div className="form-feedback error">{error}</div> : null}
           {message ? <div className="form-feedback success">{message}</div> : null}
@@ -2914,13 +3262,13 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                           )}
 
                           <details
-                            className="agenda-mas"
+                            className="menu-mas menu-mas-icono"
                             onClick={(event) => event.stopPropagation()}
                           >
                             <summary aria-label={`Más acciones de ${outing.title}`}>
                               <Icono nombre="menu" tamaño={20} />
                             </summary>
-                            <div className="agenda-mas-caja">
+                            <div className="menu-mas-caja">
                               <button
                                 type="button"
                                 className="ghost-button"
@@ -2928,7 +3276,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                                 disabled={pdfEnCurso !== null}
                               >
                                 <Icono nombre="descargar" tamaño={18} />
-                                {pdfEnCurso === outing.id ? 'Preparando…' : 'Descargar PDF'}
+                                {pdfEnCurso === outing.id ? 'Preparando…' : 'Descargar agenda PDF'}
                               </button>
                               <button
                                 type="button"
@@ -2950,7 +3298,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                               ) : null}
                               {canManageOutings ? (
                                 historica ? (
-                                  <p className="agenda-mas-nota">
+                                  <p className="menu-mas-nota">
                                     Viene del Excel: no se borra.
                                   </p>
                                 ) : (
@@ -2975,6 +3323,19 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
 
               {/* Lo anterior existe y se dice cuanto hay, pero no se pinta
                   hasta que alguien lo pide. */}
+              {anterioresQueFaltan === 0 && hayMasEnLaBase && anteriores.length > 0 ? (
+                <button
+                  type="button"
+                  className="secondary-button agenda-ver-mas"
+                  onClick={() => void traerMasAntiguas()}
+                  disabled={traendoAntiguas}
+                >
+                  <Icono nombre="anterior" tamaño={18} />
+                  {traendoAntiguas
+                    ? 'Buscando…'
+                    : `Traer salidas más antiguas (quedan ${((cuantasSalidasHay ?? 0) - outings.length).toLocaleString('es-AR')})`}
+                </button>
+              ) : null}
               {anterioresQueFaltan > 0 ? (
                 <button
                   type="button"
@@ -3007,7 +3368,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
           }
           bajada={
             resultadoOutingId
-              ? 'Informá qué ocurrió. Corregir un resultado agrega un evento nuevo y no modifica el anterior.'
+              ? `${resultadoResumen} Informá qué ocurrió. Corregir un resultado agrega un evento nuevo y no modifica el anterior.`
               : editingHistorical
               ? 'Completá lo que tengas. Lo demás queda como está; fecha, hora y procedencia se conservan.'
               : 'Dónde se juntan, territorio y conductor. El mapa es opcional.'
@@ -3026,7 +3387,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
             />
           ) : (
           <form className="form-stack" onSubmit={handleSubmit}>
-              {selectedPlannerSlot ? (
+              {selectedPlannerSlot && !editingOutingId ? (
                 <div className="module-detail-card">
                   <span>Slot elegido</span>
                   <strong>
@@ -3118,13 +3479,34 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                   alElegir={(punto, texto) => {
                     setMeetingPointId(punto?.id ?? null)
                     setMeetingPointName(punto?.nombre ?? texto)
-                    if (punto?.territory_id) {
+                    if (punto?.territory_id && !territoryId) {
+                      // Sin territorio elegido todavía: se completa solo.
                       setTerritoryId(punto.territory_id)
+                      setPuntoDeOtroTerritorio(null)
+                    } else if (punto?.territory_id && punto.territory_id !== territoryId) {
+                      // Elegir un punto nunca cambia en silencio el territorio ya elegido.
+                      setPuntoDeOtroTerritorio({ puntoId: punto.id, territoryId: punto.territory_id })
+                    } else {
+                      setPuntoDeOtroTerritorio(null)
                     }
+                    // Texto libre: el GPS que había era el del punto anterior
+                    // (o el que la salida traía guardado con otro nombre), no
+                    // el de lo que se está escribiendo. Un pin marcado a mano
+                    // en el mapa, sin punto elegido, se conserva.
+                    const salidaActual = editingOutingId
+                      ? outings.find((item) => item.id === editingOutingId)
+                      : null
+                    const eranLasGuardadas = Boolean(
+                      salidaActual &&
+                        meetingCoords &&
+                        salidaActual.meeting_point_lng === meetingCoords[0] &&
+                        salidaActual.meeting_point_lat === meetingCoords[1] &&
+                        texto.trim() !== (salidaActual.meeting_point_name ?? '').trim(),
+                    )
                     setMeetingCoords(
                       punto?.lat != null && punto?.lng != null
                         ? [punto.lng, punto.lat]
-                        : punto
+                        : punto || meetingPointId !== null || eranLasGuardadas
                           ? null
                           : meetingCoords,
                     )
@@ -3133,6 +3515,25 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                 <small className="form-help">
                   Una esquina, una casa o Zoom. El mapa solo sirve para mostrar cómo llegar.
                 </small>
+                {puntoDeOtroTerritorio &&
+                puntoDeOtroTerritorio.puntoId === meetingPointId &&
+                puntoDeOtroTerritorio.territoryId !== territoryId ? (
+                  <small className="form-help" role="status">
+                    Este punto es del territorio{' '}
+                    {territories.find((t) => t.id === puntoDeOtroTerritorio.territoryId)?.name ?? 'otro'}.{' '}
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      onClick={() => {
+                        setTerritoryId(puntoDeOtroTerritorio.territoryId)
+                        setPuntoDeOtroTerritorio(null)
+                      }}
+                    >
+                      Cambiar la salida al{' '}
+                      {territories.find((t) => t.id === puntoDeOtroTerritorio.territoryId)?.name ?? 'otro territorio'}
+                    </button>
+                  </small>
+                ) : null}
               </label>
 
               <label>
@@ -3144,20 +3545,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                   deshabilitado={!canManageOutings}
                   opciones={[
                     { valor: '', texto: 'Elegir conductor' },
-                    ...(selectedPlannerSlot &&
-                    getAvailableDriversForSlot(selectedPlannerSlot).length === 0
-                      ? [
-                          {
-                            valor: '',
-                            texto: 'No hay conductores disponibles',
-                            deshabilitada: true,
-                          },
-                        ]
-                      : []),
-                    ...getAvailableDriversForSlot(selectedPlannerSlot).map((driver) => ({
-                      valor: driver.id,
-                      texto: driver.full_name,
-                    })),
+                    ...opcionesDeConductor,
                   ]}
                 />
               </label>
@@ -3386,13 +3774,37 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
           )}
         </Modal>
 
+        <Modal
+          abierto={confirmacion !== null}
+          alCerrar={() => setConfirmacion(null)}
+          titulo={confirmacion?.titulo ?? 'Confirmar'}
+        >
+          <p>{confirmacion?.texto}</p>
+          <div className="form-actions">
+            <button type="button" className="secondary-button" onClick={() => setConfirmacion(null)}>
+              Cancelar
+            </button>
+            <button
+              type="button"
+              className={confirmacion?.peligro ? 'danger-button' : 'primary-button'}
+              onClick={() => {
+                const hacer = confirmacion?.alConfirmar
+                setConfirmacion(null)
+                hacer?.()
+              }}
+            >
+              {confirmacion?.boton ?? 'Aceptar'}
+            </button>
+          </div>
+        </Modal>
+
         <section className="two-column-grid module-form-grid salidas-detalle">
           <article className="panel">
             <p className="eyebrow">
-              {selectedOuting ? 'Detalle operativo' : 'Referencia rapida'}
+              {selectedOuting ? 'Detalle operativo' : 'Referencia rápida'}
             </p>
             <h3>
-              {selectedOuting ? selectedOuting.title : 'Como usar el planificador'}
+              {selectedOuting ? selectedOuting.title : 'Cómo usar el planificador'}
             </h3>
 
             {selectedOuting ? (
@@ -3414,7 +3826,7 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
                       disabled={pdfEnCurso !== null}
                     >
                       <Icono nombre="descargar" tamaño={18} />
-                      {pdfEnCurso === selectedOuting.id ? 'Preparando…' : 'Descargar PDF'}
+                      {pdfEnCurso === selectedOuting.id ? 'Preparando…' : 'Descargar agenda PDF'}
                     </button>
                     {puedeCompartirPdf() ? (
                       <button
@@ -3533,16 +3945,16 @@ export function SalidasPage({ groupServiceMode = false }: SalidasPageProps = {})
             ) : (
               <div className="module-guidance-list">
                 <div className="module-guidance-item">
-                  <strong>1. Tilda el horario</strong>
+                  <strong>1. Tildá el horario</strong>
                   <span>Elegí el período, tildá un horario y completá la fila.</span>
                 </div>
                 <div className="module-guidance-item">
-                  <strong>2. Completa la ficha</strong>
+                  <strong>2. Completá la ficha</strong>
                   <span>Agregá territorio, conductor y dónde se juntan. El mapa es opcional.</span>
                 </div>
                 <div className="module-guidance-item">
-                  <strong>3. Descarga el PDF</strong>
-                  <span>La ficha queda lista antes o despues de guardar la salida.</span>
+                  <strong>3. Descargá el PDF</strong>
+                  <span>La ficha queda lista antes o después de guardar la salida.</span>
                 </div>
               </div>
             )}

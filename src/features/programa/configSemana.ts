@@ -36,7 +36,11 @@ export async function cargarConfigSemana(
 
   const errores = [horarios.error, titulares.error, telefono.error, grupos.error]
   if (errores.some((e) => e && NO_EXISTE.has(e.code ?? ''))) return null
-  if (errores.some(Boolean)) return null
+  /* Un error de lectura no es una semana vacía: si se devolviera null, la
+     pantalla armaría con la semana del código y «Guardar la semana» pisaría
+     la real. Se avisa y la pantalla frena. */
+  const fallo = errores.find(Boolean)
+  if (fallo) throw new Error(fallo.message || 'No se pudo leer la semana de siempre.')
 
   const config: ConfigSemana = { horarios: {}, titulares: {}, telefono: [], grupos: [] }
   for (const fila of (horarios.data ?? []) as Array<{ dow: number; turno: Turno; hora: string }>) {

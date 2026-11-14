@@ -1,7 +1,8 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { CampoCodigoGrupo } from './CampoCodigoGrupo'
 import { useAuth } from '../context/useAuth'
 import { supabase } from '../lib/supabase'
+import { comoErrorDeLaBase, decirElError } from '../lib/decirElError'
 import type { ContextoHermano } from '../lib/vistaHermano'
 import { Icono } from './Icono'
 
@@ -74,7 +75,7 @@ function HojaGrupoCodigo({
             if (error) {
               return /ningún grupo|ningun grupo|22023/i.test(error.message)
                 ? 'Ese código no es de ningún grupo. Fijate si lo copiaste bien.'
-                : error.message
+                : decirElError(error, 'No pudimos sumarte al grupo.')
             }
             onListo()
             return null
@@ -92,6 +93,20 @@ export function MiCuenta({ compact = false }: MiCuentaProps) {
   const [error, setError] = useState<string | null>(null)
   const [hojaGrupo, setHojaGrupo] = useState(false)
   const [conductorVinculado, setConductorVinculado] = useState<string | null>(null)
+  const detalles = useRef<HTMLDetailsElement>(null)
+
+  // Escape cierra Mi cuenta y devuelve el foco a su botón. Con la hoja del
+  // grupo abierta, Escape es de la hoja y no se toca acá.
+  useEffect(() => {
+    const tecla = (evento: KeyboardEvent) => {
+      const caja = detalles.current
+      if (evento.key !== 'Escape' || !caja?.open || hojaGrupo) return
+      caja.open = false
+      caja.querySelector<HTMLElement>('summary')?.focus({ preventScroll: true })
+    }
+    document.addEventListener('keydown', tecla)
+    return () => document.removeEventListener('keydown', tecla)
+  }, [hojaGrupo])
 
   useEffect(() => {
     if (!supabase || !profile?.driver_id) {
@@ -119,7 +134,7 @@ export function MiCuenta({ compact = false }: MiCuentaProps) {
       if (response.error) throw response.error
       retryAuth()
     } catch (failure) {
-      setError(failure && typeof failure === 'object' && 'message' in failure ? String(failure.message) : 'No se pudo guardar tu nombre. Conservamos lo que escribiste.')
+      setError(decirElError(comoErrorDeLaBase(failure), 'No se pudo guardar tu nombre. Conservamos lo que escribiste.'))
     } finally { setBusy(false) }
   }
   // Lima es "esto es lo que hay que hacer aca". Con "Guardar nombre" siempre
@@ -137,7 +152,7 @@ export function MiCuenta({ compact = false }: MiCuentaProps) {
   // Tres cosas y en este orden: como te llamas, en que grupo estas, y la
   // sesion. Antes eran seis controles del mismo peso en una sola columna.
   return <>
-    <details className={compact ? 'miCuenta compacto' : 'panel'}>
+    <details ref={detalles} className={compact ? 'miCuenta compacto' : 'panel'}>
       <summary className="boton secundario cuenta-resumen" aria-label="Abrir Mi cuenta">
         {compact && <span className="cuentaIcono" aria-hidden="true">
           <Icono nombre="persona" tamaño={20} />

@@ -9,21 +9,22 @@ const [app, page, map, css] = await Promise.all([
   readFile(new URL('../src/styles/mapas-pagina.css', import.meta.url), 'utf8'),
 ])
 
-test('/mapas inicia en el editor completo y conserva SanJuanMap como consulta sin escritura', () => {
+test('/mapas inicia en la vista de solo lectura (SanJuanMap sin escritura), no en el editor', () => {
   assert.match(app, /<Route\s+path="mapas"\s+element=\{loadRoute\(<MapasPage\s*\/>\)\}\s*\/>/)
-  assert.match(page, /const \[view,\s*setView\]\s*=\s*useState<'editor' \| 'cobertura'>\('editor'\)/)
+  assert.match(page, /const \[view,\s*setView\]\s*=\s*useState<'editor' \| 'cobertura'>\(\s*searchParams\.get\('vista'\) === 'cobertura' \? 'cobertura' : 'editor'/)
   assert.match(page, /<SanJuanMap[\s\S]*?editingEnabled=\{false\}[\s\S]*?\/>/)
 })
 
-test('el editor completo requiere permiso administrativo', () => {
+test('el editor completo requiere permiso administrativo y modo edición confirmado', () => {
   assert.match(page, /import \{ canOpenAdminPanel \} from '\.\.\/lib\/access'/)
   assert.match(page, /const canEditMap\s*=\s*canOpenAdminPanel\(profile,\s*contexto\)/)
-  assert.match(page, /\{canEditMap\s*\?\s*\([\s\S]*?<iframe[\s\S]*?srcDoc=\{editorHtml\}/)
+  assert.match(page, /const enEdicion\s*=\s*editando\s*&&\s*canEditMap/)
+  assert.match(page, /\{enEdicion\s*\?\s*\([\s\S]*?<iframe[\s\S]*?srcDoc=\{editorHtml\}/)
 })
 
-test('al pasar a Cobertura el editor se oculta sin desmontarse', () => {
+test('la pestaña Cobertura sigue abriéndose por botón y por ?vista=cobertura', () => {
   assert.match(page, /<div hidden=\{view !== 'editor'\} className="editor-integrado-container">/)
-  assert.match(page, /onClick=\{\(\) => setView\('cobertura'\)\}/)
+  assert.match(page, /onClick=\{\(\) => cambiarVista\('cobertura'\)\}/)
   assert.match(page, /\{view === 'cobertura' \? <CoverageHeatmapPanel/)
 })
 
