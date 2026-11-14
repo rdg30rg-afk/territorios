@@ -37,9 +37,9 @@ ni en la línea de comandos, nunca se commitea.
 
 **Migraciones listas para aplicar (13/11).** En este orden:
 
-1. `20261027151000`
-2. `20261027151500_errores_cliente`
-3. `20261113010000_borrar_salida`
+1. `20261027151000` — **aplicada el 14/11** desde el editor SQL de Supabase.
+2. `20261027151500_errores_cliente` — **aplicada el 14/11**.
+3. `20261113010000_borrar_salida` — **aplicada el 14/11**.
 4. `20261113020000_grupo_cambiar_y_salir`
 5. `20261113030000_reservas_bloquear_territorio_asignado`
 6. `20261113040000_cobertura_admin_marca`
