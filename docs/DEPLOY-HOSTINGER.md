@@ -1,5 +1,34 @@
 # Desarrollo en Hostinger
 
+## Publicación del 14 de noviembre de 2026 — arreglos de la auditoría y Mapas en solo lectura
+
+Publicado el tag `publicacion-2026-11-14` (commit `c1a5a1c`) con
+`scripts/publicar-hostinger.mjs --ejecutar --sin-podar`, desde un worktree
+limpio. **Sin migraciones aplicadas**: las nueve de la lista de
+`docs/QUE-FALTA.md` siguen pendientes.
+
+**Qué trae.** Los arreglos de `docs/AUDITORIA-GIGA-2026-11-13.md`: marcado y
+mapa del hermano, informe del conductor, hoja «Mi grupo», agenda de Salidas,
+programa semanal, Inicio, Territorio Personal, Cobertura, y Mapas, que abre en
+solo lectura y pide confirmación para editar.
+
+**Lo que no anda hasta aplicar migraciones:** eliminar salidas (avisa «Todavía
+no se puede eliminar desde acá»), marcar un territorio ajeno como administrador
+(avisa «Falta habilitar esto en la base»), cambiar o salir de grupo, y el
+registro de errores del navegador.
+
+**Respaldo previo:**
+`/home/u800479702/backups/congregacion-dev-20261114-publicacion-2026-11-14-pre`.
+
+**Verificación:**
+
+- 124 de 124 archivos coinciden; `/`, `/mapas` y `/login` responden 200.
+- `version.json` trae el commit y el tag.
+- `/login` carga sin errores en consola. No se probó con una sesión iniciada
+  en el sitio publicado.
+- Antes de publicar: 783 tests, tipos y compilación en verde. La última tanda
+  de arreglos de teléfono y panel no se vio en pantalla.
+
 ## Publicación del 11 de noviembre de 2026 — guardar sin trabarse con un territorio que la base no tiene
 
 Publicado el tag `publicacion-2026-11-11` (commit `88fc5a2`) con
