@@ -35,17 +35,17 @@ desactualizada: no usarla sin confirmarla con el dueño. La `service_role` se
 lee de un archivo (`SUPABASE_SERVICE_ROLE_KEY_FILE`), nunca se pega en el chat
 ni en la línea de comandos, nunca se commitea.
 
-**Migraciones listas para aplicar (13/11).** En este orden:
+**Migraciones del 13/11.** Las nueve quedaron aplicadas el 14/11 desde el editor SQL de Supabase, en este orden, cada una comprobada por huella contra el archivo del repo:
 
 1. `20261027151000` — **aplicada el 14/11** desde el editor SQL de Supabase.
 2. `20261027151500_errores_cliente` — **aplicada el 14/11**.
 3. `20261113010000_borrar_salida` — **aplicada el 14/11**.
-4. `20261113020000_grupo_cambiar_y_salir`
-5. `20261113030000_reservas_bloquear_territorio_asignado`
-6. `20261113040000_cobertura_admin_marca`
-7. `20261113050000_lectura_basica_no_admin`
-8. `20261113060000_resolve_login_email_acotado`
-9. `20261113070000_sembrado_encargados_por_conductor`
+4. `20261113020000_grupo_cambiar_y_salir` — **aplicada el 14/11**.
+5. `20261113030000_reservas_bloquear_territorio_asignado` — **aplicada el 14/11**.
+6. `20261113040000_cobertura_admin_marca` — **aplicada el 14/11**.
+7. `20261113050000_lectura_basica_no_admin` — **aplicada el 14/11**.
+8. `20261113060000_resolve_login_email_acotado` — **aplicada el 14/11**.
+9. `20261113070000_sembrado_encargados_por_conductor` — **aplicada el 14/11**.
 
 **Advertencia:** `20260906020000` **NO debe aplicarse**: pisa funciones más
 nuevas y rompe el borrador del programa.
